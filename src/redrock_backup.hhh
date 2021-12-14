@@ -1,0 +1,7 @@
+
+/* for rock_read.h */
+
+void on_delete_keys_in_command(const int dbid, const list* redis_keys);
+void on_delete_whole_db_in_command(const int dbid);
+void debug_add_tasks(const int cnt, const int* const dbids, const sds* keys);
+void cancel_read_task_before_write_to_rocksdb(const int len, const sds *rock_keys);
