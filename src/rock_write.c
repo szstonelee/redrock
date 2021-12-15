@@ -244,10 +244,6 @@ static int write_to_rocksdb()
     int written = rbuf_len;
     int index = rbuf_s_index;
     rock_w_unlock();
-
-    serverLog(LL_WARNING, "write thread sleep start ...");
-    sleep(30);
-    serverLog(LL_WARNING, "write thread sleep end!");
        
     rocksdb_writebatch_t *batch = rocksdb_writebatch_create();
     rocksdb_writeoptions_t *writeoptions = rocksdb_writeoptions_create();
@@ -379,6 +375,7 @@ list* get_vals_from_write_ring_buf_first(const int dbid, const list *redis_keys)
 
     if (all_not_in_ring_buf)
     {
+        listSetFreeMethod(r, (void (*)(void*))sdsfree);
         listRelease(r);
         return NULL;
     }

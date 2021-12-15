@@ -205,9 +205,12 @@ void debug_rock(client *c)
                 {
                     serverLog(LL_WARNING, "debug_rock() found rock key = %s", (sds)dictGetKey(de));
                     listAddNodeTail(rock_keys, dictGetKey(de));
-                    ++c->rock_key_num;
                 }
             }
+        }
+        if (listLength(rock_keys) != 0)
+        {
+            on_client_need_rock_keys(c, rock_keys);
         }
         listRelease(rock_keys);
     }
@@ -388,4 +391,44 @@ void create_shared_object_for_rock()
     shared.rock_val_str_int = createStringObjectFromLongLong(val);
     makeObjectShared(shared.rock_val_str_int);
     
+}
+
+/* Called in main thread by networking.c processInputBuffer()
+ * when a command is ready to process.
+ * If the command does not need to check rock value (e.g., SET command)
+ * return NULL.
+ * If the command need to check and find no key in rock value
+ * return NULL.
+ * Otherwise, return a list (not empty) for those keys (sds) 
+ * and the sds can use the contents in client c.
+ */
+list* get_keys_in_rock_for_command(const client *c)
+{
+    serverAssert(c->rock_key_num == 0);
+
+    struct redisCommand *cmd = lookupCommand(c->argv[0]->ptr);
+    serverAssert(cmd);
+
+    if (c->flags & CLIENT_MULTI)
+    {
+        // if client is in transaction mode
+        if (cmd->proc != execCommand)
+            // if query commands in trannsaction mode or DISCARD/WATCH/UNWATCH
+            return NULL;        
+    }
+
+    // the command does not need to check rock key, e.g., set <key> <val>
+    if (cmd->rock_proc == NULL) 
+        return NULL;
+
+    list *redis_keys = cmd->rock_proc(c);
+    if (redis_keys == NULL)
+    {
+        return NULL;
+    }
+    else
+    {
+        serverAssert(listLength(redis_keys) != 0);
+        return redis_keys;
+    }
 }

@@ -20,23 +20,15 @@ client* lookup_client_from_id(const uint64_t client_id);
 void on_add_a_new_client(client* const c);
 void on_del_a_destroy_client(const client* const c);
 
+list* get_keys_in_rock_for_command(const client *c);
+
 /* Check whether o is a rock value.
  * Return 1 if it is. Otherwise return 0.
  */
 inline int is_rock_value(const robj *o)
 {
-    if (o == shared.rock_val_str_int)
-    {
-        return 1;
-    }
-    else if (o == shared.rock_val_str_other)
-    {
-        return 1;
-    } 
-    else
-    {
-        return 0;
-    }
+    return  o == shared.rock_val_str_other ||
+            o == shared.rock_val_str_int;
 }
 
 /* Check whether o is a shared value which is made by makeObjectShared()
@@ -44,7 +36,16 @@ inline int is_rock_value(const robj *o)
  */
 inline int is_shared_value(const robj *o)
 {
-    return o->refcount == OBJ_SHARED_REFCOUNT ? 1 : 0;
+    return o->refcount == OBJ_SHARED_REFCOUNT;
+}
+
+/* Check a client is in the state waiting for rock value.
+ * Return 1 if the client is waiting some rock value.
+ * Otherwise return 0.
+ */
+inline int is_client_in_waiting_rock_value_state(const client *c)
+{
+    return c->rock_key_num != 0;
 }
 
 #endif

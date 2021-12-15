@@ -33,6 +33,7 @@
 
 // #include "redrock_common.h"
 #include "rock.h"
+#include "rock_read.h"
 
 #include <sys/socket.h>
 #include <sys/uio.h>
@@ -2060,6 +2061,10 @@ int processPendingCommandsAndResetClient(client *c) {
 void processInputBuffer(client *c) {
     /* Keep processing while there is something in the input buffer */
     while(c->qb_pos < sdslen(c->querybuf)) {
+        /* Immediatly abort if the client is waiting for rock value */
+        if (is_client_in_waiting_rock_value_state(c))
+            break;
+
         /* Immediately abort if the client is in the middle of something. */
         if (c->flags & CLIENT_BLOCKED) break;
 
@@ -2120,13 +2125,33 @@ void processInputBuffer(client *c) {
                 c->flags |= CLIENT_PENDING_COMMAND;
                 break;
             }
-
+#if 0       // Commont previouse code
             /* We are finally ready to execute the command. */
             if (processCommandAndResetClient(c) == C_ERR) {
                 /* If the client is no longer valid, we avoid exiting this
                  * loop and trimming the client buffer later. So we return
                  * ASAP in that case. */
                 return;
+            }
+#endif
+            list *rock_keys = get_keys_in_rock_for_command(c);
+            if (rock_keys == NULL)
+            {
+                if (processCommandAndResetClient(c) == C_ERR)
+                    return;
+            }
+            else
+            {
+                int sync_mode = on_client_need_rock_keys(c, rock_keys);
+                if (sync_mode)
+                {
+                    if (processCommandAndResetClient(c) == C_ERR)
+                    {
+                        listRelease(rock_keys);
+                        return;
+                    }
+                }
+                listRelease(rock_keys);
             }
         }
     }

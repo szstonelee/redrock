@@ -465,21 +465,21 @@ void sentinelConfigGetCommand(client *c);
 void sentinelConfigSetCommand(client *c);
 
 struct redisCommand sentinelcmds[] = {
-    {"ping",pingCommand,1,"fast @connection",0,NULL,0,0,0,0,0},
-    {"sentinel",sentinelCommand,-2,"admin",0,NULL,0,0,0,0,0},
-    {"subscribe",subscribeCommand,-2,"pub-sub",0,NULL,0,0,0,0,0},
-    {"unsubscribe",unsubscribeCommand,-1,"pub-sub",0,NULL,0,0,0,0,0},
-    {"psubscribe",psubscribeCommand,-2,"pub-sub",0,NULL,0,0,0,0,0},
-    {"punsubscribe",punsubscribeCommand,-1,"pub-sub",0,NULL,0,0,0,0,0},
-    {"publish",sentinelPublishCommand,3,"pub-sub fast",0,NULL,0,0,0,0,0},
-    {"info",sentinelInfoCommand,-1,"random @dangerous",0,NULL,0,0,0,0,0},
-    {"role",sentinelRoleCommand,1,"fast read-only @dangerous",0,NULL,0,0,0,0,0},
-    {"client",clientCommand,-2,"admin random @connection",0,NULL,0,0,0,0,0},
-    {"shutdown",shutdownCommand,-1,"admin",0,NULL,0,0,0,0,0},
-    {"auth",authCommand,-2,"no-auth fast @connection",0,NULL,0,0,0,0,0},
-    {"hello",helloCommand,-1,"no-auth fast @connection",0,NULL,0,0,0,0,0},
-    {"acl",aclCommand,-2,"admin",0,NULL,0,0,0,0,0,0},
-    {"command",commandCommand,-1, "random @connection", 0,NULL,0,0,0,0,0,0}
+    {"ping", NULL, pingCommand,1,"fast @connection",0,NULL,0,0,0,0,0},
+    {"sentinel", NULL, sentinelCommand,-2,"admin",0,NULL,0,0,0,0,0},
+    {"subscribe", NULL, subscribeCommand,-2,"pub-sub",0,NULL,0,0,0,0,0},
+    {"unsubscribe", NULL, unsubscribeCommand,-1,"pub-sub",0,NULL,0,0,0,0,0},
+    {"psubscribe", NULL, psubscribeCommand,-2,"pub-sub",0,NULL,0,0,0,0,0},
+    {"punsubscribe", NULL, punsubscribeCommand,-1,"pub-sub",0,NULL,0,0,0,0,0},
+    {"publish", NULL, sentinelPublishCommand,3,"pub-sub fast",0,NULL,0,0,0,0,0},
+    {"info", NULL, sentinelInfoCommand,-1,"random @dangerous",0,NULL,0,0,0,0,0},
+    {"role", NULL, sentinelRoleCommand,1,"fast read-only @dangerous",0,NULL,0,0,0,0,0},
+    {"client", NULL, clientCommand,-2,"admin random @connection",0,NULL,0,0,0,0,0},
+    {"shutdown", NULL, shutdownCommand,-1,"admin",0,NULL,0,0,0,0,0},
+    {"auth", NULL, authCommand,-2,"no-auth fast @connection",0,NULL,0,0,0,0,0},
+    {"hello", NULL, helloCommand,-1,"no-auth fast @connection",0,NULL,0,0,0,0,0},
+    {"acl", NULL, aclCommand,-2,"admin",0,NULL,0,0,0,0,0,0},
+    {"command", NULL, commandCommand,-1, "random @connection", 0,NULL,0,0,0,0,0,0}
 };
 
 /* this array is used for sentinel config lookup, which need to be loaded
