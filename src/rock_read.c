@@ -3,6 +3,7 @@
 #include "server.h"
 #include "sds.h"
 #include "rock_marshal.h"
+#include "rock_write.h"
 
 /* Write Spin Lock for Apple OS and Linux */
 #if defined(__APPLE__)
@@ -367,13 +368,16 @@ static int try_assign_tasks()
 /* Called by main thraed because c->rock_key_num changes to zero.
  * The caller guaratee noot in lock mode.
  */
-static void resume_command_for_client(client *c)
+static void resume_command_for_client(const client *c)
 {
-    UNUSED(c);      // TODO
+    serverLog(LL_WARNING, "resume_command_for_client() called!");
+    serverAssert(c->rock_key_num == 0);
+    
+    // TODO: real resume command
 }
 
 /* Called in main thread.
- * The caller guaranteee not in lock mode.
+ * The caller guaranteee not in lock mode. 
  * When some rock keys are recovered,
  * the clients (by joininng together) waiting for the rock keys will be checked 
  * to decide whether they will be resumed for the command. 
@@ -511,18 +515,12 @@ static int debug_check_no_exist_client_id(const list *l, const uint64_t id)
     return exist == NULL ? 1 : 0;
 }
 
-/* Called in main thread when a client finds it needs some redis keys to
- * continue for a command.
- * The caller guarantee not use read lock.
- * The redis_keys is the list of keys needed by the command (i.e., with rock value)
- * The caller needs to reclaim the list after that (which is created by the caller)
+/*
  */
-void on_client_need_rock_keys(const client *c, const list *redis_keys)
+static void go_on_need_rock_keys_from_rocksdb(const uint64_t client_id, 
+                                              const int dbid, const list *redis_keys)
 {
-    serverAssert(redis_keys && listLength(redis_keys) > 0);
-
-    const int dbid = c->db->id;
-    const uint64_t client_id = c->id;
+    serverAssert(listLength(redis_keys) > 0);
 
     listIter li;
     listNode *ln;
@@ -558,6 +556,95 @@ void on_client_need_rock_keys(const client *c, const list *redis_keys)
     try_assign_tasks();
 
     rock_r_unlock();
+}
+
+/* If some key already in ring buf, recover them, 
+ * return a list for un-recover keys (may be empty)
+ * The caller guarantee not in lock mode.
+ * If no key in ring buf, return NULL. 
+ */
+static list* check_ring_buf_first_and_recover(const int dbid, const list *redis_keys)
+{
+    // Call the API for ring buf in rock_write.c
+    list *vals = get_vals_from_write_ring_buf_first(dbid, redis_keys);
+    if (vals == NULL)
+        return NULL;
+
+    serverAssert(listLength(vals) == listLength(redis_keys));
+
+    list *left = listCreate();
+
+    listIter li_vals;
+    listNode *ln_vals;
+    listIter li_keys;
+    listNode *ln_keys;
+
+    listRewind(vals, &li_vals);
+    listRewind((list*)redis_keys, &li_keys);
+
+    while ((ln_vals = listNext(&li_vals)))
+    {
+        ln_keys = listNext(&li_keys);
+
+        sds recover_val = listNodeValue(ln_vals);
+        if (recover_val == NULL)
+        {
+            listAddNodeTail(left, listNodeValue(ln_keys));
+        }
+        else
+        {
+            // need to recover data which is got from ring buffer
+            // NOTE: no need to deal with rock_key_num in client. The caller will take care
+            redisDb *db = server.db + dbid;
+            dictEntry *de = dictFind(db->dict, listNodeValue(ln_keys));
+            serverAssert(de);
+            serverAssert(is_rock_value(dictGetVal(de)));
+            dictGetVal(de) = unmarshal_object(recover_val);     // revocer in redis db
+            sdsfree(recover_val);
+        }
+    }
+
+    serverAssert(listLength(left) < listLength(redis_keys));
+    return left;
+}
+
+/* Called in main thread when a client finds it needs some redis keys to
+ * continue for a command.
+ * The caller guarantee not use read lock.
+ * The redis_keys is the list of keys needed by the command (i.e., with rock value)
+ * First, we need check ring buffer to recover the keys if exist.
+ * If some keys left which are needed to recover from RocksDB (async mode),
+ * we go on to recover them from RocksDB.
+ * The caller needs to reclaim the list after that (which is created by the caller)
+ */
+void on_client_need_rock_keys(client *c, const list *redis_keys)
+{
+    serverAssert(redis_keys && listLength(redis_keys) > 0);
+    serverAssert(c->rock_key_num == listLength(redis_keys));
+
+    const int dbid = c->db->id;
+    const uint64_t client_id = c->id;
+
+    list *left = check_ring_buf_first_and_recover(dbid, redis_keys);
+
+    if (left == NULL)
+    {
+        // nothing found in ring buffer
+        go_on_need_rock_keys_from_rocksdb(client_id, dbid, redis_keys);
+    }
+    else if (listLength(left) == 0)
+    {
+        // all found in ring buffer
+        c->rock_key_num = 0;
+        resume_command_for_client(c);
+        listRelease(left);
+    } 
+    else 
+    {
+        c->rock_key_num = listLength(left);
+        go_on_need_rock_keys_from_rocksdb(client_id, dbid, left);
+        listRelease(left);
+    }
 }
 
 /* Called in main thread when evict some keys to RocksDB in rock_write.c.

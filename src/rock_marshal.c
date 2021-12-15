@@ -177,13 +177,13 @@ sds marshal_object(const robj* o)
 }
 
 
-robj* unmarshal_object(const sds s)
+robj* unmarshal_object(const sds v)
 {
-    serverAssert(sdslen(s) >= 1);
-    size_t sz = sdslen(s) - 1;
-    const char *buf = s + 1;
+    serverAssert(sdslen(v) >= 1);
+    size_t sz = sdslen(v) - 1;
+    const char *buf = v + 1;
 
-    unsigned char rock_type = s[0];
+    unsigned char rock_type = v[0];
     robj *o = NULL;
 
     switch(rock_type)

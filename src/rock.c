@@ -191,6 +191,26 @@ void debug_rock(client *c)
         int ecvict_num = try_evict_to_rocksdb(len, dbids, keys);
         serverLog(LL_NOTICE, "debug evictkeys, ecvict_num = %d", ecvict_num);
     }
+    else if (strcasecmp(flag, "recoverkeys") == 0 && c->argc >= 3)
+    {
+        serverAssert(c->rock_key_num == 0);
+        list *rock_keys = listCreate();
+        for (int i = 0; i < c->argc-2; ++i)
+        {
+            sds input_key = c->argv[i+2]->ptr;
+            dictEntry *de = dictFind(c->db->dict, input_key);
+            if (de)
+            {
+                if (is_rock_value(dictGetVal(de)))
+                {
+                    serverLog(LL_WARNING, "debug_rock() found rock key = %s", (sds)dictGetKey(de));
+                    listAddNodeTail(rock_keys, dictGetKey(de));
+                    ++c->rock_key_num;
+                }
+            }
+        }
+        listRelease(rock_keys);
+    }
     else if (strcasecmp(flag, "testread") == 0)
     {
         /*

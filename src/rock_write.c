@@ -76,7 +76,7 @@ static void init_write_ring_buffer()
     rock_w_unlock();
 }
 
-void* rock_write_main(void* arg);
+static void* rock_write_main(void* arg);
 void init_and_start_rock_write_thread()
 {
     // Write spin lock must be inited before initiation of ring buffer
@@ -136,6 +136,7 @@ int space_in_write_ring_buffer()
 }
 
 /* Called in Main thread in cron (not directly).
+ * The caller guarantees not in lock mode.
  * It must guarantee that these keys in redis db have been set val to rock values.
  * NOTE1: We must serialize vals in lock mode to avoid data race.
  *        Maybe we could serialize out of lock mode.
@@ -243,6 +244,10 @@ static int write_to_rocksdb()
     int written = rbuf_len;
     int index = rbuf_s_index;
     rock_w_unlock();
+
+    serverLog(LL_WARNING, "write thread sleep start ...");
+    sleep(30);
+    serverLog(LL_WARNING, "write thread sleep end!");
        
     rocksdb_writebatch_t *batch = rocksdb_writebatch_create();
     rocksdb_writeoptions_t *writeoptions = rocksdb_writeoptions_create();
@@ -260,7 +265,6 @@ static int write_to_rocksdb()
         rocksdb_writebatch_put(batch, key, sdslen(key), val, sdslen(val));
     }
 
-    // occasionally long time, so out of lock
     char *err = NULL;
     rocksdb_write(rockdb, writeoptions, batch, &err);    
     if (err) 
@@ -284,7 +288,7 @@ static int write_to_rocksdb()
  */
 #define MIN_SLEEP_MICRO   16
 #define MAX_SLEEP_MICRO     1024            // max sleep for 1 ms
-void* rock_write_main(void* arg)
+static void* rock_write_main(void* arg)
 {
     UNUSED(arg);
 
@@ -307,3 +311,79 @@ void* rock_write_main(void* arg)
     return NULL;
 }
 
+/* Check the key is in ring buffer.
+ * The caller guarantee in lock mode.
+ * If not found, return -1. Otherise, the index in ring buffer. 
+ */
+static int exist_in_ring_buf_and_return_index(const int dbid, const sds redis_key)
+{
+    if (rbuf_len == 0)
+        return -1;
+
+    sds rock_key = sdsdup(redis_key);
+    rock_key = encode_rock_key(dbid, rock_key);
+    int index = rbuf_s_index;
+    size_t rock_key_len = sdslen(rock_key);
+    for (int i = 0; i < rbuf_len; ++i)
+    {
+        if (rock_key_len == sdslen(rbuf_keys[index]) && sdscmp(rock_key, rbuf_keys[index]) == 0)
+        {
+            sdsfree(rock_key);
+            return index;
+        }
+
+        ++index;
+        if (index == RING_BUFFER_LEN)
+            index = 0;
+    }
+    sdsfree(rock_key);
+    return -1;
+}
+
+/* This is the API for rock_read.c. The caller guarantees not in lock mode of write.
+ * When a client needs recover some keys, it needs check ring buffer first.
+ * The return is a list of recover vals (as sds) with same size as redis_keys (as same order).
+ * If the key is in the ring buffer, the recover val (sds) (serilized value) is duplicated.
+ * Otherwise, recover val will be set to NULL. 
+ * If no key in ring buf, the return list will be NULL. (and no resource allocated)
+ */
+list* get_vals_from_write_ring_buf_first(const int dbid, const list *redis_keys)
+{
+    serverAssert(listLength(redis_keys) > 0);
+
+    list *r = listCreate();
+    int all_not_in_ring_buf = 1;
+
+    rock_w_lock();
+
+    listIter li;
+    listNode *ln;
+    listRewind((list*)redis_keys, &li);
+    while ((ln = listNext(&li)))
+    {
+        sds redis_key = listNodeValue(ln);
+        const int index = exist_in_ring_buf_and_return_index(dbid, redis_key);
+        if (index == -1)
+        {
+            listAddNodeTail(r, NULL);
+        }
+        else
+        {
+            sds copy_val = sdsdup(rbuf_vals[index]);
+            listAddNodeTail(r, copy_val);
+            all_not_in_ring_buf = 0;
+        }
+    }
+
+    rock_w_unlock();
+
+    if (all_not_in_ring_buf)
+    {
+        listRelease(r);
+        return NULL;
+    }
+    else
+    {
+        return r;
+    }
+}
