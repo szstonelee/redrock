@@ -49,8 +49,16 @@ static void rek_mkdir(char *path)
 
 /* Init the global rocksdb handler, i.e., rockdb. */
 #define ROCKSDB_LEVEL_NUM   7
-void init_rocksdb(const char* folder_path)
+void init_rocksdb(const char* folder_original_path)
 {
+    // We add listening port to folder_path
+    sds folder_path = sdsnewlen(folder_original_path, strlen(folder_original_path));
+    sds listen_port = sdsfromlonglong(server.port);
+    serverLog(LL_NOTICE, "init rocksdb, server listen port = %s", listen_port);
+    folder_path = sdscatsds(folder_path, listen_port);
+    sdsfree(listen_port);
+    folder_path = sdscat(folder_path, "/");
+
     atomicSet(rock_threads_loop_forever, 1);
 
     // verify last char, must be '/'
@@ -175,6 +183,8 @@ void init_rocksdb(const char* folder_path)
     rockdb = rocksdb_open(options, folder_path, &err);
     if (err) 
         serverPanic("initRocksdb() failed reason = %s", err);
+
+    sdsfree(folder_path);
 }
 
 
