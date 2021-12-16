@@ -27,6 +27,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "rock.h"
+
 #include "server.h"
 #include <math.h> /* isnan(), isinf() */
 
@@ -298,6 +300,11 @@ int getGenericCommand(client *c) {
 
 void getCommand(client *c) {
     getGenericCommand(c);
+}
+
+list* get_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);     // GET command: get <key>
 }
 
 /*

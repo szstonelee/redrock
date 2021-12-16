@@ -5,6 +5,8 @@
 #include "adlist.h"
 #include "server.h"
 
+extern pthread_t rock_read_thread_id;
+
 void init_and_start_rock_read_thread();
 int on_client_need_rock_keys(client *c, const list *redis_keys);
 int debug_check_no_candidates(const int len, const sds *rock_keys);

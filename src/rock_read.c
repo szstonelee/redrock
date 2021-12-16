@@ -50,6 +50,9 @@
 
 #endif
 
+pthread_t rock_read_thread_id;
+
+
 /*
  * The critical data is a hash table and array of tasks (task key and return value)
  *
@@ -162,16 +165,6 @@ static void init_rock_read()
     init_rock_pipe();
 }
 
-/* the API for start the read thread */
-static void* rock_read_main(void *arg);
-void init_and_start_rock_read_thread()
-{
-    init_rock_read();
-
-    pthread_t read_thread;
-    if (pthread_create(&read_thread, NULL, rock_read_main, NULL) != 0) 
-        serverPanic("Unable to create a rock read thread.");
-}
 
 /* Called in read thread to pick read tasks 
  * by copyinng the keys (but not duplicating).
@@ -221,6 +214,10 @@ static void read_from_rocksdb(const int cnt, const sds *keys, sds *vals)
     {
         rockdb_key_sizes[i] = sdslen(keys[i]);
     }
+
+    serverLog(LL_WARNING, "read thread read rocksdb start (sleep for 10 seconds) ...");
+    sleep(10);
+    serverLog(LL_WARNING, "read thread read rocksdb end!!!!!");
 
     rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
     rocksdb_multi_get(rockdb, readoptions, cnt, 
@@ -292,11 +289,14 @@ static void* rock_read_main(void* arg)
     UNUSED(arg);
 
     unsigned int sleep_us = MIN_SLEEP_MICRO;
-    while(1)
+    int loop = 1;
+    atomicGet(rock_threads_loop_forever, loop);
+    while(loop)
     {
         if (do_tasks() != 0)
         {
             sleep_us = MIN_SLEEP_MICRO;     // if we have task, shorten the sleep time
+            atomicGet(rock_threads_loop_forever, loop);
             continue;       // no sleep, go on for more task
         }        
 
@@ -304,6 +304,8 @@ static void* rock_read_main(void* arg)
         sleep_us <<= 1;        // double sleep time
         if (sleep_us > MAX_SLEEP_MICRO) 
             sleep_us = MAX_SLEEP_MICRO;
+
+        atomicGet(rock_threads_loop_forever, loop);
     }
 
     return NULL;
@@ -371,12 +373,16 @@ static void try_assign_tasks()
  * so we need check again because some other keys may be evicted to RocksDB.
  * The caller guaratee noot in lock mode.
  */
-static void resume_command_for_client_in_async_mode(const client *c)
+static void resume_command_for_client_in_async_mode(client *c)
 {
-    serverLog(LL_WARNING, "resume_command_for_client() called!");
     serverAssert(c->rock_key_num == 0);
     
-    // TODO: real resume command
+    process_cmd_in_processInputBuffer(c);       // resume the command in async mode
+
+    /* Then process client if it has more data in it's buffer. */
+    /* check block.c for reference */
+    if (c->querybuf && sdslen(c->querybuf) > 0) 
+        processInputBuffer(c);
 }
 
 /* Called in main thread.
@@ -598,6 +604,7 @@ static list* check_ring_buf_first_and_recover(const int dbid, const list *redis_
         const sds recover_val = listNodeValue(ln_vals);
         if (recover_val == NULL)
         {
+            // not found in ring buffer
             listAddNodeTail(left, listNodeValue(ln_keys));
         }
         else
@@ -612,6 +619,7 @@ static list* check_ring_buf_first_and_recover(const int dbid, const list *redis_
         }
     }
 
+    // reclain the resource of vals which are allocated in get_vals_from_write_ring_buf_first()
     listSetFreeMethod(vals, (void (*)(void*))sdsfree);
     listRelease(vals);
 
@@ -648,7 +656,8 @@ static void debug_check_all_value_is_rock_value(const int dbid, const list *redi
  * 
  * If some keys left which are needed to recover from RocksDB (async mode),
  * we go on to recover them from RocksDB and return 0 meaning it will be for async mode.
- * Otherwise, we retrun 1 indicating no need for async, the caller can execute the command.
+ * Otherwise, we retrun 1 indicating no need for async and
+ * the caller can execute the command right now (sync mode).
  * 
  * The caller needs to reclaim the list after that (which is created by the caller)
  */
@@ -678,16 +687,17 @@ int on_client_need_rock_keys(client *c, const list *redis_keys)
     else if (listLength(left) == 0)
     {
         // all found in ring buffer
-        c->rock_key_num = 0;
-        listRelease(left);
         sync_mode = 1;
+        // keep c->rock_key_num == 0 in sync mode
     } 
     else 
     {
         c->rock_key_num = listLength(left);
         go_on_need_rock_keys_from_rocksdb(client_id, dbid, left);
-        listRelease(left);
     }
+
+    if (left)
+        listRelease(left);
 
     return sync_mode;
 }
@@ -735,4 +745,13 @@ int already_in_candidates(const int dbid, const sds redis_key)
     sdsfree(rock_key);
 
     return exist;
+}
+
+/* the API for start the read thread */
+void init_and_start_rock_read_thread()
+{
+    init_rock_read();
+
+    if (pthread_create(&rock_read_thread_id, NULL, rock_read_main, NULL) != 0) 
+        serverPanic("Unable to create a rock read thread.");
 }

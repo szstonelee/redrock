@@ -2134,25 +2134,8 @@ void processInputBuffer(client *c) {
                 return;
             }
 #endif
-            list *rock_keys = get_keys_in_rock_for_command(c);
-            if (rock_keys == NULL)
-            {
-                if (processCommandAndResetClient(c) == C_ERR)
-                    return;
-            }
-            else
-            {
-                int sync_mode = on_client_need_rock_keys(c, rock_keys);
-                if (sync_mode)
-                {
-                    if (processCommandAndResetClient(c) == C_ERR)
-                    {
-                        listRelease(rock_keys);
-                        return;
-                    }
-                }
-                listRelease(rock_keys);
-            }
+            if (process_cmd_in_processInputBuffer(c) == C_ERR)
+                return;
         }
     }
 

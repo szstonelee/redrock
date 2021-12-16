@@ -201,7 +201,7 @@ struct redisCommand redisCommandTable[] = {
      "admin no-script",
      0,NULL,0,0,0,0,0,0},
 
-    {"get", NULL, getCommand,2,
+    {"get", get_cmd_for_rock, getCommand,2,
      "read-only fast @string",
      0,NULL,1,1,1,0,0,0},
 
@@ -5777,6 +5777,8 @@ static void sigShutdownHandler(int sig) {
 
     serverLogFromHandler(LL_WARNING, msg);
     server.shutdown_asap = 1;
+
+    wait_rock_threads_exit();
 }
 
 void setupSignalHandlers(void) {

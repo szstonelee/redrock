@@ -6,8 +6,11 @@
 
 #define RED_ROCK_DEBUG      // run debug code if defined this macro. In release build, comment this line
 
+void wait_rock_threads_exit();
+
 // the global rocksdb handler
 extern rocksdb_t* rockdb;   
+extern redisAtomic int rock_threads_loop_forever;
 
 void create_shared_object_for_rock();
 void init_rocksdb(const char* folder_path);
@@ -20,7 +23,10 @@ client* lookup_client_from_id(const uint64_t client_id);
 void on_add_a_new_client(client* const c);
 void on_del_a_destroy_client(const client* const c);
 
-list* get_keys_in_rock_for_command(const client *c);
+// list* get_keys_in_rock_for_command(const client *c);
+
+int process_cmd_in_processInputBuffer(client *c);
+
 
 /* Check whether o is a rock value.
  * Return 1 if it is. Otherwise return 0.
@@ -47,5 +53,13 @@ inline int is_client_in_waiting_rock_value_state(const client *c)
 {
     return c->rock_key_num != 0;
 }
+
+// Redis Commands for Rock API
+
+// generic API
+list* generic_get_one_key_for_rock(const client *c, const int index);
+
+// string (t_string.c)
+list* get_cmd_for_rock(const client *c);
 
 #endif

@@ -52,6 +52,8 @@
 
 #endif
 
+pthread_t rock_write_thread_id;
+
 /* 
  * Ring Buffer as a write queue to RocksDB
  */
@@ -74,19 +76,6 @@ static void init_write_ring_buffer()
     rbuf_s_index = rbuf_e_index = 0;
     rbuf_len = 0;
     rock_w_unlock();
-}
-
-static void* rock_write_main(void* arg);
-void init_and_start_rock_write_thread()
-{
-    // Write spin lock must be inited before initiation of ring buffer
-    init_write_spin_lock();
-
-    init_write_ring_buffer();
-
-    pthread_t write_thread;
-    if (pthread_create(&write_thread, NULL, rock_write_main, NULL) != 0) 
-        serverPanic("Unable to create a rock write thread.");
 }
 
 /* Called by Main thread in lock mode from caller.
@@ -289,11 +278,14 @@ static void* rock_write_main(void* arg)
     UNUSED(arg);
 
     unsigned int sleep_us = MIN_SLEEP_MICRO;
-    while(1)
+    int loop = 1;
+    atomicGet(rock_threads_loop_forever, loop);
+    while(loop)
     {        
         if (write_to_rocksdb() != 0)
         {
             sleep_us = MIN_SLEEP_MICRO;     // if task is coming, short the sleep time
+            atomicGet(rock_threads_loop_forever, loop);
             continue;       // no sleep, go on for more task
         }
 
@@ -302,6 +294,7 @@ static void* rock_write_main(void* arg)
         if (sleep_us > MAX_SLEEP_MICRO) 
             sleep_us = MAX_SLEEP_MICRO;
 
+        atomicGet(rock_threads_loop_forever, loop);
     }
 
     return NULL;
@@ -384,3 +377,15 @@ list* get_vals_from_write_ring_buf_first(const int dbid, const list *redis_keys)
         return r;
     }
 }
+
+void init_and_start_rock_write_thread()
+{
+    // Write spin lock must be inited before initiation of ring buffer
+    init_write_spin_lock();
+
+    init_write_ring_buffer();
+
+    if (pthread_create(&rock_write_thread_id, NULL, rock_write_main, NULL) != 0) 
+        serverPanic("Unable to create a rock write thread.");
+}
+

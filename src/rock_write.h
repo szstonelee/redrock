@@ -4,6 +4,8 @@
 #include "sds.h"
 #include "server.h"
 
+extern pthread_t rock_write_thread_id;
+
 // also for server cron
 #define RING_BUFFER_LEN 64
 

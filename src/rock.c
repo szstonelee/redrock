@@ -11,7 +11,10 @@
 #include "rock_write.h"
 #include "rock_read.h"
 
+#include <dirent.h>
 #include <ftw.h>
+
+redisAtomic int rock_threads_loop_forever;
 
 /* Global rocksdb handler for rock_read.c and rock_write.c */
 rocksdb_t* rockdb = NULL;
@@ -48,6 +51,8 @@ static void rek_mkdir(char *path)
 #define ROCKSDB_LEVEL_NUM   7
 void init_rocksdb(const char* folder_path)
 {
+    atomicSet(rock_threads_loop_forever, 1);
+
     // verify last char, must be '/'
     const size_t path_len = strlen(folder_path);
     if (folder_path[path_len-1] != '/')
@@ -57,8 +62,31 @@ void init_rocksdb(const char* folder_path)
     }
 
     // nftw(folder_path, unlink_cb, 64, FTW_DEPTH | FTW_PHYS);
-    nftw(folder_path, unlink_cb, USE_FDS, FTW_DEPTH | FTW_PHYS);
-    serverLog(LL_NOTICE, "finish removal of the whole RocksDB folder = %s", folder_path);
+    DIR *dir = opendir(folder_path);
+    if (dir)
+    {
+        closedir(dir);
+        if (nftw(folder_path, unlink_cb, 10, FTW_DEPTH | FTW_MOUNT | FTW_PHYS) < 0)
+        {
+            serverLog(LL_WARNING, "remove RocksDB folder failed, folder = %s", folder_path);
+            perror("ERROR: ntfw");
+            exit(1);
+        }
+        serverLog(LL_NOTICE, "finish removal of the whole RocksDB folder = %s", folder_path);
+    }
+    // check again
+    DIR *check_dir = opendir(folder_path);
+    if (check_dir)
+    {
+        closedir(check_dir);
+        serverLog(LL_WARNING, "rocksdb folder still exists = %s", folder_path);
+        exit(1);
+    } 
+    else if (ENOENT != errno)
+    {
+        serverLog(LL_WARNING, "opendir(%s) failed for errono = %d", folder_path, errno);
+        exit(1);
+    }
     // mkdir 
     mode_t mode = 0777;
     if (mkdir(folder_path, mode)) 
@@ -180,16 +208,23 @@ void debug_rock(client *c)
         for (int i = 0; i < c->argc-2; ++i)
         {
             sds input_key = c->argv[i+2]->ptr;
-            if (dictFind(c->db->dict, input_key))
+            dictEntry *de = dictFind(c->db->dict, input_key);
+            if (de)
             {
-                serverLog(LL_NOTICE, "debug evictkeys, try key = %s", input_key);
-                keys[len] = input_key;
-                dbids[len] = c->db->id;
-                ++len;
+                if (!is_rock_value(dictGetVal(de)))
+                {
+                    serverLog(LL_NOTICE, "debug evictkeys, try key = %s", input_key);
+                    keys[len] = input_key;
+                    dbids[len] = c->db->id;
+                    ++len;
+                }
             }
         }
-        int ecvict_num = try_evict_to_rocksdb(len, dbids, keys);
-        serverLog(LL_NOTICE, "debug evictkeys, ecvict_num = %d", ecvict_num);
+        if (len)
+        {
+            int ecvict_num = try_evict_to_rocksdb(len, dbids, keys);
+            serverLog(LL_NOTICE, "debug evictkeys, ecvict_num = %d", ecvict_num);
+        }
     }
     else if (strcasecmp(flag, "recoverkeys") == 0 && c->argc >= 3)
     {
@@ -393,8 +428,8 @@ void create_shared_object_for_rock()
     
 }
 
-/* Called in main thread by networking.c processInputBuffer()
- * when a command is ready to process.
+/* Called in main thread 
+ * when a command is ready in buffer to process and need to check rock keys.
  * If the command does not need to check rock value (e.g., SET command)
  * return NULL.
  * If the command need to check and find no key in rock value
@@ -402,7 +437,7 @@ void create_shared_object_for_rock()
  * Otherwise, return a list (not empty) for those keys (sds) 
  * and the sds can use the contents in client c.
  */
-list* get_keys_in_rock_for_command(const client *c)
+static list* get_keys_in_rock_for_command(const client *c)
 {
     serverAssert(c->rock_key_num == 0);
 
@@ -424,11 +459,100 @@ list* get_keys_in_rock_for_command(const client *c)
     list *redis_keys = cmd->rock_proc(c);
     if (redis_keys == NULL)
     {
-        return NULL;
+        return NULL;        // no rock value found
     }
     else
     {
         serverAssert(listLength(redis_keys) != 0);
         return redis_keys;
     }
+}
+
+/* This is called by proocessInputBuffer() in netwroking.c
+ * It will check the rock keys for current command in buffer
+ * and if OK process the command and return.
+ * Return C_ERR if processCommandAndResetClient() return C_ERR
+ * indicating the caller need return to avoid looping and trimming the client buffer.
+ * Otherwise, return C_OK, indicating in the caller, it can continue in the loop.
+ */
+int processCommandAndResetClient(client *c);        // networkng.c, no declaration in any header
+int process_cmd_in_processInputBuffer(client *c)
+{
+    int ret = C_OK;
+
+    list *rock_keys = get_keys_in_rock_for_command(c);
+    if (rock_keys == NULL)
+    {
+        // NO rock_key or TRANSACTION with no EXEC command
+        if (processCommandAndResetClient(c) == C_ERR)
+            ret = C_ERR;
+    }
+    else
+    {
+        const int sync_mode = on_client_need_rock_keys(c, rock_keys);
+        if (sync_mode)
+        {
+            if (processCommandAndResetClient(c) == C_ERR)
+                ret = C_ERR;
+        }
+        listRelease(rock_keys);
+    }
+
+    return ret;
+}
+
+/* index is the index in argv of client */
+list* generic_get_one_key_for_rock(const client *c, const int index)
+{
+    serverAssert(index >= 1 && c->argc > index);
+
+    redisDb *db = c->db;
+    const sds key = c->argv[index]->ptr;
+
+    dictEntry *de = dictFind(db->dict, key);
+
+    if (de == NULL)
+        return NULL;
+
+    robj *o = dictGetVal(de);
+
+    if (!is_rock_value(o))
+        return NULL;
+
+    list *keys = listCreate();
+    listAddNodeTail(keys, key);
+    return keys;
+}
+
+/* Main thread waiting for read thread and write thread exit */
+void wait_rock_threads_exit()
+{
+    // signal rock threads to exit
+    atomicSet(rock_threads_loop_forever, 0);
+
+    int s;
+    void *res;
+
+    s = pthread_join(rock_write_thread_id, &res);
+    if (s != 0)
+    {
+        serverLog(LL_WARNING, "rock write thread join failure!");
+    }
+    else
+    {
+        serverLog(LL_NOTICE, "rock write thread exit and join successfully.");
+    }
+    
+    s = pthread_join(rock_read_thread_id, &res);
+    if (s != 0)
+    {
+        serverLog(LL_WARNING, "rock read thread join failure");
+    }
+    else
+    {
+        serverLog(LL_NOTICE, "rock read thread exit and join successfully.");
+    }
+
+    if (rockdb)
+        rocksdb_close(rockdb);
 }
