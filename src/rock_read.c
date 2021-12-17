@@ -289,8 +289,10 @@ static void* rock_read_main(void* arg)
     UNUSED(arg);
 
     unsigned int sleep_us = MIN_SLEEP_MICRO;
-    int loop = 1;
-    atomicGet(rock_threads_loop_forever, loop);
+    int loop = 0;
+    while (loop == 0)
+        atomicGet(rock_threads_loop_forever, loop);
+        
     while(loop)
     {
         if (do_tasks() != 0)
