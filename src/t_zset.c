@@ -57,6 +57,8 @@
  * from tail to head, useful for ZREVRANGE. */
 
 #include "server.h"
+#include "rock.h"
+
 #include <math.h>
 
 /*-----------------------------------------------------------------------------
@@ -1838,8 +1840,18 @@ void zaddCommand(client *c) {
     zaddGenericCommand(c,ZADD_IN_NONE);
 }
 
+list* zadd_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void zincrbyCommand(client *c) {
     zaddGenericCommand(c,ZADD_IN_INCR);
+}
+
+list* zincrby_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void zremCommand(client *c) {
@@ -1867,6 +1879,11 @@ void zremCommand(client *c) {
         server.dirty += deleted;
     }
     addReplyLongLong(c,deleted);
+}
+
+list* zrem_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 typedef enum {
@@ -1988,12 +2005,27 @@ void zremrangebyrankCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_RANK);
 }
 
+list* zremrangebyrank_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void zremrangebyscoreCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_SCORE);
 }
 
+list* zremrangebyscore_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void zremrangebylexCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_LEX);
+}
+
+list* zremrangebylex_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 typedef struct {
@@ -2819,6 +2851,11 @@ void zunionInterDiffGenericCommand(client *c, robj *dstkey, int numkeysIndex, in
 
 void zunionstoreCommand(client *c) {
     zunionInterDiffGenericCommand(c, c->argv[1], 2, SET_OP_UNION);
+}
+
+list* zunionstore_cmd_for_rock(const client *c)
+{
+    
 }
 
 void zinterstoreCommand(client *c) {

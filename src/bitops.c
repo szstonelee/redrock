@@ -29,6 +29,7 @@
  */
 
 #include "server.h"
+#include "rock.h"
 
 /* -----------------------------------------------------------------------------
  * Helpers and low level bit functions.
@@ -562,6 +563,11 @@ void setbitCommand(client *c) {
     addReply(c, bitval ? shared.cone : shared.czero);
 }
 
+list* setbit_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* GETBIT key offset */
 void getbitCommand(client *c) {
     robj *o;
@@ -587,6 +593,11 @@ void getbitCommand(client *c) {
     }
 
     addReply(c, bitval ? shared.cone : shared.czero);
+}
+
+list* getbit_cmd_for_rock(const client* c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* BITOP op_name target_key src_key1 src_key2 src_key3 ... src_keyN */
@@ -1160,6 +1171,16 @@ void bitfieldCommand(client *c) {
     bitfieldGeneric(c, BITFIELD_FLAG_NONE);
 }
 
+list* bitfield_cmd_for_rock(const client* c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void bitfieldroCommand(client *c) {
     bitfieldGeneric(c, BITFIELD_FLAG_READONLY);
+}
+
+list* bitfield_ro_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }

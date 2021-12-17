@@ -403,6 +403,11 @@ void getexCommand(client *c) {
     }
 }
 
+list* getex_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void getdelCommand(client *c) {
     if (getGenericCommand(c) == C_ERR) return;
     int deleted = server.lazyfree_lazy_user_del ? dbAsyncDelete(c->db, c->argv[1]) :
@@ -415,6 +420,11 @@ void getdelCommand(client *c) {
         notifyKeyspaceEvent(NOTIFY_GENERIC, "del", c->argv[1], c->db->id);
         server.dirty++;
     }
+}
+
+list* getdel_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void getsetCommand(client *c) {
@@ -488,6 +498,11 @@ void setrangeCommand(client *c) {
     addReplyLongLong(c,sdslen(o->ptr));
 }
 
+list* setrange_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void getrangeCommand(client *c) {
     robj *o;
     long long start, end;
@@ -529,6 +544,11 @@ void getrangeCommand(client *c) {
     }
 }
 
+list* getrange_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void mgetCommand(client *c) {
     int j;
 
@@ -545,6 +565,11 @@ void mgetCommand(client *c) {
             }
         }
     }
+}
+
+list* mget_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 
 void msetGenericCommand(client *c, int nx) {
@@ -625,8 +650,18 @@ void incrCommand(client *c) {
     incrDecrCommand(c,1);
 }
 
+list* incr_cmd_for_rock(const client* c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void decrCommand(client *c) {
     incrDecrCommand(c,-1);
+}
+
+list* decr_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void incrbyCommand(client *c) {
@@ -709,6 +744,11 @@ void appendCommand(client *c) {
     addReplyLongLong(c,totlen);
 }
 
+list* append_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void strlenCommand(client *c) {
     robj *o;
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
@@ -716,6 +756,10 @@ void strlenCommand(client *c) {
     addReplyLongLong(c,stringObjectLen(o));
 }
 
+list* strlen_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
 
 /* STRALGO -- Implement complex algorithms on strings.
  *

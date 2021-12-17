@@ -511,7 +511,10 @@ int process_cmd_in_processInputBuffer(client *c)
     return ret;
 }
 
-/* index is the index in argv of client */
+/* Get one key from client's argv. 
+ * Usually index is 1. e.g., GET <key>
+ * index is the index in argv of client 
+ * */
 list* generic_get_one_key_for_rock(const client *c, const int index)
 {
     serverAssert(index >= 1 && c->argc > index);
@@ -525,13 +528,98 @@ list* generic_get_one_key_for_rock(const client *c, const int index)
         return NULL;
 
     robj *o = dictGetVal(de);
-
     if (!is_rock_value(o))
         return NULL;
 
     list *keys = listCreate();
     listAddNodeTail(keys, key);
     return keys;
+}
+
+/* Get multi keys from client's argv from range [start, end).
+ * E.g., BLMOVE source destination LEFT|RIGHT LEFT|RIGHT timeout
+ * start is the start index in argv, usually 1.
+ * end is the ennd index (NOTE: not include) in argv.
+ */
+list* generic_get_multi_keys_for_rock_in_range(const client *c, const int start, const int end)
+{
+    serverAssert(start >= 1 && start < end && c->argc <= end);
+
+    redisDb *db = c->db;
+
+    list *keys = NULL;
+    for (int i = start; i < end; ++i)
+    {
+        const sds key = c->argv[i]->ptr;
+
+        dictEntry *de = dictFind(db->dict, key);
+        if (de == NULL)
+            continue;
+        
+        robj *o = dictGetVal(de);
+        if (!is_rock_value(o))
+            continue;
+
+        if (keys == NULL)
+            keys = listCreate();
+
+        listAddNodeTail(keys, key);
+    }
+    return keys;
+}
+
+/* Get multi keys from client's argv exclude the last tail_cnt (NOTE: could be zero)
+ * For tail_cnt == 0, E.g.,  MGET <key1> <key2> ...
+ * For tail_cnt != 0, E.g., BRPOP key [key ...] timeout
+ * 
+ * index is the start index for argv, usually 1.
+ * the end is till the end of argv.
+ * step is the jumping space for the search, usually 1. 
+ * */
+list* generic_get_multi_keys_for_rock_exclude_tails(const client *c, const int index, 
+                                                    const int step, const int tail_cnt)
+{
+    serverAssert(index >= 1 && c->argc > index && step >= 1 && tail_cnt >= 0);
+    serverAssert(c->argc - tail_cnt >= index + 1);
+
+    redisDb *db = c->db;
+    
+    list *keys = NULL;
+    for (int i = index; i < c->argc - tail_cnt; i += step)
+    {
+        const sds key = c->argv[i]->ptr;
+
+        dictEntry *de = dictFind(db->dict, key);
+        if (de == NULL)
+            continue;
+        
+        robj *o = dictGetVal(de);
+        if (!is_rock_value(o))
+            continue;
+
+        if (keys == NULL)
+            keys = listCreate();
+
+        listAddNodeTail(keys, key);
+    }
+    return keys;
+}
+
+/* Get multi kkeys from client's argv. E.g., MGET <key1> <key2> ...
+ * index is the start index for argv, usually 1.
+ * the end is till the end of argv.
+ * step is the jumping space for the search, usually 1. 
+ * */
+list* generic_get_multi_keys_for_rock(const client *c, const int index, const int step)
+{
+    return generic_get_multi_keys_for_rock_exclude_tails(c, index, step, 0);
+}
+
+/* Some zset commands, like 
+ */
+list* generic_get_zset_num_for_rock(const client *c)
+{
+
 }
 
 /* Main thread waiting for read thread and write thread exit */

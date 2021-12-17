@@ -58,8 +58,77 @@ inline int is_client_in_waiting_rock_value_state(const client *c)
 
 // generic API
 list* generic_get_one_key_for_rock(const client *c, const int index);
+list* generic_get_multi_keys_for_rock(const client *c, const int index, const int step);
+list* generic_get_multi_keys_for_rock_exclude_tails(const client *c, const int index, 
+                                                    const int step, const int tail_cnt);
+list* generic_get_multi_keys_for_rock_in_range(const client *c, const int start, const int end);
+list* generic_get_zset_num_for_rock(const client *c);
 
 // string (t_string.c)
 list* get_cmd_for_rock(const client *c);
+list* getex_cmd_for_rock(const client *c);
+list* getdel_cmd_for_rock(const client *c);
+list* append_cmd_for_rock(const client *c);
+list* strlen_cmd_for_rock(const client *c);
+list* setrange_cmd_for_rock(const client *c);
+list* getrange_cmd_for_rock(const client *c);
+list* incr_cmd_for_rock(const client* c);
+list* decr_cmd_for_rock(const client *c);
+list* mget_cmd_for_rock(const client *c);
+
+// bitop.c
+list* setbit_cmd_for_rock(const client *c);
+list* getbit_cmd_for_rock(const client* c);
+list* bitfield_cmd_for_rock(const client* c);
+list* bitfield_ro_cmd_for_rock(const client *c);
+
+// t_list.c
+list* rpush_cmd_for_rock(const client *c);
+list* lpush_cmd_for_rock(const client *c);
+list* rpushx_cmd_for_rock(const client *c);
+list* lpushx_cmd_for_rock(const client *c);
+list* linsert_cmd_for_rock(const client *c);
+list* rpop_cmd_for_rock(const client *c);
+list* lpop_cmd_for_rock(const client *c);
+list* brpop_cmd_for_rock(const client *c);
+list* brpoplpush_cmd_for_rock(const client *c);
+list* blmoove_cmd_for_rock(const client *c);
+list* blpop_cmd_for_rock(const client *c);
+list* llen_cmd_for_rock(const client *c);
+list* lindex_cmd_for_rock(const client *c);
+list* lset_cmd_for_rock(const client *c);
+list* lrange_cmd_for_rock(const client *c);
+list* ltrim_cmd_for_rock(const client *c);
+list* lpos_cmd_for_rock(const client *c);
+list* lrem_cmd_for_rock(const client *c);
+list* rpoplpush_cmd_for_rock(const client *c);
+list* lmove_cmd_for_rock(const client *c);
+
+// t_set.c
+list* sadd_cmd_for_rock(const client *c);
+list* srem_cmd_for_rock(const client *c);
+list* smove_cmd_for_rock(const client *c);
+list* sismember_cmd_for_rock(const client *c);
+list* smismember_cmd_for_rock(const client *c);
+list* scard_cmd_for_rock(const client *c);
+list* spop_cmd_for_rock(const client *c);
+list* srandmember_cmd_for_rock(const client *c);
+list* sinter_cmd_for_rock(const client *c);
+list* sinterstore_cmd_for_rock(const client *c);
+list* sunion_cmd_for_rock(const client *c);
+list* suionstore_cmd_for_rock(const client *c);
+list* sdiff_cmd_for_rock(const client *c);
+list* sdiffstore_cmd_for_rock(const client *c);
+list* smembers_cmd_for_rock(const client *c);
+list* sscan_cmd_for_rock(const client *c);
+
+// t_zset.c
+list* zadd_cmd_for_rock(const client *c);
+list* zincrby_cmd_for_rock(const client *c);
+list* zrem_cmd_for_rock(const client *c);
+list* zremrangebyscore_cmd_for_rock(const client *c);
+list* zremrangebyrank_cmd_for_rock(const client *c);
+list* zremrangebylex_cmd_for_rock(const client *c);
+list* zunionstore_cmd_for_rock(const client *c);
 
 #endif

@@ -205,11 +205,11 @@ struct redisCommand redisCommandTable[] = {
      "read-only fast @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"getex", NULL, getexCommand,-2,
+    {"getex", getex_cmd_for_rock, getexCommand,-2,
      "write fast @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"getdel", NULL, getdelCommand,2,
+    {"getdel", getdel_cmd_for_rock, getdelCommand,2,
      "write fast @string",
      0,NULL,1,1,1,0,0,0},
 
@@ -231,11 +231,11 @@ struct redisCommand redisCommandTable[] = {
      "write use-memory @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"append", NULL, appendCommand,3,
+    {"append", append_cmd_for_rock, appendCommand,3,
      "write use-memory fast @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"strlen", NULL, strlenCommand,2,
+    {"strlen", strlen_cmd_for_rock, strlenCommand,2,
      "read-only fast @string",
      0,NULL,1,1,1,0,0,0},
 
@@ -251,215 +251,215 @@ struct redisCommand redisCommandTable[] = {
      "read-only fast @keyspace",
      0,NULL,1,-1,1,0,0,0},
 
-    {"setbit", NULL, setbitCommand,4,
+    {"setbit", setbit_cmd_for_rock, setbitCommand,4,
      "write use-memory @bitmap",
      0,NULL,1,1,1,0,0,0},
 
-    {"getbit", NULL, getbitCommand,3,
+    {"getbit", getbit_cmd_for_rock, getbitCommand,3,
      "read-only fast @bitmap",
      0,NULL,1,1,1,0,0,0},
 
-    {"bitfield", NULL, bitfieldCommand,-2,
+    {"bitfield", bitfield_cmd_for_rock, bitfieldCommand,-2,
      "write use-memory @bitmap",
      0,NULL,1,1,1,0,0,0},
 
-    {"bitfield_ro", NULL, bitfieldroCommand,-2,
+    {"bitfield_ro", bitfield_ro_cmd_for_rock, bitfieldroCommand,-2,
      "read-only fast @bitmap",
      0,NULL,1,1,1,0,0,0},
 
-    {"setrange", NULL, setrangeCommand,4,
+    {"setrange", setrange_cmd_for_rock, setrangeCommand,4,
      "write use-memory @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"getrange", NULL, getrangeCommand,4,
+    {"getrange", getrange_cmd_for_rock, getrangeCommand,4,
      "read-only @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"substr", NULL, getrangeCommand,4,
+    {"substr", getrange_cmd_for_rock, getrangeCommand,4,
      "read-only @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"incr", NULL, incrCommand,2,
+    {"incr", incr_cmd_for_rock, incrCommand,2,
      "write use-memory fast @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"decr", NULL, decrCommand,2,
+    {"decr", decr_cmd_for_rock, decrCommand,2,
      "write use-memory fast @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"mget", NULL, mgetCommand,-2,
+    {"mget", mget_cmd_for_rock, mgetCommand,-2,
      "read-only fast @string",
      0,NULL,1,-1,1,0,0,0},
 
-    {"rpush", NULL, rpushCommand,-3,
+    {"rpush", rpush_cmd_for_rock, rpushCommand,-3,
      "write use-memory fast @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"lpush", NULL, lpushCommand,-3,
+    {"lpush", lpush_cmd_for_rock, lpushCommand,-3,
      "write use-memory fast @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"rpushx", NULL, rpushxCommand,-3,
+    {"rpushx", rpushx_cmd_for_rock, rpushxCommand,-3,
      "write use-memory fast @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"lpushx", NULL, lpushxCommand,-3,
+    {"lpushx", lpushx_cmd_for_rock, lpushxCommand,-3,
      "write use-memory fast @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"linsert", NULL, linsertCommand,5,
+    {"linsert", linsert_cmd_for_rock, linsertCommand,5,
      "write use-memory @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"rpop", NULL, rpopCommand,-2,
+    {"rpop", rpop_cmd_for_rock, rpopCommand,-2,
      "write fast @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"lpop", NULL, lpopCommand,-2,
+    {"lpop", lpop_cmd_for_rock, lpopCommand,-2,
      "write fast @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"brpop", NULL, brpopCommand,-3,
+    {"brpop", brpop_cmd_for_rock, brpopCommand,-3,
      "write no-script @list @blocking",
      0,NULL,1,-2,1,0,0,0},
 
-    {"brpoplpush", NULL, brpoplpushCommand,4,
+    {"brpoplpush", brpoplpush_cmd_for_rock, brpoplpushCommand,4,
      "write use-memory no-script @list @blocking",
      0,NULL,1,2,1,0,0,0},
 
-    {"blmove", NULL, blmoveCommand,6,
+    {"blmove", blmoove_cmd_for_rock, blmoveCommand,6,
      "write use-memory no-script @list @blocking",
      0,NULL,1,2,1,0,0,0},
 
-    {"blpop", NULL, blpopCommand,-3,
+    {"blpop", blpop_cmd_for_rock, blpopCommand,-3,
      "write no-script @list @blocking",
      0,NULL,1,-2,1,0,0,0},
 
-    {"llen", NULL, llenCommand,2,
+    {"llen", llen_cmd_for_rock, llenCommand,2,
      "read-only fast @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"lindex", NULL, lindexCommand,3,
+    {"lindex", lindex_cmd_for_rock, lindexCommand,3,
      "read-only @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"lset", NULL, lsetCommand,4,
+    {"lset", lset_cmd_for_rock, lsetCommand,4,
      "write use-memory @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"lrange", NULL, lrangeCommand,4,
+    {"lrange", lrange_cmd_for_rock, lrangeCommand,4,
      "read-only @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"ltrim", NULL, ltrimCommand,4,
+    {"ltrim", ltrim_cmd_for_rock, ltrimCommand,4,
      "write @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"lpos", NULL, lposCommand,-3,
+    {"lpos", lpos_cmd_for_rock, lposCommand,-3,
      "read-only @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"lrem", NULL, lremCommand,4,
+    {"lrem", lrem_cmd_for_rock, lremCommand,4,
      "write @list",
      0,NULL,1,1,1,0,0,0},
 
-    {"rpoplpush", NULL, rpoplpushCommand,3,
+    {"rpoplpush", rpoplpush_cmd_for_rock, rpoplpushCommand,3,
      "write use-memory @list",
      0,NULL,1,2,1,0,0,0},
 
-    {"lmove", NULL, lmoveCommand,5,
+    {"lmove", lmove_cmd_for_rock, lmoveCommand,5,
      "write use-memory @list",
      0,NULL,1,2,1,0,0,0},
 
-    {"sadd", NULL, saddCommand,-3,
+    {"sadd", sadd_cmd_for_rock, saddCommand,-3,
      "write use-memory fast @set",
      0,NULL,1,1,1,0,0,0},
 
-    {"srem", NULL, sremCommand,-3,
+    {"srem", srem_cmd_for_rock, sremCommand,-3,
      "write fast @set",
      0,NULL,1,1,1,0,0,0},
 
-    {"smove", NULL, smoveCommand,4,
+    {"smove", smove_cmd_for_rock, smoveCommand,4,
      "write fast @set",
      0,NULL,1,2,1,0,0,0},
 
-    {"sismember", NULL, sismemberCommand,3,
+    {"sismember", sismember_cmd_for_rock, sismemberCommand,3,
      "read-only fast @set",
      0,NULL,1,1,1,0,0,0},
 
-    {"smismember", NULL, smismemberCommand,-3,
+    {"smismember", smismember_cmd_for_rock, smismemberCommand,-3,
      "read-only fast @set",
      0,NULL,1,1,1,0,0,0},
 
-    {"scard", NULL, scardCommand,2,
+    {"scard", scard_cmd_for_rock, scardCommand,2,
      "read-only fast @set",
      0,NULL,1,1,1,0,0,0},
 
-    {"spop", NULL, spopCommand,-2,
+    {"spop", spop_cmd_for_rock, spopCommand,-2,
      "write random fast @set",
      0,NULL,1,1,1,0,0,0},
 
-    {"srandmember", NULL, srandmemberCommand,-2,
+    {"srandmember", srandmember_cmd_for_rock, srandmemberCommand,-2,
      "read-only random @set",
      0,NULL,1,1,1,0,0,0},
 
-    {"sinter", NULL, sinterCommand,-2,
+    {"sinter", sinter_cmd_for_rock, sinterCommand,-2,
      "read-only to-sort @set",
      0,NULL,1,-1,1,0,0,0},
 
-    {"sinterstore", NULL, sinterstoreCommand,-3,
+    {"sinterstore", sinterstore_cmd_for_rock, sinterstoreCommand,-3,
      "write use-memory @set",
      0,NULL,1,-1,1,0,0,0},
 
-    {"sunion", NULL, sunionCommand,-2,
+    {"sunion", sunion_cmd_for_rock, sunionCommand,-2,
      "read-only to-sort @set",
      0,NULL,1,-1,1,0,0,0},
 
-    {"sunionstore", NULL, sunionstoreCommand,-3,
+    {"sunionstore", suionstore_cmd_for_rock, sunionstoreCommand,-3,
      "write use-memory @set",
      0,NULL,1,-1,1,0,0,0},
 
-    {"sdiff", NULL, sdiffCommand,-2,
+    {"sdiff", sdiff_cmd_for_rock, sdiffCommand,-2,
      "read-only to-sort @set",
      0,NULL,1,-1,1,0,0,0},
 
-    {"sdiffstore", NULL, sdiffstoreCommand,-3,
+    {"sdiffstore", sdiffstore_cmd_for_rock, sdiffstoreCommand,-3,
      "write use-memory @set",
      0,NULL,1,-1,1,0,0,0},
 
-    {"smembers", NULL, sinterCommand,2,
+    {"smembers", smembers_cmd_for_rock, sinterCommand,2,
      "read-only to-sort @set",
      0,NULL,1,1,1,0,0,0},
 
-    {"sscan", NULL, sscanCommand,-3,
+    {"sscan", sscan_cmd_for_rock, sscanCommand,-3,
      "read-only random @set",
      0,NULL,1,1,1,0,0,0},
 
-    {"zadd", NULL, zaddCommand,-4,
+    {"zadd", zadd_cmd_for_rock, zaddCommand,-4,
      "write use-memory fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zincrby", NULL, zincrbyCommand,4,
+    {"zincrby", zincrby_cmd_for_rock, zincrbyCommand,4,
      "write use-memory fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zrem", NULL, zremCommand,-3,
+    {"zrem", zrem_cmd_for_rock, zremCommand,-3,
      "write fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zremrangebyscore", NULL, zremrangebyscoreCommand,4,
+    {"zremrangebyscore", zremrangebyscore_cmd_for_rock, zremrangebyscoreCommand,4,
      "write @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zremrangebyrank", NULL, zremrangebyrankCommand,4,
+    {"zremrangebyrank", zremrangebyrank_cmd_for_rock, zremrangebyrankCommand,4,
      "write @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zremrangebylex", NULL, zremrangebylexCommand,4,
+    {"zremrangebylex", zremrangebylex_cmd_for_rock, zremrangebylexCommand,4,
      "write @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zunionstore", NULL, zunionstoreCommand,-4,
+    {"zunionstore", zunionstore_cmd_for_rock, zunionstoreCommand,-4,
      "write use-memory @sortedset",
      0,zunionInterDiffStoreGetKeys,1,1,1,0,0,0},
 

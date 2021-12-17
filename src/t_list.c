@@ -28,6 +28,7 @@
  */
 
 #include "server.h"
+#include "rock.h"
 
 /*-----------------------------------------------------------------------------
  * List API
@@ -255,9 +256,19 @@ void lpushCommand(client *c) {
     pushGenericCommand(c,LIST_HEAD,0);
 }
 
+list* lpush_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* RPUSH <key> <element> [<element> ...] */
 void rpushCommand(client *c) {
     pushGenericCommand(c,LIST_TAIL,0);
+}
+
+list* rpush_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* LPUSHX <key> <element> [<element> ...] */
@@ -265,9 +276,19 @@ void lpushxCommand(client *c) {
     pushGenericCommand(c,LIST_HEAD,1);
 }
 
+list* lpushx_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* RPUSH <key> <element> [<element> ...] */
 void rpushxCommand(client *c) {
     pushGenericCommand(c,LIST_TAIL,1);
+}
+
+list* rpushx_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* LINSERT <key> (BEFORE|AFTER) <pivot> <element> */
@@ -315,11 +336,21 @@ void linsertCommand(client *c) {
     addReplyLongLong(c,listTypeLength(subject));
 }
 
+list* linsert_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* LLEN <key> */
 void llenCommand(client *c) {
     robj *o = lookupKeyReadOrReply(c,c->argv[1],shared.czero);
     if (o == NULL || checkType(c,o,OBJ_LIST)) return;
     addReplyLongLong(c,listTypeLength(o));
+}
+
+list* llen_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* LINDEX <key> <index> */
@@ -347,6 +378,11 @@ void lindexCommand(client *c) {
     }
 }
 
+list* lindex_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* LSET <key> <index> <element> */
 void lsetCommand(client *c) {
     robj *o = lookupKeyWriteOrReply(c,c->argv[1],shared.nokeyerr);
@@ -372,6 +408,11 @@ void lsetCommand(client *c) {
     } else {
         serverPanic("Unknown list encoding");
     }
+}
+
+list* lset_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* A helper for replying with a list's range between the inclusive start and end
@@ -487,9 +528,19 @@ void lpopCommand(client *c) {
     popGenericCommand(c,LIST_HEAD);
 }
 
+list* lpop_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* RPOP <key> [count] */
 void rpopCommand(client *c) {
     popGenericCommand(c,LIST_TAIL);
+}
+
+list* rpop_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* LRANGE <key> <start> <stop> */
@@ -504,6 +555,11 @@ void lrangeCommand(client *c) {
          || checkType(c,o,OBJ_LIST)) return;
 
     addListRangeReply(c,o,start,end,0);
+}
+
+list* lrange_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* LTRIM <key> <start> <stop> */
@@ -551,6 +607,11 @@ void ltrimCommand(client *c) {
     signalModifiedKey(c,c->db,c->argv[1]);
     server.dirty += (ltrim + rtrim);
     addReply(c,shared.ok);
+}
+
+list* ltrim_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
@@ -664,6 +725,11 @@ void lposCommand(client *c) {
     }
 }
 
+list* lpos_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* LREM <key> <count> <element> */
 void lremCommand(client *c) {
     robj *subject, *obj;
@@ -707,6 +773,11 @@ void lremCommand(client *c) {
     }
 
     addReplyLongLong(c,removed);
+}
+
+list* lrem_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void lmoveHandlePush(client *c, robj *dstkey, robj *dstobj, robj *value,
@@ -802,6 +873,11 @@ void lmoveCommand(client *c) {
     lmoveGenericCommand(c, wherefrom, whereto);
 }
 
+list* lmove_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
+}
+
 /* This is the semantic of this command:
  *  RPOPLPUSH srclist dstlist:
  *    IF LLEN(srclist) > 0
@@ -819,6 +895,11 @@ void lmoveCommand(client *c) {
  */
 void rpoplpushCommand(client *c) {
     lmoveGenericCommand(c, LIST_TAIL, LIST_HEAD);
+}
+
+list* rpoplpush_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
 
 /*-----------------------------------------------------------------------------
@@ -954,9 +1035,19 @@ void blpopCommand(client *c) {
     blockingPopGenericCommand(c,LIST_HEAD);
 }
 
+list* blpop_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock_exclude_tails(c, 1, 1, 1);
+}
+
 /* BLPOP <key> [<key> ...] <timeout> */
 void brpopCommand(client *c) {
     blockingPopGenericCommand(c,LIST_TAIL);
+}
+
+list* brpop_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock_exclude_tails(c, 1, 1, 1);
 }
 
 void blmoveGenericCommand(client *c, int wherefrom, int whereto, mstime_t timeout) {
@@ -994,10 +1085,20 @@ void blmoveCommand(client *c) {
     blmoveGenericCommand(c,wherefrom,whereto,timeout);
 }
 
+list* blmoove_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
+}
+
 /* BRPOPLPUSH <source> <destination> <timeout> */
 void brpoplpushCommand(client *c) {
     mstime_t timeout;
     if (getTimeoutFromObjectOrReply(c,c->argv[3],&timeout,UNIT_SECONDS)
         != C_OK) return;
     blmoveGenericCommand(c, LIST_TAIL, LIST_HEAD, timeout);
+}
+
+list* brpoplpush_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock_exclude_tails(c, 1, 1, 1);
 }
