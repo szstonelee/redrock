@@ -62,7 +62,7 @@ list* generic_get_multi_keys_for_rock(const client *c, const int index, const in
 list* generic_get_multi_keys_for_rock_exclude_tails(const client *c, const int index, 
                                                     const int step, const int tail_cnt);
 list* generic_get_multi_keys_for_rock_in_range(const client *c, const int start, const int end);
-list* generic_get_zset_num_for_rock(const client *c);
+list* generic_get_zset_num_for_rock(const client *c, const int have_dest);
 
 // string (t_string.c)
 list* get_cmd_for_rock(const client *c);
@@ -130,5 +130,30 @@ list* zremrangebyscore_cmd_for_rock(const client *c);
 list* zremrangebyrank_cmd_for_rock(const client *c);
 list* zremrangebylex_cmd_for_rock(const client *c);
 list* zunionstore_cmd_for_rock(const client *c);
+list* zinterstore_cmd_for_rock(const client *c);
+list* zdiffstore_cmd_for_rock(const client *c);
+list* zunion_cmd_for_rock(const client *c);
+list* zinter_cmd_for_rock(const client *c);
+list* zdiff_cmd_for_rock(const client *c);
+list* zrange_cmd_for_rock(const client *c);
+list* zrangestore_cmd_for_rock(const client *c);
+list* zrangebyscore_cmd_for_rock(const client *c);
+list* zrevrangebyscore_cmd_for_rock(const client *c);
+list* zrangebylex_cmd_for_rock(const client *c);
+list* zrevrangebylex_cmd_for_rock(const client *c);
+list* zcount_cmd_for_rock(const client *c);
+list* zlexcount_cmd_for_rock(const client *c);
+list* zrevrange_cmd_for_rock(const client *c);
+list* zcard_cmd_for_rock(const client *c);
+list* zscore_cmd_for_rock(const client *c);
+list* zmscore_cmd_for_rock(const client *c);
+list* zrank_cmd_for_rock(const client *c);
+list* zrevrank_cmd_for_rock(const client *c);
+list* zscan_cmd_for_rock(const client *c);
+list* zpopmin_cmd_for_rock(const client *c);
+list* zpopmax_cmd_for_rock(const client *c);
+list* bzpopmin_cmd_for_rock(const client *c);
+list* bzpopmax_cmd_for_rock(const client *c);
+list* zrandmember_cmd_for_rock(const client *c);
 
 #endif

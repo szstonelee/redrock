@@ -2855,27 +2855,52 @@ void zunionstoreCommand(client *c) {
 
 list* zunionstore_cmd_for_rock(const client *c)
 {
-    
+    return generic_get_zset_num_for_rock(c, 1);
 }
 
 void zinterstoreCommand(client *c) {
     zunionInterDiffGenericCommand(c, c->argv[1], 2, SET_OP_INTER);
 }
 
+list* zinterstore_cmd_for_rock(const client *c)
+{
+    return generic_get_zset_num_for_rock(c, 1);
+}
+
 void zdiffstoreCommand(client *c) {
     zunionInterDiffGenericCommand(c, c->argv[1], 2, SET_OP_DIFF);
+}
+
+list* zdiffstore_cmd_for_rock(const client *c)
+{
+    return generic_get_zset_num_for_rock(c, 1);
 }
 
 void zunionCommand(client *c) {
     zunionInterDiffGenericCommand(c, NULL, 1, SET_OP_UNION);
 }
 
+list* zunion_cmd_for_rock(const client *c)
+{
+    return generic_get_zset_num_for_rock(c, 0);
+}
+
 void zinterCommand(client *c) {
     zunionInterDiffGenericCommand(c, NULL, 1, SET_OP_INTER);
 }
 
+list* zinter_cmd_for_rock(const client *c)
+{
+    return generic_get_zset_num_for_rock(c, 0);
+}
+
 void zdiffCommand(client *c) {
     zunionInterDiffGenericCommand(c, NULL, 1, SET_OP_DIFF);
+}
+
+list* zdiff_cmd_for_rock(const client *c)
+{
+    return generic_get_zset_num_for_rock(c, 0);
 }
 
 typedef enum {
@@ -3147,6 +3172,11 @@ void zrangestoreCommand (client *c) {
     zrangeGenericCommand(&handler, 2, 1, ZRANGE_AUTO, ZRANGE_DIRECTION_AUTO);
 }
 
+list* zrangestore_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
+}
+
 /* ZRANGE <key> <min> <max> [BYSCORE | BYLEX] [REV] [WITHSCORES] [LIMIT offset count] */
 void zrangeCommand(client *c) {
     zrange_result_handler handler;
@@ -3154,11 +3184,21 @@ void zrangeCommand(client *c) {
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_AUTO, ZRANGE_DIRECTION_AUTO);
 }
 
+list* zrange_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* ZREVRANGE <key> <min> <max> [WITHSCORES] */
 void zrevrangeCommand(client *c) {
     zrange_result_handler handler;
     zrangeResultHandlerInit(&handler, c, ZRANGE_CONSUMER_TYPE_CLIENT);
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_RANK, ZRANGE_DIRECTION_REVERSE);
+}
+
+list* zrevrange_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* This command implements ZRANGEBYSCORE, ZREVRANGEBYSCORE. */
@@ -3287,11 +3327,21 @@ void zrangebyscoreCommand(client *c) {
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_SCORE, ZRANGE_DIRECTION_FORWARD);
 }
 
+list* zrangebyscore_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* ZREVRANGEBYSCORE <key> <min> <max> [WITHSCORES] [LIMIT offset count] */
 void zrevrangebyscoreCommand(client *c) {
     zrange_result_handler handler;
     zrangeResultHandlerInit(&handler, c, ZRANGE_CONSUMER_TYPE_CLIENT);
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_SCORE, ZRANGE_DIRECTION_REVERSE);
+}
+
+list* zrevrangebyscore_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void zcountCommand(client *c) {
@@ -3371,6 +3421,11 @@ void zcountCommand(client *c) {
     addReplyLongLong(c, count);
 }
 
+list* zcount_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void zlexcountCommand(client *c) {
     robj *key = c->argv[1];
     robj *zobj;
@@ -3448,6 +3503,11 @@ void zlexcountCommand(client *c) {
 
     zslFreeLexRange(&range);
     addReplyLongLong(c, count);
+}
+
+list* zlexcount_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* This command implements ZRANGEBYLEX, ZREVRANGEBYLEX. */
@@ -3572,11 +3632,21 @@ void zrangebylexCommand(client *c) {
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_LEX, ZRANGE_DIRECTION_FORWARD);
 }
 
+list* zrangebylex_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* ZREVRANGEBYLEX <key> <min> <max> [LIMIT offset count] */
 void zrevrangebylexCommand(client *c) {
     zrange_result_handler handler;
     zrangeResultHandlerInit(&handler, c, ZRANGE_CONSUMER_TYPE_CLIENT);
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_LEX, ZRANGE_DIRECTION_REVERSE);
+}
+
+list* zrevrangebylex_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /**
@@ -3744,6 +3814,11 @@ void zcardCommand(client *c) {
     addReplyLongLong(c,zsetLength(zobj));
 }
 
+list* zcard_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void zscoreCommand(client *c) {
     robj *key = c->argv[1];
     robj *zobj;
@@ -3757,6 +3832,11 @@ void zscoreCommand(client *c) {
     } else {
         addReplyDouble(c,score);
     }
+}
+
+list* zscore_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void zmscoreCommand(client *c) {
@@ -3775,6 +3855,11 @@ void zmscoreCommand(client *c) {
             addReplyDouble(c,score);
         }
     }
+}
+
+list* zmscore_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void zrankGenericCommand(client *c, int reverse) {
@@ -3799,8 +3884,18 @@ void zrankCommand(client *c) {
     zrankGenericCommand(c, 0);
 }
 
+list* zrank_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void zrevrankCommand(client *c) {
     zrankGenericCommand(c, 1);
+}
+
+list* zrevrank_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void zscanCommand(client *c) {
@@ -3811,6 +3906,11 @@ void zscanCommand(client *c) {
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL ||
         checkType(c,o,OBJ_ZSET)) return;
     scanGenericCommand(c,o,cursor);
+}
+
+list* zscan_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* This command implements the generic zpop operation, used by:
@@ -3936,6 +4036,11 @@ void zpopminCommand(client *c) {
         c->argc == 3 ? c->argv[2] : NULL);
 }
 
+list* zpopmin_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* ZMAXPOP key [<count>] */
 void zpopmaxCommand(client *c) {
     if (c->argc > 3) {
@@ -3944,6 +4049,11 @@ void zpopmaxCommand(client *c) {
     }
     genericZpopCommand(c,&c->argv[1],1,ZSET_MAX,0,
         c->argc == 3 ? c->argv[2] : NULL);
+}
+
+list* zpopmax_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* BZPOPMIN / BZPOPMAX actual implementation. */
@@ -3987,9 +4097,19 @@ void bzpopminCommand(client *c) {
     blockingGenericZpopCommand(c,ZSET_MIN);
 }
 
+list* bzpopmin_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock_exclude_tails(c, 1, 1, 1);
+}
+
 // BZPOPMAX key [key ...] timeout
 void bzpopmaxCommand(client *c) {
     blockingGenericZpopCommand(c,ZSET_MAX);
+}
+
+list* bzpopmax_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock_exclude_tails(c, 1, 1, 1);
 }
 
 static void zarndmemberReplyWithZiplist(client *c, unsigned int count, ziplistEntry *keys, ziplistEntry *vals) {
@@ -4235,4 +4355,9 @@ void zrandmemberCommand(client *c) {
 
     zsetTypeRandomElement(zset, zsetLength(zset), &ele,NULL);
     zsetReplyFromZiplistEntry(c,&ele);
+}
+
+list* zrandmember_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }

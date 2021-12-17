@@ -463,103 +463,103 @@ struct redisCommand redisCommandTable[] = {
      "write use-memory @sortedset",
      0,zunionInterDiffStoreGetKeys,1,1,1,0,0,0},
 
-    {"zinterstore", NULL, zinterstoreCommand,-4,
+    {"zinterstore", zinterstore_cmd_for_rock, zinterstoreCommand,-4,
      "write use-memory @sortedset",
      0,zunionInterDiffStoreGetKeys,1,1,1,0,0,0},
 
-    {"zdiffstore", NULL, zdiffstoreCommand,-4,
+    {"zdiffstore", zdiffstore_cmd_for_rock, zdiffstoreCommand,-4,
      "write use-memory @sortedset",
      0,zunionInterDiffStoreGetKeys,1,1,1,0,0,0},
 
-    {"zunion", NULL, zunionCommand,-3,
+    {"zunion", zunion_cmd_for_rock, zunionCommand,-3,
      "read-only @sortedset",
      0,zunionInterDiffGetKeys,0,0,0,0,0,0},
 
-    {"zinter", NULL, zinterCommand,-3,
+    {"zinter", zinter_cmd_for_rock, zinterCommand,-3,
      "read-only @sortedset",
      0,zunionInterDiffGetKeys,0,0,0,0,0,0},
 
-    {"zdiff", NULL, zdiffCommand,-3,
+    {"zdiff", zdiff_cmd_for_rock, zdiffCommand,-3,
      "read-only @sortedset",
      0,zunionInterDiffGetKeys,0,0,0,0,0,0},
 
-    {"zrange", NULL, zrangeCommand,-4,
+    {"zrange", zrange_cmd_for_rock, zrangeCommand,-4,
      "read-only @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zrangestore", NULL, zrangestoreCommand,-5,
+    {"zrangestore", zrangestore_cmd_for_rock, zrangestoreCommand,-5,
      "write use-memory @sortedset",
      0,NULL,1,2,1,0,0,0},
 
-    {"zrangebyscore", NULL, zrangebyscoreCommand,-4,
+    {"zrangebyscore", zrangebyscore_cmd_for_rock, zrangebyscoreCommand,-4,
      "read-only @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zrevrangebyscore", NULL, zrevrangebyscoreCommand,-4,
+    {"zrevrangebyscore", zrevrangebyscore_cmd_for_rock, zrevrangebyscoreCommand,-4,
      "read-only @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zrangebylex", NULL, zrangebylexCommand,-4,
+    {"zrangebylex", zrangebylex_cmd_for_rock, zrangebylexCommand,-4,
      "read-only @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zrevrangebylex", NULL, zrevrangebylexCommand,-4,
+    {"zrevrangebylex", zrevrangebylex_cmd_for_rock, zrevrangebylexCommand,-4,
      "read-only @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zcount", NULL, zcountCommand,4,
+    {"zcount", zcount_cmd_for_rock, zcountCommand,4,
      "read-only fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zlexcount", NULL, zlexcountCommand,4,
+    {"zlexcount", zlexcount_cmd_for_rock, zlexcountCommand,4,
      "read-only fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zrevrange", NULL, zrevrangeCommand,-4,
+    {"zrevrange", zrevrange_cmd_for_rock, zrevrangeCommand,-4,
      "read-only @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zcard", NULL, zcardCommand,2,
+    {"zcard", zcard_cmd_for_rock, zcardCommand,2,
      "read-only fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zscore", NULL, zscoreCommand,3,
+    {"zscore", zscore_cmd_for_rock, zscoreCommand,3,
      "read-only fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zmscore", NULL, zmscoreCommand,-3,
+    {"zmscore", zmscore_cmd_for_rock, zmscoreCommand,-3,
      "read-only fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zrank", NULL, zrankCommand,3,
+    {"zrank", zrank_cmd_for_rock, zrankCommand,3,
      "read-only fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zrevrank", NULL, zrevrankCommand,3,
+    {"zrevrank", zrevrank_cmd_for_rock, zrevrankCommand,3,
      "read-only fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zscan", NULL, zscanCommand,-3,
+    {"zscan", zscan_cmd_for_rock, zscanCommand,-3,
      "read-only random @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zpopmin", NULL, zpopminCommand,-2,
+    {"zpopmin", zpopmin_cmd_for_rock, zpopminCommand,-2,
      "write fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"zpopmax", NULL, zpopmaxCommand,-2,
+    {"zpopmax", zpopmax_cmd_for_rock, zpopmaxCommand,-2,
      "write fast @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"bzpopmin", NULL, bzpopminCommand,-3,
+    {"bzpopmin", bzpopmin_cmd_for_rock, bzpopminCommand,-3,
      "write no-script fast @sortedset @blocking",
      0,NULL,1,-2,1,0,0,0},
 
-    {"bzpopmax", NULL, bzpopmaxCommand,-3,
+    {"bzpopmax", bzpopmax_cmd_for_rock, bzpopmaxCommand,-3,
      "write no-script fast @sortedset @blocking",
      0,NULL,1,-2,1,0,0,0},
 
-    {"zrandmember", NULL, zrandmemberCommand,-2,
+    {"zrandmember", zrandmember_cmd_for_rock, zrandmemberCommand,-2,
      "read-only random @sortedset",
      0,NULL,1,1,1,0,0,0},
 

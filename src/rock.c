@@ -615,11 +615,65 @@ list* generic_get_multi_keys_for_rock(const client *c, const int index, const in
     return generic_get_multi_keys_for_rock_exclude_tails(c, index, step, 0);
 }
 
-/* Some zset commands, like 
+/* Some zset commands, like ZINTERSTORE, ZDIFF ZINTRE, 
+ * IF have_dest != 0, the argv[1] is desination key, argv[2] is the number of key.
+ * If have_dest == 0, the argv[1] is the number of key
+ * keys follow the number.
  */
-list* generic_get_zset_num_for_rock(const client *c)
+list* generic_get_zset_num_for_rock(const client *c, const int have_dest)
 {
+    redisDb *db = c->db;
+    list *keys = NULL;
+    long long num = 0;
+    if (have_dest != 0)
+    {
+        serverAssert(c->argc >= 4);
+        robj *o_num = c->argv[2];
+        const int ret = getLongLongFromObject(o_num, &num);
+        serverAssert(ret == C_OK);
 
+        robj *o_dest = c->argv[1];
+        const sds dest = o_dest->ptr;
+        dictEntry *de = dictFind(db->dict, dest);
+        if (de)
+        {
+            robj *val = dictGetVal(de);
+            if (is_rock_value(val))
+            {
+                keys = listCreate();
+                listAddNodeTail(keys, dest);
+            }
+        }
+    }
+    else
+    {
+        serverAssert(c->argc >= 3);
+        robj *o = c->argv[1];
+        const int ret = getLongLongFromObject(o, &num);
+        serverAssert(ret == C_OK);
+    }
+    serverAssert(num > 0);
+
+    const int start = have_dest != 0 ? 3 : 2;
+    for (int i = 0; i < num; ++i)
+    {
+        const sds key = c->argv[start+i]->ptr;
+
+        dictEntry *de = dictFind(db->dict, key);
+        if (de == NULL)
+            continue;
+
+        robj *o = dictGetVal(de);
+        if (!is_rock_value(o))
+            continue;
+
+        if (keys == NULL)
+            keys = listCreate();
+
+        listAddNodeTail(keys, key);
+    }
+
+    return keys;
 }
 
 /* Main thread waiting for read thread and write thread exit */
