@@ -452,7 +452,8 @@ static list* get_keys_in_rock_for_command(const client *c)
     serverAssert(c->rock_key_num == 0);
 
     struct redisCommand *cmd = lookupCommand(c->argv[0]->ptr);
-    serverAssert(cmd);
+    if (cmd == NULL)
+        return NULL;
 
     if (c->flags & CLIENT_MULTI)
     {
@@ -707,4 +708,79 @@ void wait_rock_threads_exit()
 
     if (rockdb)
         rocksdb_close(rockdb);
+}
+
+/* rock_evict <key> ...
+ */ 
+int keyIsExpired(redisDb *db, robj *key);       // in db.c
+void rock_evict(client *c)
+{
+    const int key_num = c->argc - 1;
+    addReplyArrayLen(c, key_num*2);
+
+    redisDb *db = c->db;
+    sds already_rock_val = sdsnew("ALREADY_ROCK_VAL_MAYBE_EXPIRE");
+    sds not_found = sdsnew("NOT_FOUND");
+    sds expire_val = sdsnew("EXPIRE_VALUE");
+    sds shared_val = sdsnew("SHARED_VALUE_NO_NEED_TO_EVICT");
+    sds can_not_evict_type = sdsnew("VALUE_TYPE_CAN_NOT_EVICT_LIKE_STREAM");
+    sds can_evict = sdsnew("CAN_EVICT_AND_WRITTEN_TO_ROCKSDB");
+
+    for (int i = 0; i < key_num; ++i)
+    {
+        const sds key = c->argv[i+1]->ptr;
+
+        robj *o_key = createStringObject(key, sdslen(key));
+        addReplyBulk(c, o_key);
+        decrRefCount(o_key);
+
+        robj *r = NULL;
+        dictEntry *de = dictFind(db->dict, key);
+        if (de == NULL)
+        {
+            r = createStringObject(not_found, sdslen(not_found));
+        }
+        else
+        {
+            robj *val = dictGetVal(de);
+            if (is_rock_value(val))
+            {
+                r = createStringObject(already_rock_val, sdslen(already_rock_val));
+            }
+            else if(is_shared_value(val))
+            {
+                r = createStringObject(shared_val, sdslen(shared_val));
+            }
+            else if (!is_evict_value(val))
+            {
+                r = createStringObject(shared_val, sdslen(can_not_evict_type));
+            }
+            else
+            {
+                robj *o_key = createStringObject(key, sdslen(key));
+                if (keyIsExpired(db, o_key))
+                {
+                    r = createStringObject(expire_val, sdslen(expire_val));
+                }
+                else
+                {
+                    // can evcit this key
+                    while (!try_evict_one_key_to_rocksdb(db->id, key));     // loop until success
+
+                    r = createStringObject(can_evict, sdslen(can_evict));
+                }
+                decrRefCount(o_key);
+            }
+        }
+
+        addReplyBulk(c, r);
+        decrRefCount(r);
+    }
+
+    sdsfree(already_rock_val);
+    sdsfree(not_found);
+    sdsfree(expire_val);
+    sdsfree(can_evict);
+    sdsfree(shared_val);
+    sdsfree(can_not_evict_type);
 }

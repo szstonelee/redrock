@@ -23,6 +23,8 @@ client* lookup_client_from_id(const uint64_t client_id);
 void on_add_a_new_client(client* const c);
 void on_del_a_destroy_client(const client* const c);
 
+void rock_evict(client *c);
+
 // list* get_keys_in_rock_for_command(const client *c);
 
 int process_cmd_in_processInputBuffer(client *c);
@@ -31,18 +33,47 @@ int process_cmd_in_processInputBuffer(client *c);
 /* Check whether o is a rock value.
  * Return 1 if it is. Otherwise return 0.
  */
-inline int is_rock_value(const robj *o)
+inline int is_rock_value(const robj *v)
 {
-    return  o == shared.rock_val_str_other ||
-            o == shared.rock_val_str_int;
+    return  v == shared.rock_val_str_other ||
+            v == shared.rock_val_str_int;
 }
 
 /* Check whether o is a shared value which is made by makeObjectShared()
  * Return 1 if true. Otherwise return 0.
  */
-inline int is_shared_value(const robj *o)
+inline int is_shared_value(const robj *v)
 {
-    return o->refcount == OBJ_SHARED_REFCOUNT;
+    return v->refcount == OBJ_SHARED_REFCOUNT;
+}
+
+/* Check whether the value can be evicted. 
+ * Return 1 if can, otherwise, return 0.
+ *
+ * We exclude such cases:
+ * 1. already rock value
+ * 2. already shared value
+ * 3. value type not suppoorted, right now, it is OBJ_STREAM  
+ */
+inline int is_evict_value(const robj *v)
+{
+    if (is_rock_value(v))
+    {
+        return 0;
+    }
+    else if (is_shared_value(v))
+    {
+        return 0;
+    }
+    else if (v->type == OBJ_STREAM)
+    {
+        return 0;
+    }
+    else
+    {
+        serverAssert(v->type != OBJ_MODULE);
+        return 1;
+    }
 }
 
 /* Check a client is in the state waiting for rock value.
@@ -75,12 +106,19 @@ list* getrange_cmd_for_rock(const client *c);
 list* incr_cmd_for_rock(const client* c);
 list* decr_cmd_for_rock(const client *c);
 list* mget_cmd_for_rock(const client *c);
+list* incrby_cmd_for_rock(const client *c);
+list* decrby_cmd_for_rock(const client *c);
+list* incrbyfloat_cmd_for_rock(const client *c);
+list* getset_cmd_for_rock(const client *c);
 
 // bitop.c
 list* setbit_cmd_for_rock(const client *c);
 list* getbit_cmd_for_rock(const client* c);
 list* bitfield_cmd_for_rock(const client* c);
 list* bitfield_ro_cmd_for_rock(const client *c);
+list* bitop_cmd_for_rock(const client *c);
+list* bitcount_cmd_for_rock(const client *c);
+list* bitpos_cmd_for_rock(const client *c);
 
 // t_list.c
 list* rpush_cmd_for_rock(const client *c);
@@ -155,5 +193,73 @@ list* zpopmax_cmd_for_rock(const client *c);
 list* bzpopmin_cmd_for_rock(const client *c);
 list* bzpopmax_cmd_for_rock(const client *c);
 list* zrandmember_cmd_for_rock(const client *c);
+
+// t_hash.c
+list* hset_cmd_for_rock(const client *c);
+list* hsetnx_cmd_for_rock(const client *c);
+list* hget_cmd_for_rock(const client *c);
+list* hmset_cmd_for_rock(const client *c);
+list* hmget_cmd_for_rock(const client *c);
+list* hincrby_cmd_for_rock(const client *c);
+list* hincrbyfloat_cmd_for_rock(const client *c);
+list* hdel_cmd_for_rock(const client *c);
+list* hlen_cmd_for_rock(const client *c);
+list* hstrlen_cmd_for_rock(const client *c);
+list* hkeys_cmd_for_rock(const client *c);
+list* hvals_cmd_for_rock(const client *c);
+list* hgetall_cmd_for_rock(const client *c);
+list* hexists_cmd_for_rock(const client *c);
+list* hrandfield_cmd_for_rock(const client *c);
+list* hscan_cmd_for_rock(const client *c);
+
+// db.c
+list* move_cmd_for_rock(const client *c);
+list* copy_cmd_for_rock(const client *c);
+list* rename_cmd_for_rock(const client *c);
+list* renamenx_cmd_for_rock(const client *c);
+
+// expire.c
+list* expire_cmd_for_rock(const client *c);
+list* expireat_cmd_for_rock(const client *c);
+list* pexpire_cmd_for_rock(const client *c);
+list* pexpireat_cmd_for_rock(const client *c);
+list* ttl_cmd_for_rock(const client *c);
+list* touch_cmd_for_rock(const client *c);
+list* pttl_cmd_for_rock(const client *c);
+list* persist_cmd_for_rock(const client *c);
+
+// multi.c
+list* exec_cmd_for_rock(const client *c);
+
+// sort.c
+list* sort_cmd_for_rock(const client *c);
+
+// debug.c
+list* debug_cmd_for_rock(const client *c);
+
+// cluster.c
+list* migrate_cmd_for_rock(const client *c);
+list* dump_cmd_for_rock(const client *c);
+
+// object.c
+list* object_cmd_for_rock(const client *c);
+
+// geo.c
+list* geoadd_cmd_for_rock(const client *c);
+list* georadius_cmd_for_rock(const client *c);
+list* georadius_ro_cmd_for_rock(const client *c);
+list* georadiusbymember_cmd_for_rock(const client *c);
+list* georadiusbymember_ro_cmd_for_rock(const client *c);
+list* geohash_cmd_for_rock(const client *c);
+list* geopos_cmd_for_rock(const client *c);
+list* geodist_cmd_for_rock(const client *c);
+list* geosearch_cmd_for_rock(const client *c);
+list* geosearchstore_cmd_for_rock(const client *c);
+
+// hyperloglog.c
+list* pfadd_cmd_for_rock(const client *c);
+list* pfcount_cmd_for_rock(const client *c);
+list* pfmerge_cmd_for_rock(const client *c);
+list* pfdebug_cmd_for_rock(const client *c);
 
 #endif

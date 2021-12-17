@@ -790,6 +790,11 @@ void bitopCommand(client *c) {
     addReplyLongLong(c,maxlen); /* Return the output string length in bytes. */
 }
 
+list* bitop_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock(c, 3, 1);
+}
+
 /* BITCOUNT key [start end] */
 void bitcountCommand(client *c) {
     robj *o;
@@ -837,6 +842,11 @@ void bitcountCommand(client *c) {
 
         addReplyLongLong(c,redisPopcount(p+start,bytes));
     }
+}
+
+list* bitcount_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* BITPOS key bit [start [end]] */
@@ -915,6 +925,11 @@ void bitposCommand(client *c) {
         if (pos != -1) pos += start*8; /* Adjust for the bytes we skipped. */
         addReplyLongLong(c,pos);
     }
+}
+
+list* bitpos_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* BITFIELD key subcommmand-1 arg ... subcommand-2 arg ... subcommand-N ...

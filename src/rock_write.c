@@ -178,6 +178,12 @@ static void write_batch_append_and_abandon(const int len, const int *dbids, sds 
  * because we need exclude those keys in read_rock_key_candidates of rock_read.c. 
  * try_evict_to_rocksdb() will set value to rock value for these matched keys.
  * Return the actual number of keys for eviction.
+ * 
+ * NOTE1: The caller need to use space_in_write_ring_buffer() first
+ *        to know the available space for ring buffer.
+ *        The caller need to guarantee check_len <= space.
+ * 
+ * NOTE2: The caller guarantee the vlaue can be evicted. (e.g. NOT stream value)
  */
 int try_evict_to_rocksdb(const int check_len, const int *check_dbids, const sds *check_keys)
 {
@@ -204,17 +210,40 @@ int try_evict_to_rocksdb(const int check_len, const int *check_dbids, const sds 
         redisDb *db = server.db + evict_dbids[i];
         dictEntry *de = dictFind(db->dict, evict_keys[i]);
         serverAssert(de);
-        robj *o = dictGetVal(de);
-        serverAssert(!is_rock_value(o) && !is_shared_value(o));
+        robj *v = dictGetVal(de);
+        serverAssert(is_evict_value(v));
         // change the value to rock value in Redis db
-        dictGetVal(de) = get_match_rock_value(o);
-        evict_vals[i] = o;    
+        dictGetVal(de) = get_match_rock_value(v);
+        evict_vals[i] = v;    
     }
 
     if (evict_len)
         write_batch_append_and_abandon(evict_len, evict_dbids, evict_keys, evict_vals);
 
     return evict_len;    
+}
+
+/* Called in main thread for command ROCKEVICT
+ * If succesful, return 1.
+ * Otherwise, return 0. The caller can try again because the key may be in candidates 
+ *                      and it take times for read thread to process (no recover but abandon).
+ * 
+ * The caller needs to guarantee the value in Redis exist and can be evicted to RocksDB.
+ */
+int try_evict_one_key_to_rocksdb(const int dbid, const sds key)
+{
+    const int space = space_in_write_ring_buffer();
+    if (space == 0)
+        return 0;
+    
+    if (try_evict_to_rocksdb(1, &dbid, &key) == 0)
+    {
+        return 0;
+    }
+    else
+    {
+        return 1;
+    }
 }
 
 /* Called by write thread.

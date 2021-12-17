@@ -277,6 +277,12 @@ handle_monitor:
         replicationFeedMonitors(c,server.monitors,c->db->id,c->argv,c->argc);
 }
 
+list* exec_cmd_for_rock(const client *c)
+{
+    // TODO
+    return NULL;
+}
+
 /* ===================== WATCH (CAS alike for MULTI/EXEC) ===================
  *
  * The implementation uses a per-DB hash table mapping keys to list of clients

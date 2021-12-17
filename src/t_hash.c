@@ -28,6 +28,8 @@
  */
 
 #include "server.h"
+#include "rock.h"
+
 #include <math.h>
 
 /*-----------------------------------------------------------------------------
@@ -651,6 +653,11 @@ void hsetnxCommand(client *c) {
     }
 }
 
+list* hsetnx_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void hsetCommand(client *c) {
     int i, created = 0;
     robj *o;
@@ -678,6 +685,16 @@ void hsetCommand(client *c) {
     signalModifiedKey(c,c->db,c->argv[1]);
     notifyKeyspaceEvent(NOTIFY_HASH,"hset",c->argv[1],c->db->id);
     server.dirty += (c->argc - 2)/2;
+}
+
+list* hmset_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
+list* hset_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void hincrbyCommand(client *c) {
@@ -713,6 +730,11 @@ void hincrbyCommand(client *c) {
     signalModifiedKey(c,c->db,c->argv[1]);
     notifyKeyspaceEvent(NOTIFY_HASH,"hincrby",c->argv[1],c->db->id);
     server.dirty++;
+}
+
+list* hincrby_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void hincrbyfloatCommand(client *c) {
@@ -763,6 +785,11 @@ void hincrbyfloatCommand(client *c) {
     decrRefCount(newobj);
 }
 
+list* hincrbyfloat_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 static void addHashFieldToReply(client *c, robj *o, sds field) {
     int ret;
 
@@ -807,6 +834,11 @@ void hgetCommand(client *c) {
     addHashFieldToReply(c, o, c->argv[2]->ptr);
 }
 
+list* hget_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void hmgetCommand(client *c) {
     robj *o;
     int i;
@@ -820,6 +852,11 @@ void hmgetCommand(client *c) {
     for (i = 2; i < c->argc; i++) {
         addHashFieldToReply(c, o, c->argv[i]->ptr);
     }
+}
+
+list* hmget_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void hdelCommand(client *c) {
@@ -850,6 +887,11 @@ void hdelCommand(client *c) {
     addReplyLongLong(c,deleted);
 }
 
+list* hdel_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void hlenCommand(client *c) {
     robj *o;
 
@@ -859,12 +901,22 @@ void hlenCommand(client *c) {
     addReplyLongLong(c,hashTypeLength(o));
 }
 
+list* hlen_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void hstrlenCommand(client *c) {
     robj *o;
 
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
         checkType(c,o,OBJ_HASH)) return;
     addReplyLongLong(c,hashTypeGetValueLength(o,c->argv[2]->ptr));
+}
+
+list* hstrlen_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 static void addHashIteratorCursorToReply(client *c, hashTypeIterator *hi, int what) {
@@ -928,12 +980,27 @@ void hkeysCommand(client *c) {
     genericHgetallCommand(c,OBJ_HASH_KEY);
 }
 
+list* hkeys_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void hvalsCommand(client *c) {
     genericHgetallCommand(c,OBJ_HASH_VALUE);
 }
 
+list* hvals_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void hgetallCommand(client *c) {
     genericHgetallCommand(c,OBJ_HASH_KEY|OBJ_HASH_VALUE);
+}
+
+list* hgetall_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void hexistsCommand(client *c) {
@@ -944,6 +1011,11 @@ void hexistsCommand(client *c) {
     addReply(c, hashTypeExists(o,c->argv[2]->ptr) ? shared.cone : shared.czero);
 }
 
+list* hexists_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void hscanCommand(client *c) {
     robj *o;
     unsigned long cursor;
@@ -952,6 +1024,11 @@ void hscanCommand(client *c) {
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL ||
         checkType(c,o,OBJ_HASH)) return;
     scanGenericCommand(c,o,cursor);
+}
+
+list* hscan_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 static void harndfieldReplyWithZiplist(client *c, unsigned int count, ziplistEntry *keys, ziplistEntry *vals) {
@@ -1201,4 +1278,9 @@ void hrandfieldCommand(client *c) {
 
     hashTypeRandomElement(hash,hashTypeLength(hash),&ele,NULL);
     hashReplyFromZiplistEntry(c, &ele);
+}
+
+list* hrandfield_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }

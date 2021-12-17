@@ -31,6 +31,8 @@
 #include "cluster.h"
 #include "atomicvar.h"
 
+#include "rock.h"
+
 #include <signal.h>
 #include <ctype.h>
 
@@ -1132,8 +1134,18 @@ void renameCommand(client *c) {
     renameGenericCommand(c,0);
 }
 
+list* rename_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void renamenxCommand(client *c) {
     renameGenericCommand(c,1);
+}
+
+list* renamenx_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void moveCommand(client *c) {
@@ -1196,6 +1208,11 @@ void moveCommand(client *c) {
 
     server.dirty++;
     addReply(c,shared.cone);
+}
+
+list* move_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void copyCommand(client *c) {
@@ -1298,6 +1315,11 @@ void copyCommand(client *c) {
 
     server.dirty++;
     addReply(c,shared.cone);
+}
+
+list* copy_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* Helper function for dbSwapDatabases(): scans the list of keys that have

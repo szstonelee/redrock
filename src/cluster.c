@@ -32,6 +32,8 @@
 #include "cluster.h"
 #include "endianconv.h"
 
+#include "rock.h"
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -5212,6 +5214,11 @@ void restoreCommand(client *c) {
     server.dirty++;
 }
 
+list* dump_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* MIGRATE socket cache implementation.
  *
  * We take a map between host:ip and a TCP socket that we used to connect
@@ -5663,6 +5670,11 @@ socket_err:
             "-IOERR error or timeout %s to target instance\r\n",
             write_error ? "writing" : "reading"));
     return;
+}
+
+list* migrate_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 3);
 }
 
 /* -----------------------------------------------------------------------------

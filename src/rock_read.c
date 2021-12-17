@@ -215,9 +215,9 @@ static void read_from_rocksdb(const int cnt, const sds *keys, sds *vals)
         rockdb_key_sizes[i] = sdslen(keys[i]);
     }
 
-    serverLog(LL_WARNING, "read thread read rocksdb start (sleep for 10 seconds) ...");
-    sleep(10);
-    serverLog(LL_WARNING, "read thread read rocksdb end!!!!!");
+    // serverLog(LL_WARNING, "read thread read rocksdb start (sleep for 10 seconds) ...");
+    // sleep(10);
+    // serverLog(LL_WARNING, "read thread read rocksdb end!!!!!");
 
     rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
     rocksdb_multi_get(rockdb, readoptions, cnt, 

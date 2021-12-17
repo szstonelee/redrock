@@ -438,6 +438,11 @@ void getsetCommand(client *c) {
     rewriteClientCommandArgument(c,0,shared.set);
 }
 
+list* getset_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void setrangeCommand(client *c) {
     robj *o;
     long offset;
@@ -671,11 +676,21 @@ void incrbyCommand(client *c) {
     incrDecrCommand(c,incr);
 }
 
+list* incrby_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void decrbyCommand(client *c) {
     long long incr;
 
     if (getLongLongFromObjectOrReply(c, c->argv[2], &incr, NULL) != C_OK) return;
     incrDecrCommand(c,-incr);
+}
+
+list* decrby_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void incrbyfloatCommand(client *c) {
@@ -709,6 +724,11 @@ void incrbyfloatCommand(client *c) {
     rewriteClientCommandArgument(c,0,shared.set);
     rewriteClientCommandArgument(c,2,new);
     rewriteClientCommandArgument(c,3,shared.keepttl);
+}
+
+list* incrbyfloat_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void appendCommand(client *c) {

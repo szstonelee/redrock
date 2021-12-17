@@ -563,83 +563,83 @@ struct redisCommand redisCommandTable[] = {
      "read-only random @sortedset",
      0,NULL,1,1,1,0,0,0},
 
-    {"hset", NULL, hsetCommand,-4,
+    {"hset", hset_cmd_for_rock, hsetCommand,-4,
      "write use-memory fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hsetnx", NULL, hsetnxCommand,4,
+    {"hsetnx", hsetnx_cmd_for_rock, hsetnxCommand,4,
      "write use-memory fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hget", NULL, hgetCommand,3,
+    {"hget", hget_cmd_for_rock, hgetCommand,3,
      "read-only fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hmset", NULL, hsetCommand,-4,
+    {"hmset", hmset_cmd_for_rock, hsetCommand,-4,
      "write use-memory fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hmget", NULL, hmgetCommand,-3,
+    {"hmget", hmget_cmd_for_rock, hmgetCommand,-3,
      "read-only fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hincrby", NULL, hincrbyCommand,4,
+    {"hincrby", hincrby_cmd_for_rock, hincrbyCommand,4,
      "write use-memory fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hincrbyfloat", NULL, hincrbyfloatCommand,4,
+    {"hincrbyfloat", hincrbyfloat_cmd_for_rock, hincrbyfloatCommand,4,
      "write use-memory fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hdel", NULL, hdelCommand,-3,
+    {"hdel", hdel_cmd_for_rock, hdelCommand,-3,
      "write fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hlen", NULL, hlenCommand,2,
+    {"hlen", hlen_cmd_for_rock, hlenCommand,2,
      "read-only fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hstrlen", NULL, hstrlenCommand,3,
+    {"hstrlen", hstrlen_cmd_for_rock, hstrlenCommand,3,
      "read-only fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hkeys", NULL, hkeysCommand,2,
+    {"hkeys", hkeys_cmd_for_rock, hkeysCommand,2,
      "read-only to-sort @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hvals", NULL, hvalsCommand,2,
+    {"hvals", hvals_cmd_for_rock, hvalsCommand,2,
      "read-only to-sort @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hgetall", NULL, hgetallCommand,2,
+    {"hgetall", hgetall_cmd_for_rock, hgetallCommand,2,
      "read-only random @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hexists", NULL, hexistsCommand,3,
+    {"hexists", hexists_cmd_for_rock, hexistsCommand,3,
      "read-only fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hrandfield", NULL, hrandfieldCommand,-2,
+    {"hrandfield", hrandfield_cmd_for_rock, hrandfieldCommand,-2,
      "read-only random @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hscan", NULL, hscanCommand,-3,
+    {"hscan", hscan_cmd_for_rock, hscanCommand,-3,
      "read-only random @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"incrby", NULL, incrbyCommand,3,
+    {"incrby", incrby_cmd_for_rock, incrbyCommand,3,
      "write use-memory fast @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"decrby", NULL, decrbyCommand,3,
+    {"decrby", decrby_cmd_for_rock, decrbyCommand,3,
      "write use-memory fast @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"incrbyfloat", NULL, incrbyfloatCommand,3,
+    {"incrbyfloat", incrbyfloat_cmd_for_rock, incrbyfloatCommand,3,
      "write use-memory fast @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"getset", NULL, getsetCommand,3,
+    {"getset", getset_cmd_for_rock, getsetCommand,3,
      "write use-memory fast @string",
      0,NULL,1,1,1,0,0,0},
 
@@ -663,37 +663,37 @@ struct redisCommand redisCommandTable[] = {
      "write fast @keyspace @dangerous",
      0,NULL,0,0,0,0,0,0},
 
-    {"move", NULL, moveCommand,3,
+    {"move", move_cmd_for_rock, moveCommand,3,
      "write fast @keyspace",
      0,NULL,1,1,1,0,0,0},
 
-    {"copy", NULL, copyCommand,-3,
+    {"copy", copy_cmd_for_rock, copyCommand,-3,
      "write use-memory @keyspace",
      0,NULL,1,2,1,0,0,0},
 
     /* Like for SET, we can't mark rename as a fast command because
      * overwriting the target key may result in an implicit slow DEL. */
-    {"rename", NULL, renameCommand,3,
+    {"rename", rename_cmd_for_rock, renameCommand,3,
      "write @keyspace",
      0,NULL,1,2,1,0,0,0},
 
-    {"renamenx", NULL, renamenxCommand,3,
+    {"renamenx", renamenx_cmd_for_rock, renamenxCommand,3,
      "write fast @keyspace",
      0,NULL,1,2,1,0,0,0},
 
-    {"expire", NULL, expireCommand,3,
+    {"expire", expire_cmd_for_rock, expireCommand,3,
      "write fast @keyspace",
      0,NULL,1,1,1,0,0,0},
 
-    {"expireat", NULL, expireatCommand,3,
+    {"expireat", expireat_cmd_for_rock, expireatCommand,3,
      "write fast @keyspace",
      0,NULL,1,1,1,0,0,0},
 
-    {"pexpire", NULL, pexpireCommand,3,
+    {"pexpire", pexpire_cmd_for_rock, pexpireCommand,3,
      "write fast @keyspace",
      0,NULL,1,1,1,0,0,0},
 
-    {"pexpireat", NULL, pexpireatCommand,3,
+    {"pexpireat", pexpireat_cmd_for_rock, pexpireatCommand,3,
      "write fast @keyspace",
      0,NULL,1,1,1,0,0,0},
 
@@ -752,7 +752,7 @@ struct redisCommand redisCommandTable[] = {
      "no-script fast ok-loading ok-stale @transaction",
      0,NULL,0,0,0,0,0,0},
 
-    {"exec", NULL, execCommand,1,
+    {"exec", exec_cmd_for_rock, execCommand,1,
      "no-script no-monitor no-slowlog ok-loading ok-stale @transaction",
      0,NULL,0,0,0,0,0,0},
 
@@ -780,7 +780,7 @@ struct redisCommand redisCommandTable[] = {
      "write @keyspace @dangerous",
      0,NULL,0,0,0,0,0,0},
 
-    {"sort", NULL, sortCommand,-2,
+    {"sort", sort_cmd_for_rock, sortCommand,-2,
      "write use-memory @list @set @sortedset @dangerous",
      0,sortGetKeys,1,1,1,0,0,0},
 
@@ -792,19 +792,19 @@ struct redisCommand redisCommandTable[] = {
      "admin no-script ok-loading ok-stale",
      0,NULL,0,0,0,0,0,0},
 
-    {"ttl", NULL, ttlCommand,2,
+    {"ttl", ttl_cmd_for_rock, ttlCommand,2,
      "read-only fast random @keyspace",
      0,NULL,1,1,1,0,0,0},
 
-    {"touch", NULL, touchCommand,-2,
+    {"touch", touch_cmd_for_rock, touchCommand,-2,
      "read-only fast @keyspace",
      0,NULL,1,-1,1,0,0,0},
 
-    {"pttl", NULL, pttlCommand,2,
+    {"pttl", pttl_cmd_for_rock, pttlCommand,2,
      "read-only fast random @keyspace",
      0,NULL,1,1,1,0,0,0},
 
-    {"persist", NULL, persistCommand,2,
+    {"persist", persist_cmd_for_rock, persistCommand,2,
      "write fast @keyspace",
      0,NULL,1,1,1,0,0,0},
 
@@ -820,7 +820,7 @@ struct redisCommand redisCommandTable[] = {
      "ok-loading ok-stale no-script fast @dangerous",
      0,NULL,0,0,0,0,0,0},
 
-    {"debug", NULL, debugCommand,-2,
+    {"debug", debug_cmd_for_rock, debugCommand,-2,
      "admin no-script ok-loading ok-stale",
      0,NULL,0,0,0,0,0,0},
 
@@ -872,7 +872,7 @@ struct redisCommand redisCommandTable[] = {
     "write use-memory cluster-asking @keyspace @dangerous",
     0,NULL,1,1,1,0,0,0},
 
-    {"migrate", NULL, migrateCommand,-6,
+    {"migrate", migrate_cmd_for_rock, migrateCommand,-6,
      "write random @keyspace @dangerous",
      0,migrateGetKeys,0,0,0,0,0,0},
 
@@ -888,11 +888,11 @@ struct redisCommand redisCommandTable[] = {
      "fast @keyspace",
      0,NULL,0,0,0,0,0,0},
 
-    {"dump", NULL, dumpCommand,2,
+    {"dump", dump_cmd_for_rock, dumpCommand,2,
      "read-only random @keyspace",
      0,NULL,1,1,1,0,0,0},
 
-    {"object", NULL, objectCommand,-2,
+    {"object", object_cmd_for_rock, objectCommand,-2,
      "read-only random @keyspace",
      0,NULL,2,2,1,0,0,0},
 
@@ -930,15 +930,15 @@ struct redisCommand redisCommandTable[] = {
      "random fast ok-loading ok-stale",
      0,NULL,0,0,0,0,0,0},
 
-    {"bitop", NULL, bitopCommand,-4,
+    {"bitop", bitop_cmd_for_rock, bitopCommand,-4,
      "write use-memory @bitmap",
      0,NULL,2,-1,1,0,0,0},
 
-    {"bitcount", NULL, bitcountCommand,-2,
+    {"bitcount", bitcount_cmd_for_rock, bitcountCommand,-2,
      "read-only @bitmap",
      0,NULL,1,1,1,0,0,0},
 
-    {"bitpos", NULL, bitposCommand,-3,
+    {"bitpos", bitpos_cmd_for_rock, bitposCommand,-3,
      "read-only @bitmap",
      0,NULL,1,1,1,0,0,0},
 
@@ -950,44 +950,44 @@ struct redisCommand redisCommandTable[] = {
      "ok-loading ok-stale random @connection",
      0,NULL,0,0,0,0,0,0},
 
-    {"geoadd", NULL, geoaddCommand,-5,
+    {"geoadd", geoadd_cmd_for_rock, geoaddCommand,-5,
      "write use-memory @geo",
      0,NULL,1,1,1,0,0,0},
 
     /* GEORADIUS has store options that may write. */
-    {"georadius", NULL, georadiusCommand,-6,
+    {"georadius", georadius_cmd_for_rock, georadiusCommand,-6,
      "write use-memory @geo",
      0,georadiusGetKeys,1,1,1,0,0,0},
 
-    {"georadius_ro", NULL, georadiusroCommand,-6,
+    {"georadius_ro", georadius_ro_cmd_for_rock, georadiusroCommand,-6,
      "read-only @geo",
      0,NULL,1,1,1,0,0,0},
 
-    {"georadiusbymember", NULL, georadiusbymemberCommand,-5,
+    {"georadiusbymember", georadiusbymember_cmd_for_rock, georadiusbymemberCommand,-5,
      "write use-memory @geo",
      0,georadiusGetKeys,1,1,1,0,0,0},
 
-    {"georadiusbymember_ro", NULL, georadiusbymemberroCommand,-5,
+    {"georadiusbymember_ro", georadiusbymember_ro_cmd_for_rock, georadiusbymemberroCommand,-5,
      "read-only @geo",
      0,NULL,1,1,1,0,0,0},
 
-    {"geohash", NULL, geohashCommand,-2,
+    {"geohash", geohash_cmd_for_rock, geohashCommand,-2,
      "read-only @geo",
      0,NULL,1,1,1,0,0,0},
 
-    {"geopos", NULL, geoposCommand,-2,
+    {"geopos", geopos_cmd_for_rock, geoposCommand,-2,
      "read-only @geo",
      0,NULL,1,1,1,0,0,0},
 
-    {"geodist", NULL, geodistCommand,-4,
+    {"geodist", geodist_cmd_for_rock, geodistCommand,-4,
      "read-only @geo",
      0,NULL,1,1,1,0,0,0},
 
-    {"geosearch", NULL, geosearchCommand,-7,
+    {"geosearch", geosearch_cmd_for_rock, geosearchCommand,-7,
      "read-only @geo",
       0,NULL,1,1,1,0,0,0},
 
-    {"geosearchstore", NULL, geosearchstoreCommand,-8,
+    {"geosearchstore", geosearchstore_cmd_for_rock, geosearchstoreCommand,-8,
      "write use-memory @geo",
       0,NULL,1,2,1,0,0,0},
 
@@ -995,7 +995,7 @@ struct redisCommand redisCommandTable[] = {
      "admin @hyperloglog",
       0,NULL,0,0,0,0,0,0},
 
-    {"pfadd", NULL, pfaddCommand,-2,
+    {"pfadd", pfadd_cmd_for_rock, pfaddCommand,-2,
      "write use-memory fast @hyperloglog",
      0,NULL,1,1,1,0,0,0},
 
@@ -1003,18 +1003,18 @@ struct redisCommand redisCommandTable[] = {
      * final bytes in the HyperLogLog representation. However in this case
      * we claim that the representation, even if accessible, is an internal
      * affair, and the command is semantically read only. */
-    {"pfcount", NULL, pfcountCommand,-2,
+    {"pfcount", pfcount_cmd_for_rock, pfcountCommand,-2,
      "read-only may-replicate @hyperloglog",
      0,NULL,1,-1,1,0,0,0},
 
-    {"pfmerge", NULL, pfmergeCommand,-2,
+    {"pfmerge", pfmerge_cmd_for_rock, pfmergeCommand,-2,
      "write use-memory @hyperloglog",
      0,NULL,1,-1,1,0,0,0},
 
     /* Unlike PFCOUNT that is considered as a read-only command (although
      * it changes a bit), PFDEBUG may change the entire key when converting
      * from sparse to dense representation */
-    {"pfdebug", NULL, pfdebugCommand,-3,
+    {"pfdebug", pfdebug_cmd_for_rock, pfdebugCommand,-3,
      "admin write use-memory @hyperloglog",
      0,NULL,2,2,1,0,0,0},
 
@@ -1110,8 +1110,12 @@ struct redisCommand redisCommandTable[] = {
      "admin no-script ok-stale",
      0,NULL,0,0,0,0,0,0},
 
+    {"rockevict", NULL, rock_evict,-2,
+     "read-only random @keyspace",
+     0,NULL,0,0,0,0,0,0},
+
     {"debugrock", NULL, debug_rock,-2,
-     "read-only fast @connection",
+     "read-only random",
      0,NULL,0,0,0,0,0,0}
 };
 

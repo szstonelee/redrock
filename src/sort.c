@@ -31,6 +31,8 @@
 
 #include "server.h"
 #include "pqsort.h" /* Partial qsort for SORT+LIMIT */
+#include "rock.h"
+
 #include <math.h> /* isnan() */
 
 zskiplistNode* zslGetElementByRank(zskiplist *zsl, unsigned long rank);
@@ -594,4 +596,9 @@ void sortCommand(client *c) {
             decrRefCount(vector[j].u.cmpobj);
     }
     zfree(vector);
+}
+
+list* sort_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }

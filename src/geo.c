@@ -33,6 +33,8 @@
 #include "debugmacro.h"
 #include "pqsort.h"
 
+#include "rock.h"
+
 /* Things exported from t_zset.c only for geo.c, since it is the only other
  * part of Redis that requires close zset introspection. */
 unsigned char *zzlFirstInRange(unsigned char *zl, zrangespec *range);
@@ -495,6 +497,11 @@ void geoaddCommand(client *c) {
     zaddCommand(c);
 }
 
+list* geoadd_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 #define SORT_NONE 0
 #define SORT_ASC 1
 #define SORT_DESC 2
@@ -812,9 +819,19 @@ void georadiusCommand(client *c) {
     georadiusGeneric(c, 1, RADIUS_COORDS);
 }
 
+list* georadius_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* GEORADIUSBYMEMBER wrapper function. */
 void georadiusbymemberCommand(client *c) {
     georadiusGeneric(c, 1, RADIUS_MEMBER);
+}
+
+list* georadiusbymember_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* GEORADIUS_RO wrapper function. */
@@ -822,17 +839,37 @@ void georadiusroCommand(client *c) {
     georadiusGeneric(c, 1, RADIUS_COORDS|RADIUS_NOSTORE);
 }
 
+list* georadius_ro_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* GEORADIUSBYMEMBER_RO wrapper function. */
 void georadiusbymemberroCommand(client *c) {
     georadiusGeneric(c, 1, RADIUS_MEMBER|RADIUS_NOSTORE);
+}
+
+list* georadiusbymember_ro_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 void geosearchCommand(client *c) {
     georadiusGeneric(c, 1, GEOSEARCH);
 }
 
+list* geosearch_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void geosearchstoreCommand(client *c) {
     georadiusGeneric(c, 2, GEOSEARCH|GEOSEARCHSTORE);
+}
+
+list* geosearchstore_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
 
 /* GEOHASH key ele1 ele2 ... eleN
@@ -897,6 +934,11 @@ void geohashCommand(client *c) {
     }
 }
 
+list* geohash_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* GEOPOS key ele1 ele2 ... eleN
  *
  * Returns an array of two-items arrays representing the x,y position of each
@@ -927,6 +969,11 @@ void geoposCommand(client *c) {
             addReplyHumanLongDouble(c,xy[1]);
         }
     }
+}
+
+list* geopos_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* GEODIST key ele1 ele2 [unit]
@@ -967,3 +1014,9 @@ void geodistCommand(client *c) {
         addReplyDoubleDistance(c,
             geohashGetDistance(xyxy[0],xyxy[1],xyxy[2],xyxy[3]) / to_meter);
 }
+
+list* geodist_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+

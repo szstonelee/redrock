@@ -31,6 +31,7 @@
  */
 
 #include "server.h"
+#include "rock.h"
 
 /*-----------------------------------------------------------------------------
  * Incremental collection of expired keys.
@@ -551,9 +552,19 @@ void expireCommand(client *c) {
     expireGenericCommand(c,mstime(),UNIT_SECONDS);
 }
 
+list* expire_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* EXPIREAT key time */
 void expireatCommand(client *c) {
     expireGenericCommand(c,0,UNIT_SECONDS);
+}
+
+list* expireat_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* PEXPIRE key milliseconds */
@@ -561,9 +572,19 @@ void pexpireCommand(client *c) {
     expireGenericCommand(c,mstime(),UNIT_MILLISECONDS);
 }
 
+list* pexpire_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* PEXPIREAT key ms_time */
 void pexpireatCommand(client *c) {
     expireGenericCommand(c,0,UNIT_MILLISECONDS);
+}
+
+list* pexpireat_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* Implements TTL and PTTL */
@@ -594,9 +615,19 @@ void ttlCommand(client *c) {
     ttlGenericCommand(c, 0);
 }
 
+list* ttl_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* PTTL key */
 void pttlCommand(client *c) {
     ttlGenericCommand(c, 1);
+}
+
+list* pttl_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 /* PERSIST key */
@@ -615,11 +646,21 @@ void persistCommand(client *c) {
     }
 }
 
+list* persist_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* TOUCH key1 [key2 key3 ... keyN] */
 void touchCommand(client *c) {
     int touched = 0;
     for (int j = 1; j < c->argc; j++)
         if (lookupKeyRead(c->db,c->argv[j]) != NULL) touched++;
     addReplyLongLong(c,touched);
+}
+
+list* touch_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 

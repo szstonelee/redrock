@@ -33,6 +33,8 @@
 #include "crc64.h"
 #include "bio.h"
 
+#include "rock.h"
+
 #include <arpa/inet.h>
 #include <signal.h>
 #include <dlfcn.h>
@@ -888,6 +890,18 @@ NULL
     } else {
         addReplySubcommandSyntaxError(c);
         return;
+    }
+}
+
+list* debug_cmd_for_rock(const client *c)
+{
+    if (c->argc == 3)
+    {
+        return generic_get_one_key_for_rock(c, 2);
+    }
+    else
+    {
+        return NULL;
     }
 }
 

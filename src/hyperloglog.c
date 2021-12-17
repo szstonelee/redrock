@@ -30,6 +30,7 @@
  */
 
 #include "server.h"
+#include "rock.h"
 
 #include <stdint.h>
 #include <math.h>
@@ -1216,6 +1217,11 @@ void pfaddCommand(client *c) {
     addReply(c, updated ? shared.cone : shared.czero);
 }
 
+list* pfadd_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 /* PFCOUNT var -> approximated cardinality of set. */
 void pfcountCommand(client *c) {
     robj *o;
@@ -1306,6 +1312,11 @@ void pfcountCommand(client *c) {
     }
 }
 
+list* pfcount_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock(c, 1, 1);
+}
+
 /* PFMERGE dest src1 src2 src3 ... srcN => OK */
 void pfmergeCommand(client *c) {
     uint8_t max[HLL_REGISTERS];
@@ -1378,6 +1389,11 @@ void pfmergeCommand(client *c) {
     notifyKeyspaceEvent(NOTIFY_STRING,"pfadd",c->argv[1],c->db->id);
     server.dirty++;
     addReply(c,shared.ok);
+}
+
+list* pfmerge_cmd_for_rock(const client *c)
+{
+    return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 
 /* ========================== Testing / Debugging  ========================== */
@@ -1593,3 +1609,7 @@ arityerr:
         "Wrong number of arguments for the '%s' subcommand",cmd);
 }
 
+list* pfdebug_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 2);
+}

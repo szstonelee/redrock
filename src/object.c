@@ -29,6 +29,8 @@
  */
 
 #include "server.h"
+#include "rock.h"
+
 #include <math.h>
 #include <ctype.h>
 
@@ -1288,6 +1290,18 @@ NULL
         addReplyLongLong(c,LFUDecrAndReturn(o));
     } else {
         addReplySubcommandSyntaxError(c);
+    }
+}
+
+list* object_cmd_for_rock(const client *c)
+{
+    if (c->argc == 3)
+    {
+        return generic_get_one_key_for_rock(c, 2);
+    }
+    else
+    {
+        return NULL;
     }
 }
 
