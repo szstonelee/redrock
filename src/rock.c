@@ -436,6 +436,9 @@ void create_shared_object_for_rock()
     shared.rock_val_str_int = createStringObjectFromLongLong(val);
     makeObjectShared(shared.rock_val_str_int);
     
+    shared.rock_val_list_quicklist = createQuicklistObject();
+    makeObjectShared(shared.rock_val_list_quicklist);
+
 }
 
 /* Called in main thread 
@@ -452,8 +455,11 @@ static list* get_keys_in_rock_for_command(const client *c)
     serverAssert(c->rock_key_num == 0);
 
     struct redisCommand *cmd = lookupCommand(c->argv[0]->ptr);
+    /*
     if (cmd == NULL)
         return NULL;
+    */
+    serverAssert(cmd);
 
     if (c->flags & CLIENT_MULTI)
     {
@@ -479,37 +485,27 @@ static list* get_keys_in_rock_for_command(const client *c)
     }
 }
 
-/* This is called by proocessInputBuffer() in netwroking.c
- * It will check the rock keys for current command in buffer
- * and if OK process the command and return.
- * Return C_ERR if processCommandAndResetClient() return C_ERR
- * indicating the caller need return to avoid looping and trimming the client buffer.
- * Otherwise, return C_OK, indicating in the caller, it can continue in the loop.
- */
-int processCommandAndResetClient(client *c);        // networkng.c, no declaration in any header
-int process_cmd_in_processInputBuffer(client *c)
-{
-    int ret = C_OK;
 
+/* This is called in main thread by processCommand() before going into call().
+ * If return 1, indicating NOT going into call() because the client trap in rock state.
+ * Otherwise, return 0, meaning the client is OK for call() for current command.
+ * If the client trap into rock state, it will be in aysnc mode and recover from on_recover_data(),
+ * which will later call processCommandAndResetClient() again in resume_command_for_client_in_async_mode()
+ * in rock_read.c. processCommandAndResetClient() will call processCommand().
+ */
+int check_and_set_rock_status_in_processCommand(client *c)
+{
+    serverAssert(!is_client_in_waiting_rock_value_state(c));
+
+    // check and set rock state if there are some keys needed to read for async mode
     list *rock_keys = get_keys_in_rock_for_command(c);
-    if (rock_keys == NULL)
+    if (rock_keys)
     {
-        // NO rock_key or TRANSACTION with no EXEC command
-        if (processCommandAndResetClient(c) == C_ERR)
-            ret = C_ERR;
-    }
-    else
-    {
-        const int sync_mode = on_client_need_rock_keys(c, rock_keys);
-        if (sync_mode)
-        {
-            if (processCommandAndResetClient(c) == C_ERR)
-                ret = C_ERR;
-        }
+        on_client_need_rock_keys(c, rock_keys);
         listRelease(rock_keys);
     }
 
-    return ret;
+    return is_client_in_waiting_rock_value_state(c);
 }
 
 /* Get one key from client's argv. 
@@ -732,8 +728,7 @@ void rock_evict(client *c)
 
         robj *o_key = createStringObject(key, sdslen(key));
         addReplyBulk(c, o_key);
-        decrRefCount(o_key);
-
+    
         robj *r = NULL;
         dictEntry *de = dictFind(db->dict, key);
         if (de == NULL)
@@ -753,11 +748,10 @@ void rock_evict(client *c)
             }
             else if (!is_evict_value(val))
             {
-                r = createStringObject(shared_val, sdslen(can_not_evict_type));
+                r = createStringObject(can_not_evict_type, sdslen(can_not_evict_type));
             }
             else
             {
-                robj *o_key = createStringObject(key, sdslen(key));
                 if (keyIsExpired(db, o_key))
                 {
                     r = createStringObject(expire_val, sdslen(expire_val));
@@ -769,11 +763,12 @@ void rock_evict(client *c)
 
                     r = createStringObject(can_evict, sdslen(can_evict));
                 }
-                decrRefCount(o_key);
             }
         }
 
         addReplyBulk(c, r);
+
+        decrRefCount(o_key);
         decrRefCount(r);
     }
 

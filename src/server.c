@@ -3969,7 +3969,11 @@ static int cmdHasMovableKeys(struct redisCommand *cmd) {
  *
  * If C_OK is returned the client is still alive and valid and
  * other operations can be performed by the caller. Otherwise
- * if C_ERR is returned the client was destroyed (i.e. after QUIT). */
+ * if C_ERR is returned the client was destroyed (i.e. after QUIT). 
+ * 
+ * NOTE: I add a new return value, i.e., C_ROCK, to make caller processCommandAndResetClient()
+ *       skip commandProcessed(). See processCommandAndResetClient() for reference.
+ * */
 int processCommand(client *c) {
     if (!server.lua_timedout) {
         /* Both EXEC and EVAL call call() directly so there should be
@@ -4253,10 +4257,17 @@ int processCommand(client *c) {
         queueMultiCommand(c);
         addReply(c,shared.queued);
     } else {
-        call(c,CMD_CALL_FULL);
-        c->woff = server.master_repl_offset;
-        if (listLength(server.ready_keys))
-            handleClientsBlockedOnKeys();
+        if (check_and_set_rock_status_in_processCommand(c))
+        {
+            return C_ROCK;
+        }
+        else
+        {
+            call(c,CMD_CALL_FULL);
+            c->woff = server.master_repl_offset;
+            if (listLength(server.ready_keys))
+                handleClientsBlockedOnKeys();
+        }
     }
 
     return C_OK;

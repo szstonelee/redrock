@@ -2022,7 +2022,7 @@ int processCommandAndResetClient(client *c) {
     int deadclient = 0;
     client *old_client = server.current_client;
     server.current_client = c;
-    if (processCommand(c) == C_OK) {
+    if (processCommand(c) == C_OK) {        // NOTE: processCommand() could return C_ROCK
         commandProcessed(c);
     }
     if (server.current_client == NULL) deadclient = 1;
@@ -2125,7 +2125,6 @@ void processInputBuffer(client *c) {
                 c->flags |= CLIENT_PENDING_COMMAND;
                 break;
             }
-#if 0       // Commont previouse code
             /* We are finally ready to execute the command. */
             if (processCommandAndResetClient(c) == C_ERR) {
                 /* If the client is no longer valid, we avoid exiting this
@@ -2133,9 +2132,10 @@ void processInputBuffer(client *c) {
                  * ASAP in that case. */
                 return;
             }
-#endif
+#if 0       // Commont previouse code
             if (process_cmd_in_processInputBuffer(c) == C_ERR)
                 return;
+#endif
         }
     }
 

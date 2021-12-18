@@ -27,7 +27,8 @@ void rock_evict(client *c);
 
 // list* get_keys_in_rock_for_command(const client *c);
 
-int process_cmd_in_processInputBuffer(client *c);
+// int process_cmd_in_processInputBuffer(client *c);
+int check_and_set_rock_status_in_processCommand(client *c);
 
 
 /* Check whether o is a rock value.
@@ -36,7 +37,8 @@ int process_cmd_in_processInputBuffer(client *c);
 inline int is_rock_value(const robj *v)
 {
     return  v == shared.rock_val_str_other ||
-            v == shared.rock_val_str_int;
+            v == shared.rock_val_str_int ||
+            v == shared.rock_val_list_quicklist;
 }
 
 /* Check whether o is a shared value which is made by makeObjectShared()

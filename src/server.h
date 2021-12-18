@@ -88,6 +88,8 @@ typedef long long ustime_t; /* microsecond time type. */
 #define C_OK                    0
 #define C_ERR                   -1
 
+#define C_ROCK                  250           /* Special status code for processCommandAndResetClient() in netwroking.c */
+
 /* Static server configuration */
 #define CONFIG_DEFAULT_HZ        10             /* Time interrupt calls/sec. */
 #define CONFIG_MIN_HZ            1
@@ -997,6 +999,7 @@ struct sharedObjectsStruct {
 
     robj *rock_val_str_int;
     robj *rock_val_str_other;
+    robj *rock_val_list_quicklist;
 };
 
 /* ZSETs use a specialized version of Skiplists */

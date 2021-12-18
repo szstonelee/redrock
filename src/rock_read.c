@@ -372,17 +372,28 @@ static void try_assign_tasks()
 
 /* Called by main thraed because c->rock_key_num changes to zero.
  * But because it is called by async mode (from RocksDB recovering), 
- * so we need check again because some other keys may be evicted to RocksDB.
+ * so we need check again (by calling processCommandAndResetClient())
+ * because some other keys may be evicted to RocksDB.
  * The caller guaratee noot in lock mode.
  */
+int processCommandAndResetClient(client *c);        // networkng.c, no declaration in any header
 static void resume_command_for_client_in_async_mode(client *c)
 {
+#if 0
     serverAssert(c->rock_key_num == 0);
     
     process_cmd_in_processInputBuffer(c);       // resume the command in async mode
 
     /* Then process client if it has more data in it's buffer. */
     /* check block.c for reference */
+    if (c->querybuf && sdslen(c->querybuf) > 0) 
+        processInputBuffer(c);
+#endif
+
+    serverAssert(!is_client_in_waiting_rock_value_state(c));
+
+    processCommandAndResetClient(c);
+
     if (c->querybuf && sdslen(c->querybuf) > 0) 
         processInputBuffer(c);
 }

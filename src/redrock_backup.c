@@ -243,3 +243,36 @@ static int read_from_rocksdb(const int cnt, const sds* keys, sds* vals)
 
     return real_read_cnt;
 }
+
+/* This is called by proocessInputBuffer() in netwroking.c
+ * It will check the rock keys for current command in buffer
+ * and if OK process the command and return.
+ * Return C_ERR if processCommandAndResetClient() return C_ERR
+ * indicating the caller need return to avoid looping and trimming the client buffer.
+ * Otherwise, return C_OK, indicating in the caller, it can continue in the loop.
+ */
+int processCommandAndResetClient(client *c);        // networkng.c, no declaration in any header
+int process_cmd_in_processInputBuffer(client *c)
+{
+    int ret = C_OK;
+
+    list *rock_keys = get_keys_in_rock_for_command(c);
+    if (rock_keys == NULL)
+    {
+        // NO rock_key or TRANSACTION with no EXEC command
+        if (processCommandAndResetClient(c) == C_ERR)
+            ret = C_ERR;
+    }
+    else
+    {
+        const int sync_mode = on_client_need_rock_keys(c, rock_keys);
+        if (sync_mode)
+        {
+            if (processCommandAndResetClient(c) == C_ERR)
+                ret = C_ERR;
+        }
+        listRelease(rock_keys);
+    }
+
+    return ret;
+}
