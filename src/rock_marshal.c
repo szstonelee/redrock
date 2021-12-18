@@ -9,15 +9,14 @@
 #define ROCK_TYPE_STRING_INT        0
 #define ROCK_TYPE_STRING_OTHER      1       // OBJ_ENCODING_RAW or OBJ_ENCODING_EMBSTR
 #define ROCK_TYPE_LIST              2       // List can only be encoded as quicklist
+#define ROCK_TYPE_SET_INT           3
+#define ROCK_TYPE_SET_HT            4
 
-#define ROCK_TYPE_SET_HT            3
-// #define ROCK_TYPE_ZSET   3
-#define ROCK_TYPE_HASH_HT           4
-#define ROCK_TYPE_ZSET_SKIPLIST 5 /* ZSET version 2 with doubles stored in binary. */
+#define ROCK_TYPE_HASH_HT           5
+#define ROCK_TYPE_ZSET_SKIPLIST     6 /* ZSET version 2 with doubles stored in binary. */
 /* Object types for encoded objects. */
 // #define ROCK_TYPE_HASH_ZIPMAP    9
 // #define ROCK_TYPE_LIST_ZIPLIST  10
-#define ROCK_TYPE_SET_INTSET        11
 #define ROCK_TYPE_ZSET_ZIPLIST      12
 #define ROCK_TYPE_HASH_ZIPLIST      13
 // #define ROCK_TYPE_LIST_QUICKLIST    14
@@ -53,6 +52,17 @@ robj* get_match_rock_value(const robj *o)
 
         break;
 
+    case OBJ_SET:
+        if (o->encoding == OBJ_ENCODING_INTSET)
+        {
+            match = shared.rock_val_set_int;
+        }
+        else if (o->encoding == OBJ_ENCODING_HT)
+        {
+            match = shared.rock_val_set_ht;
+        }
+        break;
+
     default:
         serverPanic("get_match_rock_value() unmatched!");
     }
@@ -61,17 +71,18 @@ robj* get_match_rock_value(const robj *o)
     return match;
 }
 
-static size_t cal_room_str_int(const robj *o)
-{
-    UNUSED(o);
-    return 8;
-}
 
 static sds marshal_str_int(const robj *o, sds s)
 {
     long long val = (long long)o->ptr;
     s = sdscatlen(s, &val, 8);
     return s;
+}
+
+static size_t cal_room_str_int(const robj *o)
+{
+    UNUSED(o);
+    return 8;
 }
 
 static robj* unmarshal_str_int(const char *buf, const size_t sz)
@@ -81,52 +92,20 @@ static robj* unmarshal_str_int(const char *buf, const size_t sz)
     return createStringObjectFromLongLong(val);
 }
 
-static size_t cal_room_str_other(const robj *o)
-{
-    return sdslen(o->ptr);
-}
-
 static sds marshal_str_other(const robj *o, sds s)
 {
     s = sdscatlen(s, o->ptr, sdslen(o->ptr));
     return s;
 }
 
+static size_t cal_room_str_other(const robj *o)
+{
+    return sdslen(o->ptr);
+}
+
 static robj* unmarshal_str_other(const char *buf, const size_t sz)
 {
     return createStringObject(buf, sz);
-}
-
-static size_t cal_room_list(const robj *o)
-{
-    size_t room = 0;
-
-    quicklist *ql = o->ptr;    
-
-    quicklistIter *qit = quicklistGetIterator(ql, AL_START_HEAD);
-    quicklistEntry entry;
-
-    while(quicklistNext(qit, &entry)) 
-    {
-        if (entry.value) 
-        {
-            unsigned int len = entry.sz;            
-            room += sizeof(unsigned int);
-            room += len;
-        } 
-        else 
-        {
-            sds str = sdsfromlonglong(entry.longval);
-            unsigned int len = (unsigned int)sdslen(str);
-            room += sizeof(unsigned int);
-            room += len;
-            sdsfree(str);
-        }
-    }
-
-    quicklistReleaseIterator(qit);
-
-    return room;    
 }
 
 /* We use AOF way. In futrue, maybe change to RDB way 
@@ -162,6 +141,38 @@ static sds marshal_list(const robj *o, sds s)
     return s;
 }
 
+static size_t cal_room_list(const robj *o)
+{
+    size_t room = 0;
+
+    quicklist *ql = o->ptr;    
+
+    quicklistIter *qit = quicklistGetIterator(ql, AL_START_HEAD);
+    quicklistEntry entry;
+
+    while(quicklistNext(qit, &entry)) 
+    {
+        if (entry.value) 
+        {
+            unsigned int len = entry.sz;            
+            room += sizeof(unsigned int);
+            room += len;
+        } 
+        else 
+        {
+            sds str = sdsfromlonglong(entry.longval);
+            unsigned int len = (unsigned int)sdslen(str);
+            room += sizeof(unsigned int);
+            room += len;
+            sdsfree(str);
+        }
+    }
+
+    quicklistReleaseIterator(qit);
+
+    return room;    
+}
+
 static robj* unmarshal_list(const char *buf, const size_t sz)
 {
     robj *list = createQuicklistObject();
@@ -184,6 +195,59 @@ static robj* unmarshal_list(const char *buf, const size_t sz)
     serverAssert(len == 0);
 
     return list;
+}
+
+static sds marshal_set_int(const robj *o, sds s)
+{
+    intset *is = o->ptr;
+    s = sdscatlen(s, &(is->encoding), sizeof(uint32_t));
+    s = sdscatlen(s, &(is->length), sizeof(uint32_t));
+    size_t content_len = is->encoding * is->length;
+    s = sdscatlen(s, is->contents, content_len);
+
+    return s;
+}
+
+static size_t cal_room_set_int(const robj *o)
+{
+    size_t room = 0;
+
+    intset *is = o->ptr;
+    room += sizeof(uint32_t);
+    room += sizeof(uint32_t);
+    size_t content_len = is->encoding * is->length;
+    room += content_len;
+
+    return room;
+}
+
+static robj* unmarshal_set_int(const char *buf, const size_t sz)
+{
+    long long len = sz;
+
+    char *s = (char*)buf;
+    robj *o = createIntsetObject();
+    intset *is = (intset*)(o->ptr);
+
+    uint32_t is_encoding = *((uint32_t*)s);
+    is->encoding = is_encoding;
+    s += sizeof(is_encoding);
+    len -= sizeof(is_encoding);
+
+    uint32_t is_length = *((uint32_t*)s);
+    is->length = is_length;
+    s += sizeof(is_length);
+    len -= sizeof(is_length);
+
+    /* reference intset.c intsetResize() */
+    size_t content_sz = is_length * is_encoding;
+    len -= content_sz;
+    serverAssert(len == 0);
+    is = zrealloc(is, sizeof(intset)+content_sz);
+    o->ptr = is;
+    memcpy(is->contents, s, content_sz);
+    
+    return o;
 }
 
 /* It is for memory optimization. 
@@ -225,6 +289,8 @@ static sds create_sds_and_make_room(const robj* o, unsigned char *rock_type)
     case OBJ_SET:
         if (o->encoding == OBJ_ENCODING_INTSET) 
         {
+            *rock_type = ROCK_TYPE_SET_INT;
+            obj_room = cal_room_set_int(o);
         } 
         else if (o->encoding == OBJ_ENCODING_HT) 
         {
@@ -249,11 +315,13 @@ static sds create_sds_and_make_room(const robj* o, unsigned char *rock_type)
         }
         break;
 
+/*
     case OBJ_MODULE:
         break;
 
     case OBJ_STREAM:
         break;
+*/
 
     default:
         serverPanic("create_sds_and_make_room(), unkkwon type = %d", o->type);
@@ -296,6 +364,10 @@ sds marshal_object(const robj* o)
         s = marshal_list(o, s);
         break;
 
+    case ROCK_TYPE_SET_INT:
+        s = marshal_set_int(o, s);
+        break;
+
     default:
         serverPanic("marshal_object(), unknown rock_type = %d", (int)rock_type);
     }
@@ -325,6 +397,10 @@ robj* unmarshal_object(const sds v)
 
     case ROCK_TYPE_LIST:
         o = unmarshal_list(buf, sz);
+        break;
+
+    case ROCK_TYPE_SET_INT:
+        o = unmarshal_set_int(buf, sz);
         break;
 
     default:
@@ -363,6 +439,18 @@ int debug_check_type(const sds recover_val, const robj *shared_obj)
         if (shared_obj == shared.rock_val_list_quicklist)
             return 1;
         
+        break;
+
+    case ROCK_TYPE_SET_INT:
+        if (shared_obj == shared.rock_val_set_int)
+            return 1;
+        
+        break;
+
+    case ROCK_TYPE_SET_HT:
+        if (shared_obj == shared.rock_val_set_ht)
+            return 1;
+
         break;
 
     default:

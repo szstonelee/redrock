@@ -1000,6 +1000,8 @@ struct sharedObjectsStruct {
     robj *rock_val_str_int;
     robj *rock_val_str_other;
     robj *rock_val_list_quicklist;
+    robj *rock_val_set_int;
+    robj *rock_val_set_ht;
 };
 
 /* ZSETs use a specialized version of Skiplists */

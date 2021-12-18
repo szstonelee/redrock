@@ -439,6 +439,11 @@ void create_shared_object_for_rock()
     shared.rock_val_list_quicklist = createQuicklistObject();
     makeObjectShared(shared.rock_val_list_quicklist);
 
+    shared.rock_val_set_int = createIntsetObject();
+    makeObjectShared(shared.rock_val_set_int);
+
+    shared.rock_val_set_ht = createSetObject();
+    makeObjectShared(shared.rock_val_set_ht);
 }
 
 /* Called in main thread 
