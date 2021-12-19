@@ -204,6 +204,16 @@ def lmove():
         raise "lmove fail4"
 
 
+def ltrim():
+    r.execute_command("del", key)
+    r.rpush(key, "one", "two", "three")
+    rock_evict(key)
+    r.execute_command("ltrim", key, 1, -1)
+    res = r.lrange(key, 0, -1)
+    if res != ["two", "three"]:
+        raise "ltrim fail"
+
+
 def _main():
     lpush()
     rpush()
@@ -220,6 +230,7 @@ def _main():
     lpos()
     lset()
     lmove()
+    ltrim()
 
 
 if __name__ == '__main__':
