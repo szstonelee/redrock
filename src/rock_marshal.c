@@ -11,15 +11,11 @@
 #define ROCK_TYPE_LIST              2       // List can only be encoded as quicklist
 #define ROCK_TYPE_SET_INT           3
 #define ROCK_TYPE_SET_HT            4
-
 #define ROCK_TYPE_HASH_HT           5
-#define ROCK_TYPE_ZSET_SKIPLIST     6 /* ZSET version 2 with doubles stored in binary. */
-/* Object types for encoded objects. */
-// #define ROCK_TYPE_HASH_ZIPMAP    9
-// #define ROCK_TYPE_LIST_ZIPLIST  10
-#define ROCK_TYPE_ZSET_ZIPLIST      12
-#define ROCK_TYPE_HASH_ZIPLIST      13
-// #define ROCK_TYPE_LIST_QUICKLIST    14
+#define ROCK_TYPE_HASH_ZIPLIST      6
+#define ROCK_TYPE_ZSET_ZIPLIST      7
+#define ROCK_TYPE_ZSET_SKIPLIST     8
+
 #define ROCK_TYPE_INVALID           127
 
 // 1 byte for rock_type and 4 byte for LRU/LFU
@@ -60,6 +56,28 @@ robj* get_match_rock_value(const robj *o)
         else if (o->encoding == OBJ_ENCODING_HT)
         {
             match = shared.rock_val_set_ht;
+        }
+        break;
+
+    case OBJ_HASH:
+        if (o->encoding == OBJ_ENCODING_HT)
+        {
+            match = shared.rock_val_hash_ht;
+        } 
+        else if (o->encoding == OBJ_ENCODING_ZIPLIST)
+        {
+            match = shared.rock_val_hash_ziplist;
+        }
+        break;
+
+    case OBJ_ZSET:
+        if (o->encoding == OBJ_ENCODING_ZIPLIST)
+        {
+            match = shared.rock_val_zset_ziplist;
+        }
+        else if (o->encoding == OBJ_ENCODING_SKIPLIST)
+        {
+            match = shared.rock_val_zset_skiplist;
         }
         break;
 
@@ -250,6 +268,339 @@ static robj* unmarshal_set_int(const char *buf, const size_t sz)
     return o;
 }
 
+static sds marshal_set_ht(const robj *o, sds s)
+{
+    dict *set = o->ptr;
+    size_t count = dictSize(set);
+    s = sdscatlen(s, &count, sizeof(size_t));
+
+    dictIterator *di = dictGetIterator(set);
+    dictEntry* de;
+    while ((de = dictNext(di))) 
+    {
+        sds ele = dictGetKey(de);
+        size_t ele_len = sdslen(ele);
+        s = sdscatlen(s, &ele_len, sizeof(size_t));
+        s = sdscatlen(s, ele, ele_len);
+    }
+    dictReleaseIterator(di);
+
+    return s;
+}
+
+static size_t cal_room_set_ht(const robj *o)
+{
+    dict *set = o->ptr;
+    size_t room = 0;
+
+    room += sizeof(size_t);     // for above count
+
+    dictIterator *di = dictGetIterator(set);
+    dictEntry *de;
+    while ((de = dictNext(di)))
+    {
+        sds ele = dictGetKey(de);
+        size_t ele_len = sdslen(ele);
+        room += sizeof(size_t);
+        room += ele_len;
+    }
+    dictReleaseIterator(di);
+
+    return room;    
+}
+
+static robj* unmarshal_set_ht(const char *buf, const size_t sz)
+{
+    char *s = (char*)buf;
+    long long len = sz;
+
+    size_t count = *((size_t*)s);
+    s += sizeof(size_t);
+    len -= sizeof(size_t);
+
+    robj *o = createSetObject();
+    if (count > DICT_HT_INITIAL_SIZE)
+        dictExpand(o->ptr, count);
+
+    while (count--) 
+    {
+        size_t ele_len;
+        ele_len = *((size_t*)s);
+        s += sizeof(size_t);
+        len -= sizeof(size_t);
+
+            
+        sds sdsele = sdsnewlen(s, ele_len);
+        dictAdd(o->ptr, sdsele, NULL);
+        s += ele_len;
+        len -= ele_len;
+    }
+
+    serverAssert(len == 0);
+    return o;
+}
+
+static sds marshal_hash_ht(const robj *o, sds s)
+{
+    dict *hash = o->ptr;
+    size_t count = dictSize(hash);
+    s = sdscatlen(s, &count, sizeof(size_t));
+
+    dictIterator *di = dictGetIterator(hash);
+    dictEntry* de;
+    while ((de = dictNext(di))) 
+    {
+        sds field = dictGetKey(de);            
+        size_t field_len = sdslen(field);            
+        s = sdscatlen(s, &field_len, sizeof(size_t));
+        s = sdscatlen(s, field, field_len);
+
+        sds val = dictGetVal(de);
+        size_t val_len = sdslen(val);
+        s = sdscatlen(s, &val_len, sizeof(size_t));
+        s = sdscatlen(s, val, val_len);
+    }
+    dictReleaseIterator(di); 
+
+    return s;
+}
+
+static size_t cal_room_hash_ht(const robj *o)
+{
+    dict *hash = o->ptr;
+    size_t room = 0;
+
+    room += sizeof(size_t);     // for above count
+
+    dictIterator *di = dictGetIterator(hash);
+    dictEntry* de;
+    while ((de = dictNext(di))) 
+    {
+        sds field = dictGetKey(de);            
+        size_t field_len = sdslen(field);            
+        room += sizeof(size_t);
+        room += field_len;
+
+        sds val = dictGetVal(de);
+        size_t val_len = sdslen(val);
+        room += sizeof(size_t);
+        room += val_len;
+    }
+    dictReleaseIterator(di);
+
+    return room;
+}
+
+static robj* unmarshal_hash_ht(const char *buf, const size_t sz)
+{
+    char *s = (char*)buf;
+    long long len = sz;
+
+    size_t count = *((size_t*)s);
+    s += sizeof(size_t);
+    len -= sizeof(size_t);
+
+    dict *dict_internal = dictCreate(&hashDictType, NULL);
+    if (count > DICT_HT_INITIAL_SIZE)
+        dictExpand(dict_internal, count);
+
+    while (count--)
+    {
+        size_t field_len = *((size_t*)s);
+        s += sizeof(size_t);
+        len -= sizeof(size_t);
+        sds field = sdsnewlen(s, field_len);
+        s += field_len;
+        len -= field_len;
+
+        size_t val_len = *((size_t*)s);
+        s += sizeof(size_t);
+        len -= sizeof(size_t);
+        sds val = sdsnewlen(s, val_len);
+        s += val_len;
+        len -= val_len;
+
+        int ret = dictAdd(dict_internal, field, val);
+        serverAssert(ret == DICT_OK);
+    }
+
+    serverAssert(len == 0);
+
+    robj *o = createObject(OBJ_HASH, dict_internal);
+    o->encoding = OBJ_ENCODING_HT;
+
+    return o;
+}
+
+static sds marshal_hash_ziplist(const robj *o, sds s)
+{
+    size_t zip_list_bytes_len = ziplistBlobLen(o->ptr);
+    s = sdscatlen(s, &zip_list_bytes_len, sizeof(size_t));
+    s = sdscatlen(s, o->ptr, zip_list_bytes_len);
+
+    return s;
+}
+
+static size_t cal_room_hash_ziplist(const robj *o)
+{
+    size_t room = 0;
+
+    room += sizeof(size_t);
+    size_t zip_list_bytes_len = ziplistBlobLen(o->ptr);
+    room += zip_list_bytes_len;
+
+    return room;
+}
+
+static robj* unmarshal_hash_ziplist(const char *buf, const size_t sz)
+{
+    char *s = (char*)buf;
+    long long len = sz;
+
+    size_t zip_list_bytes_len = *((size_t*)s);
+    s += sizeof(size_t);
+    len -= sizeof(size_t);
+
+    char *ziplist = zmalloc(zip_list_bytes_len);
+    memcpy(ziplist, s, zip_list_bytes_len);
+    s += zip_list_bytes_len;
+    len -= zip_list_bytes_len;
+
+    robj *o = createObject(OBJ_HASH, ziplist);
+    o->encoding = OBJ_ENCODING_ZIPLIST;
+
+    serverAssert(len == 0);
+    return o;
+}
+
+static sds marshal_zset_ziplist(const robj *o, sds s)
+{
+    size_t zip_list_bytes_len = ziplistBlobLen(o->ptr);
+    s = sdscatlen(s, &zip_list_bytes_len, sizeof(size_t));
+    s = sdscatlen(s, o->ptr, zip_list_bytes_len);
+
+    return s;
+}
+
+static size_t cal_room_zset_ziplist(const robj *o)
+{
+    size_t room = 0;
+
+    room += sizeof(size_t);
+    size_t zip_list_bytes_len = ziplistBlobLen(o->ptr);
+    room += zip_list_bytes_len;
+
+    return room;
+}
+
+static robj* unmarshal_zset_ziplist(const char *buf, const size_t sz)
+{
+    char *s = (char*)buf;
+    long long len = sz;
+
+    size_t zip_list_bytes_len = *((size_t*)s);
+    s += sizeof(size_t);
+    len -= sizeof(size_t);
+
+    char *ziplist = zmalloc(zip_list_bytes_len);
+    memcpy(ziplist, s, zip_list_bytes_len);
+    s += zip_list_bytes_len;
+    len -= zip_list_bytes_len;
+
+    serverAssert(len == 0);
+    robj *o = createObject(OBJ_ZSET, ziplist);
+    o->encoding = OBJ_ENCODING_ZIPLIST;
+
+    return o;
+}
+
+static sds marshal_zset_skiplist(const robj *o, sds s)
+{
+    zset *zs = o->ptr;
+    zskiplist *zsl = zs->zsl;
+    uint64_t zsl_length = zsl->length;
+    s = sdscatlen(s, &zsl_length, sizeof(uint64_t));
+
+    zskiplistNode *zn = zsl->tail;
+    while (zn != NULL) 
+    {
+        sds ele = zn->ele;
+        size_t ele_len = sdslen(ele);
+        s = sdscatlen(s, &ele_len, sizeof(size_t));
+        s = sdscatlen(s, ele, ele_len);
+        double score = zn->score;
+        s = sdscatlen(s, &score, sizeof(double));
+
+        zn = zn->backward;
+    }
+
+    return s;
+}
+
+static size_t cal_room_zset_skiplist(const robj *o)
+{
+    size_t room = 0;
+
+    zset *zs = o->ptr;
+    zskiplist *zsl = zs->zsl;
+    room += sizeof(uint64_t);
+
+    zskiplistNode *zn = zsl->tail;
+    while (zn != NULL)
+    {
+        sds ele = zn->ele;
+        size_t ele_len = sdslen(ele);
+        room += sizeof(size_t);
+        room += ele_len;
+
+        room += sizeof(double);
+
+        zn = zn->backward;
+    }
+
+    return room;
+}
+
+static robj* unmarshal_zset_skiplist(const char *buf, const size_t sz)
+{
+    char *s = (char*)buf;
+    long long len = sz;
+
+    uint64_t zset_len = *((uint64_t*)s);
+    s += sizeof(uint64_t);
+    len -= sizeof(uint64_t);
+        
+    robj *o = createZsetObject();
+    zset *zs = o->ptr;
+
+    if (zset_len > DICT_HT_INITIAL_SIZE)
+        dictExpand(zs->dict, zset_len);
+        
+    while (zset_len--) {
+        sds sdsele;
+        double score;
+        zskiplistNode *znode;
+
+        size_t ele_len = *((size_t*)s);
+        s += sizeof(size_t);
+        len -= sizeof(size_t);
+        sdsele = sdsnewlen(s, ele_len);
+        s += ele_len;
+        len -= ele_len;
+
+        score = *((double*)s);
+        s += sizeof(double);
+        len -= sizeof(double);
+
+        znode = zslInsert(zs->zsl, score, sdsele);
+        int ret = dictAdd(zs->dict, sdsele, &znode->score);
+        serverAssert(ret == DICT_OK);
+    }
+
+    serverAssert(len == 0);
+    return o;
+}
+
 /* It is for memory optimization. 
  * We try our best to make enough room for a sds.
  * The frist byte is ROCK TYPE (see aboving).
@@ -294,34 +645,36 @@ static sds create_sds_and_make_room(const robj* o, unsigned char *rock_type)
         } 
         else if (o->encoding == OBJ_ENCODING_HT) 
         {
-        } 
-        break;
-
-    case OBJ_ZSET:
-        if (o->encoding == OBJ_ENCODING_ZIPLIST) 
-        {
-        } 
-        else if (o->encoding == OBJ_ENCODING_SKIPLIST) 
-        {
+            *rock_type = ROCK_TYPE_SET_HT;
+            obj_room = cal_room_set_ht(o);
         } 
         break;
 
     case OBJ_HASH:
         if (o->encoding == OBJ_ENCODING_ZIPLIST) 
         {
+            *rock_type = ROCK_TYPE_HASH_ZIPLIST;
+            obj_room = cal_room_hash_ziplist(o);
         } 
         else if (o->encoding == OBJ_ENCODING_HT) 
         {
+            *rock_type = ROCK_TYPE_HASH_HT;
+            obj_room = cal_room_hash_ht(o);
         }
         break;
 
-/*
-    case OBJ_MODULE:
+    case OBJ_ZSET:
+        if (o->encoding == OBJ_ENCODING_ZIPLIST) 
+        {
+            *rock_type = ROCK_TYPE_ZSET_ZIPLIST;
+            obj_room = cal_room_zset_ziplist(o);
+        } 
+        else if (o->encoding == OBJ_ENCODING_SKIPLIST) 
+        {
+            *rock_type = ROCK_TYPE_ZSET_SKIPLIST;
+            obj_room = cal_room_zset_skiplist(o);
+        } 
         break;
-
-    case OBJ_STREAM:
-        break;
-*/
 
     default:
         serverPanic("create_sds_and_make_room(), unkkwon type = %d", o->type);
@@ -368,13 +721,32 @@ sds marshal_object(const robj* o)
         s = marshal_set_int(o, s);
         break;
 
+    case ROCK_TYPE_SET_HT:
+        s = marshal_set_ht(o, s);
+        break;
+
+    case ROCK_TYPE_HASH_HT:
+        s = marshal_hash_ht(o, s);
+        break;
+
+    case ROCK_TYPE_HASH_ZIPLIST:
+        s = marshal_hash_ziplist(o, s);
+        break;
+
+    case ROCK_TYPE_ZSET_ZIPLIST:
+        s = marshal_zset_ziplist(o, s);
+        break;
+
+    case ROCK_TYPE_ZSET_SKIPLIST:
+        s = marshal_zset_skiplist(o, s);
+        break;
+
     default:
         serverPanic("marshal_object(), unknown rock_type = %d", (int)rock_type);
     }
 
     return s;
 }
-
 
 robj* unmarshal_object(const sds v)
 {
@@ -401,6 +773,26 @@ robj* unmarshal_object(const sds v)
 
     case ROCK_TYPE_SET_INT:
         o = unmarshal_set_int(buf, sz);
+        break;
+
+    case ROCK_TYPE_SET_HT:
+        o = unmarshal_set_ht(buf, sz);
+        break;
+
+    case ROCK_TYPE_HASH_HT:
+        o = unmarshal_hash_ht(buf, sz);
+        break;
+
+    case ROCK_TYPE_HASH_ZIPLIST:
+        o = unmarshal_hash_ziplist(buf, sz);
+        break;
+
+    case ROCK_TYPE_ZSET_ZIPLIST:
+        o = unmarshal_zset_ziplist(buf, sz);
+        break;
+
+    case ROCK_TYPE_ZSET_SKIPLIST:
+        o = unmarshal_zset_skiplist(buf, sz);
         break;
 
     default:
@@ -449,6 +841,30 @@ int debug_check_type(const sds recover_val, const robj *shared_obj)
 
     case ROCK_TYPE_SET_HT:
         if (shared_obj == shared.rock_val_set_ht)
+            return 1;
+
+        break;
+
+    case ROCK_TYPE_HASH_HT:
+        if (shared_obj == shared.rock_val_hash_ht)
+            return 1;
+
+        break;
+
+    case ROCK_TYPE_HASH_ZIPLIST:
+        if (shared_obj == shared.rock_val_hash_ziplist)
+            return 1;
+
+        break;
+
+    case ROCK_TYPE_ZSET_ZIPLIST:
+        if (shared_obj == shared.rock_val_zset_ziplist)
+            return 1;
+
+        break;
+
+    case ROCK_TYPE_ZSET_SKIPLIST:
+        if (shared_obj == shared.rock_val_zset_skiplist)
             return 1;
 
         break;

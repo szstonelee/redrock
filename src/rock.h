@@ -40,7 +40,11 @@ inline int is_rock_value(const robj *v)
             v == shared.rock_val_str_int ||
             v == shared.rock_val_list_quicklist ||
             v == shared.rock_val_set_int ||
-            v == shared.rock_val_set_ht;
+            v == shared.rock_val_set_ht ||
+            v == shared.rock_val_hash_ziplist ||
+            v == shared.rock_val_hash_ht ||
+            v == shared.rock_val_zset_ziplist ||
+            v == shared.rock_val_zset_skiplist;
 }
 
 /* Check whether o is a shared value which is made by makeObjectShared()

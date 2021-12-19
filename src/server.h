@@ -1002,6 +1002,10 @@ struct sharedObjectsStruct {
     robj *rock_val_list_quicklist;
     robj *rock_val_set_int;
     robj *rock_val_set_ht;
+    robj *rock_val_hash_ziplist;
+    robj *rock_val_hash_ht;
+    robj *rock_val_zset_ziplist;
+    robj *rock_val_zset_skiplist;
 };
 
 /* ZSETs use a specialized version of Skiplists */

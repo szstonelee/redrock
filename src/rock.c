@@ -444,6 +444,21 @@ void create_shared_object_for_rock()
 
     shared.rock_val_set_ht = createSetObject();
     makeObjectShared(shared.rock_val_set_ht);
+
+    shared.rock_val_hash_ht = createObject(OBJ_HASH, NULL);
+    shared.rock_val_hash_ht->encoding = OBJ_ENCODING_HT;
+    makeObjectShared(shared.rock_val_hash_ht);
+
+    shared.rock_val_hash_ziplist = createObject(OBJ_HASH, NULL);
+    shared.rock_val_hash_ziplist->encoding = OBJ_ENCODING_ZIPLIST;
+    makeObjectShared(shared.rock_val_hash_ziplist);
+
+    shared.rock_val_zset_ziplist = createObject(OBJ_ZSET, NULL);
+    shared.rock_val_zset_ziplist->encoding = OBJ_ENCODING_ZIPLIST;
+    makeObjectShared(shared.rock_val_zset_ziplist);
+
+    shared.rock_val_zset_skiplist = createZsetObject();
+    makeObjectShared(shared.rock_val_zset_skiplist);
 }
 
 /* Called in main thread 
