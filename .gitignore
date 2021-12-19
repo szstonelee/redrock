@@ -40,3 +40,5 @@ compile_commands.json
 redis.code-workspace
 redrock
 .github/*
+ .DS_Store
+ tests/.DS_Store

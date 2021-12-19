@@ -118,6 +118,9 @@ list* incrby_cmd_for_rock(const client *c);
 list* decrby_cmd_for_rock(const client *c);
 list* incrbyfloat_cmd_for_rock(const client *c);
 list* getset_cmd_for_rock(const client *c);
+list* psetex_cmd_for_rock(const client *c);
+list* set_cmd_for_rock(const client *c);
+list* setex_cmd_for_rock(const client *c);
 
 // bitop.c
 list* setbit_cmd_for_rock(const client *c);

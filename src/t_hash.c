@@ -687,10 +687,12 @@ void hsetCommand(client *c) {
     server.dirty += (c->argc - 2)/2;
 }
 
+/*
 list* hmset_cmd_for_rock(const client *c)
 {
     return generic_get_one_key_for_rock(c, 1);
 }
+*/
 
 list* hset_cmd_for_rock(const client *c)
 {

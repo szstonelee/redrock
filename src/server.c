@@ -215,7 +215,7 @@ struct redisCommand redisCommandTable[] = {
 
     /* Note that we can't flag set as fast, since it may perform an
      * implicit DEL of a large key. */
-    {"set", NULL, setCommand,-3,
+    {"set", set_cmd_for_rock, setCommand,-3,
      "write use-memory @string",
      0,NULL,1,1,1,0,0,0},
 
@@ -223,11 +223,11 @@ struct redisCommand redisCommandTable[] = {
      "write use-memory fast @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"setex", NULL, setexCommand,4,
+    {"setex", setex_cmd_for_rock, setexCommand,4,
      "write use-memory @string",
      0,NULL,1,1,1,0,0,0},
 
-    {"psetex", NULL, psetexCommand,4,
+    {"psetex", psetex_cmd_for_rock, psetexCommand,4,
      "write use-memory @string",
      0,NULL,1,1,1,0,0,0},
 
@@ -575,7 +575,7 @@ struct redisCommand redisCommandTable[] = {
      "read-only fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hmset", hmset_cmd_for_rock, hsetCommand,-4,
+    {"hmset", NULL, hsetCommand,-4,
      "write use-memory fast @hash",
      0,NULL,1,1,1,0,0,0},
 

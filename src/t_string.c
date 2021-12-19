@@ -269,6 +269,19 @@ void setCommand(client *c) {
     setGenericCommand(c,flags,c->argv[1],c->argv[2],expire,unit,NULL,NULL);
 }
 
+/* NOTE: for SET command, if only SET <key> <val>, no need for rock key */
+list* set_cmd_for_rock(const client *c)
+{
+    if (c->argc == 3)
+    {
+        return NULL;
+    }
+    else
+    {
+        return generic_get_one_key_for_rock(c, 1);
+    }
+}
+
 void setnxCommand(client *c) {
     c->argv[2] = tryObjectEncoding(c->argv[2]);
     setGenericCommand(c,OBJ_SET_NX,c->argv[1],c->argv[2],NULL,0,shared.cone,shared.czero);
@@ -279,9 +292,19 @@ void setexCommand(client *c) {
     setGenericCommand(c,OBJ_EX,c->argv[1],c->argv[3],c->argv[2],UNIT_SECONDS,NULL,NULL);
 }
 
+list* setex_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
+}
+
 void psetexCommand(client *c) {
     c->argv[3] = tryObjectEncoding(c->argv[3]);
     setGenericCommand(c,OBJ_PX,c->argv[1],c->argv[3],c->argv[2],UNIT_MILLISECONDS,NULL,NULL);
+}
+
+list* psetex_cmd_for_rock(const client *c)
+{
+    return generic_get_one_key_for_rock(c, 1);
 }
 
 int getGenericCommand(client *c) {
