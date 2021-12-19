@@ -560,7 +560,7 @@ list* generic_get_one_key_for_rock(const client *c, const int index)
  */
 list* generic_get_multi_keys_for_rock_in_range(const client *c, const int start, const int end)
 {
-    serverAssert(start >= 1 && start < end && c->argc <= end);
+    serverAssert(start >= 1 && start < end && end <= c->argc);
 
     redisDb *db = c->db;
 
