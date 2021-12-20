@@ -60,8 +60,8 @@ pthread_t rock_write_thread_id;
 
 static sds rbuf_keys[RING_BUFFER_LEN];
 static sds rbuf_vals[RING_BUFFER_LEN];
-static int rbuf_s_index;     // start index in queue
-static int rbuf_e_index;     // end index in queue
+static int rbuf_s_index;     // start index in queue (include if rbuf_len != 0)
+static int rbuf_e_index;     // end index in queue (exclude if rbuf_len != 0)
 static int rbuf_len;         // used(available) length
 
 /* Called by Main thread to init the ring buffer */
@@ -334,6 +334,9 @@ static void* rock_write_main(void* arg)
 /* Check the key is in ring buffer.
  * The caller guarantee in lock mode.
  * If not found, return -1. Otherise, the index in ring buffer. 
+ * NOTE: We need check from the end of ring buffer, becuase 
+ *       for duplicated keys in ring buf, the tail is newer than the head
+ *       in the queue (i.e., ring buffer).
  */
 static int exist_in_ring_buf_and_return_index(const int dbid, const sds redis_key)
 {
@@ -342,8 +345,12 @@ static int exist_in_ring_buf_and_return_index(const int dbid, const sds redis_ke
 
     sds rock_key = sdsdup(redis_key);
     rock_key = encode_rock_key(dbid, rock_key);
-    int index = rbuf_s_index;
-    size_t rock_key_len = sdslen(rock_key);
+    const size_t rock_key_len = sdslen(rock_key);
+
+    int index = rbuf_e_index - 1;
+    if (index == -1)
+        index = RING_BUFFER_LEN - 1;
+
     for (int i = 0; i < rbuf_len; ++i)
     {
         if (rock_key_len == sdslen(rbuf_keys[index]) && sdscmp(rock_key, rbuf_keys[index]) == 0)
@@ -352,9 +359,9 @@ static int exist_in_ring_buf_and_return_index(const int dbid, const sds redis_ke
             return index;
         }
 
-        ++index;
-        if (index == RING_BUFFER_LEN)
-            index = 0;
+        --index;
+        if (index == -1)
+            index = RING_BUFFER_LEN - 1;
     }
     sdsfree(rock_key);
     return -1;

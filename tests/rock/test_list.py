@@ -14,7 +14,8 @@ def lpush():
     r.lpush(key, e1)
     res = r.lpush(key, e0)
     if res != 3:
-        raise "lpush fail"
+        print(res)
+        raise Exception("lpush fail")
 
 
 def rpush():
@@ -26,7 +27,8 @@ def rpush():
     rock_evict(key)
     res = r.rpush(key, e1, e2)
     if res != 3:
-        raise "rpush fail"
+        print(res)
+        raise Exception("rpush fail")
 
 
 def lrange():
@@ -38,7 +40,8 @@ def lrange():
     rock_evict(key)
     res = r.lrange(key, 1, -1)
     if res != [e2, e3]:
-        raise "lrange fail"
+        print(res)
+        raise Exception("lrange fail")
 
 
 def llen():
@@ -47,7 +50,8 @@ def llen():
     rock_evict(key)
     res = r.llen(key)
     if res != 2:
-        raise "llen fail"
+        print(res)
+        raise Exception("llen fail")
 
 
 def lindex():
@@ -60,7 +64,8 @@ def lindex():
     rock_evict(key)
     res = r.lindex(key, 1)
     if res != e1:
-        raise "lindex fail"
+        print(res)
+        raise Exception("lindex fail")
 
 
 def lpop():
@@ -69,7 +74,8 @@ def lpop():
     rock_evict(key)
     res = r.execute_command("lpop", key, 2)
     if res != ["one", "two"]:
-        raise "lpop fail"
+        print(res)
+        raise Exception("lpop fail")
 
 
 def rpop():
@@ -78,7 +84,8 @@ def rpop():
     rock_evict(key)
     res = r.lpop(key)
     if res != "one":
-        raise "rpop fail"
+        print(res)
+        raise Exception("rpop fail")
 
 
 def linsert():
@@ -88,7 +95,8 @@ def linsert():
     r.linsert(key, "before", "World", "There")
     res = r.lrange(key, 0, -1)
     if res != ["Hello", "There", "World"]:
-        raise "linsert fail"
+        print(res)
+        raise Exception("linsert fail")
 
 
 def lrem():
@@ -98,7 +106,7 @@ def lrem():
     r.lrem(key, -2, "hello")
     res = r.lrange(key, 0, -1)
     if res != ["hello", "foo"]:
-        raise "lrem fail"
+        raise Exception("lrem fail")
 
 
 def rpoplpush():
@@ -110,10 +118,12 @@ def rpoplpush():
     r.rpoplpush(key, myotherlist)
     res = r.lrange(key, 0, -1)
     if res != ["one", "two"]:
-        raise "rpoplpush fail"
+        print(res)
+        raise Exception("rpoplpush fail")
     res = r.lrange(myotherlist, 0, -1)
     if res != ["three"]:
-        raise "rpoplpush fail2"
+        print(res)
+        raise Exception("rpoplpush fail2")
 
 
 def lpushx():
@@ -124,17 +134,21 @@ def lpushx():
     rock_evict(key)
     res = r.lpushx(key, "Hello")
     if res != 2:
-        raise "lpushhx fail"
+        print(res)
+        raise Exception("lpushhx fail")
     res = r.lrange(key, 0, -1)
     if res != ["Hello", "World"]:
-        raise "lpushhx fail2"
+        print(res)
+        raise Exception("lpushhx fail2")
     rock_evict(myotherlist)
     res = r.lpushx(myotherlist, "Hello")
     if res != 0:
-        raise "lpushhx fail3"
+        print(res)
+        raise Exception("lpushhx fail3")
     res = r.lrange(myotherlist, 0, -1)
-    if res != []:
-        raise "lpushhx fail4"
+    if res:
+        print(res)
+        raise Exception("lpushhx fail4")
 
 
 def rpushx():
@@ -145,17 +159,21 @@ def rpushx():
     rock_evict(key)
     res = r.rpushx(key, "World")
     if res != 2:
-        raise "rpushx fail"
+        print(res)
+        raise Exception("rpushx fail")
     rock_evict(myotherlist)
     res = r.rpushx(myotherlist, "World")
     if res != 0:
-        raise "rpushx fail2"
+        print(res)
+        raise Exception("rpushx fail2")
     res = r.lrange(key, 0, -1)
     if res != ["Hello", "World"]:
-        raise "rpushx fail3"
+        print(res)
+        raise Exception("rpushx fail3")
     res = r.lrange(myotherlist, 0, -1)
-    if res != []:
-        raise "rpushx fail4"
+    if res:
+        print(res)
+        raise Exception("rpushx fail4")
 
 
 def lpos():
@@ -164,11 +182,13 @@ def lpos():
     rock_evict(key)
     res = r.execute_command("lpos", key, 3)
     if res != 6:
-        raise "lpos fail"
+        print(res)
+        raise Exception("lpos fail")
     rock_evict(key)
     res = r.execute_command("lpos", key, 3, "count", 0, "rank", 2)
     if res != [8, 9, 10]:
-        raise "lpos fail2"
+        print(res)
+        raise Exception("lpos fail2")
 
 
 def lset():
@@ -180,7 +200,8 @@ def lset():
     r.execute_command("lset", key, -2, "five")
     res = r.lrange(key, 0, -1)
     if res != ["four", "five", "three"]:
-        raise "lset fail"
+        print(res)
+        raise Exception("lset fail")
 
 
 def lmove():
@@ -191,17 +212,21 @@ def lmove():
     rock_evict(key)
     res = r.execute_command("lmove", key, myotherlist, "right", "left")
     if res != "three":
-        raise "lmove fail"
+        print(res)
+        raise Exception("lmove fail")
     rock_evict(key)
     res = r.execute_command("lmove", key, myotherlist, "left", "right")
     if res != "one":
-        raise "lmove fail2"
+        print(res)
+        raise Exception("lmove fail2")
     res = r.lrange(key, 0, -1)
     if res != ["two"]:
-        raise "lmove fail3"
+        print(res)
+        raise Exception("lmove fail3")
     res = r.lrange(myotherlist, 0, -1)
     if res != ["three", "one"]:
-        raise "lmove fail4"
+        print(res)
+        raise Exception("lmove fail4")
 
 
 def ltrim():
@@ -211,10 +236,63 @@ def ltrim():
     r.execute_command("ltrim", key, 1, -1)
     res = r.lrange(key, 0, -1)
     if res != ["two", "three"]:
-        raise "ltrim fail"
+        print(res)
+        raise Exception("ltrim fail")
 
 
-def _main():
+def blpop():
+    r.execute_command("del", key)
+    r.rpush(key, 1, 2, 3)
+    rock_evict(key)
+    res = r.execute_command("blpop", key, 1)
+    if res != (key, "1"):
+        print(res)
+        raise Exception("blpop fail")
+
+
+def brpop():
+    r.execute_command("del", key)
+    r.rpush(key, 1, 2, 3)
+    rock_evict(key)
+    res = r.execute_command("brpop", key, 1)
+    if res != (key, "3"):
+        print(res)
+        raise Exception("brpop fail")
+
+
+def brpoplpush():
+    myotherlist = key + "_mother"
+    r.execute_command("del", key)
+    r.execute_command("del", myotherlist)
+    r.rpush(key, 1, 2, 3)
+    r.rpush(myotherlist, 4)
+    rock_evict(key)
+    r.execute_command("brpoplpush", key, myotherlist, 1)
+    res = r.lrange(myotherlist, 0, -1)
+    if res != ["3", "4"]:
+        print(res)
+        raise Exception("brpoplpush fail")
+
+
+def blmove():
+    myotherlist = key + "_mother"
+    r.execute_command("del", key)
+    r.execute_command("del", myotherlist)
+    r.rpush(key, "a", "b", "c")
+    r.rpush(myotherlist, "x", "y", "z")
+    rock_evict(key, myotherlist)
+    r.execute_command("blmove", key, myotherlist, "right", "left", 1)
+    res = r.lrange(key, 0, -1)
+    if res != ["a", "b"]:
+        print(res)
+        raise Exception("blmove fail")
+    res = r.lrange(myotherlist, 0, -1)
+    if res != ["c", "x", "y", "z"]:
+        print(res)
+        raise Exception("blmove fail2")
+
+
+def test_all():
     lpush()
     rpush()
     lpop()
@@ -231,6 +309,14 @@ def _main():
     lset()
     lmove()
     ltrim()
+    blpop()
+    brpop()
+    brpoplpush()
+    blmove()
+
+
+def _main():
+    test_all()
 
 
 if __name__ == '__main__':

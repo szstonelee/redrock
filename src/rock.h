@@ -222,6 +222,7 @@ list* hgetall_cmd_for_rock(const client *c);
 list* hexists_cmd_for_rock(const client *c);
 list* hrandfield_cmd_for_rock(const client *c);
 list* hscan_cmd_for_rock(const client *c);
+list* hmset_cmd_for_rock(const client *c);
 
 // db.c
 list* move_cmd_for_rock(const client *c);

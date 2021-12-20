@@ -12,6 +12,8 @@ pool = redis.ConnectionPool(host=redis_ip,
 
 r: redis.StrictRedis = redis.StrictRedis(connection_pool=pool)
 
+# r2: redis.StrictRedis = redis.StrictRedis(connection_pool=pool)
+
 
 def rock_evict(*keys):
     r.execute_command("rockevict", *keys)

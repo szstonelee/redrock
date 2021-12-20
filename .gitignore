@@ -41,3 +41,4 @@ redis.code-workspace
 redrock
 .github/*
 .DS_Store
+tests/rock/__pycache__/*

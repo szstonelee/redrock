@@ -1,7 +1,8 @@
 from conn import r, rock_evict
 import time
 
-key = "_test_rock_"
+
+key = "_test_rock_str_"
 
 
 def append():
@@ -12,16 +13,18 @@ def append():
     r.append(key, append_val)
     check = r.get(key)
     if check != original_val + append_val:
-        raise "append fail"
+        print(check)
+        raise Exception("append fail")
 
 
 def decr():
     original_num = 3433423492323
     r.set(key, original_num)
     rock_evict(key)
-    res = r.decr(key)
+    res = r.execute_command("decr", key)
     if res != original_num - 1:
-        raise "decr fail"
+        print(res)
+        raise Exception("decr fail")
 
 
 def decrby():
@@ -31,7 +34,8 @@ def decrby():
     rock_evict(key)
     res = r.decrby(key, decrement)
     if res != original_num - decrement:
-        raise "decrby fail"
+        print(res)
+        raise Exception("decrby fail")
 
 
 def get():
@@ -40,7 +44,8 @@ def get():
     rock_evict(key)
     res = r.get(key)
     if res != val:
-        raise "get fail"
+        print(res)
+        raise Exception("get fail")
 
 
 def getdel():
@@ -49,10 +54,12 @@ def getdel():
     rock_evict(key)
     res = r.execute_command("getdel", key)  # only for 6.2
     if res != val:
-        raise "getdel fail"
+        print(res)
+        raise Exception("getdel fail")
     exist = r.get(key)
     if exist is not None:
-        raise "getdel fail2"
+        print(exist)
+        raise Exception("getdel fail2")
 
 
 def getex():
@@ -61,11 +68,13 @@ def getex():
     rock_evict(key)
     res = r.execute_command("getex", key, "ex", "1")
     if res != val:
-        raise "getex fail"
+        print(res)
+        raise Exception("getex fail")
     time.sleep(2)
     res = r.get(key)
     if res is not None:
-        raise "getex fail"
+        print(res)
+        raise Exception("getex fail")
 
 
 def getset():
@@ -75,29 +84,33 @@ def getset():
     rock_evict(key)
     res = r.getset(key, new_val)
     if res != original_val:
-        raise "getset fail"
+        print(res)
+        raise Exception("getset fail")
     res = r.get(key)
     if res != new_val:
-        raise "getset fail2"
+        print(res)
+        raise Exception("getset fail2")
 
 
 def incr():
-    num = 34234042903402
+    num = 342340429
     r.set(key, num)
     rock_evict(key)
-    res = r.incr(key)
+    res = r.execute_command("incr", key)
     if res != num + 1:
-        raise "incr fail"
+        print(res)
+        raise Exception("incr fail")
 
 
 def incrby():
-    num = 3249238423094
+    num = 32492384
     r.set(key, num)
     rock_evict(key)
     increment = 321
     res = r.incrby(key, increment)
     if res != num + increment:
-        raise "incrby fail"
+        print(res)
+        raise Exception("incrby fail")
 
 
 def incrbyfloat():
@@ -107,7 +120,8 @@ def incrbyfloat():
     increment = 0.1
     res = r.incrbyfloat(key, increment)
     if res != num + increment:
-        raise "incrbyfloat fail"
+        print(res)
+        raise Exception("incrbyfloat fail")
 
 
 def mget():
@@ -125,21 +139,25 @@ def mget():
     rock_evict(k1, k2, k3, k4)
     res = r.mget(k1, k2, k3, k4)
     if res != [v1, str(v2), str(v3), None]:
-        raise "mget fail"
+        print(res)
+        raise Exception("mget fail")
 
 
 def psetex():
     val = "abc"
     r.set(key, val)
     rock_evict(key)
-    r.psetex(key, 1, val)
+    r.psetex(key, 500, val)
     res = r.get(key)
     if res != val:
-        raise "psetex fail"
+        print(res)
+        raise Exception("psetex fail")
+    rock_evict(key)
     time.sleep(2)
     res = r.get(key)
     if res is not None:
-        raise "psetex fail2"
+        print(res)
+        raise Exception("psetex fail2")
 
 
 def set():
@@ -150,11 +168,13 @@ def set():
     r.execute_command("set", key, new_val, "ex", "1")
     res = r.get(key)
     if res != new_val:
-        raise "set fail"
+        print(res)
+        raise Exception("set fail")
     time.sleep(2)
     res = r.get(key)
     if res is not None:
-        raise "set fail2"
+        print(res)
+        raise Exception("set fail2")
 
 
 def setex():
@@ -165,11 +185,13 @@ def setex():
     r.setex(key, "1", new_val)
     res = r.get(key)
     if res != new_val:
-        raise "setex fail"
+        print(res)
+        raise Exception("setex fail")
     time.sleep(2)
     res = r.get(key)
     if res is not None:
-        raise "setex fail2"
+        print(res)
+        raise Exception("setex fail2")
 
 
 def setrange():
@@ -179,7 +201,8 @@ def setrange():
     r.setrange(key, "6", "Redis")
     res = r.get(key)
     if res != "Hello Redis":
-        raise "setrange fail"
+        print(res)
+        raise Exception("setrange fail")
 
 
 def strlen():
@@ -188,10 +211,11 @@ def strlen():
     rock_evict(key)
     res = r.strlen(key)
     if res != len(val):
-        raise "strlen fail"
+        print(res)
+        raise Exception("strlen fail")
 
 
-def _main():
+def test_all():
     append()
     decr()
     decrby()
@@ -208,6 +232,10 @@ def _main():
     setex()
     setrange()
     strlen()
+
+
+def _main():
+    test_all()
 
 
 if __name__ == '__main__':

@@ -575,7 +575,7 @@ struct redisCommand redisCommandTable[] = {
      "read-only fast @hash",
      0,NULL,1,1,1,0,0,0},
 
-    {"hmset", NULL, hsetCommand,-4,
+    {"hmset", hmset_cmd_for_rock, hsetCommand,-4,
      "write use-memory fast @hash",
      0,NULL,1,1,1,0,0,0},
 
