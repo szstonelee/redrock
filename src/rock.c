@@ -428,6 +428,9 @@ void on_del_a_destroy_client(const client* const c)
  */
 void create_shared_object_for_rock()
 {
+    shared.rock_cmd_fail = listCreate();
+    listAddNodeHead(shared.rock_cmd_fail, NULL);    // NOTE: at lease one element in the list
+
     const char *str = "shared str";
     shared.rock_val_str_other = createStringObject(str, strlen(str));
     makeObjectShared(shared.rock_val_str_other);
@@ -507,11 +510,19 @@ static list* get_keys_in_rock_for_command(const client *c)
 
 
 /* This is called in main thread by processCommand() before going into call().
- * If return 1, indicating NOT going into call() because the client trap in rock state.
- * Otherwise, return 0, meaning the client is OK for call() for current command.
+ * Return value has three options:
+ *
+ * CHECK_ROCK_GO_ON_TO_CALL:  meaning the client is OK for call() for current command.
+ * 
+ * CHECK_ROCK_ASYNC_WAIT: indicating NOT going into call() because the client trap in rock state.
  * If the client trap into rock state, it will be in aysnc mode and recover from on_recover_data(),
  * which will later call processCommandAndResetClient() again in resume_command_for_client_in_async_mode()
  * in rock_read.c. processCommandAndResetClient() will call processCommand().
+ * 
+ * CHECK_ROCK_CMD_FAIL: the specific command check for argument failed and has replied to the client 
+ *
+ * If return 1, indicating NOT going into call() because the client trap in rock state.
+ * Otherwise, return 0, meaning the client is OK for call() for current command.
  */
 int check_and_set_rock_status_in_processCommand(client *c)
 {
@@ -519,13 +530,17 @@ int check_and_set_rock_status_in_processCommand(client *c)
 
     // check and set rock state if there are some keys needed to read for async mode
     list *rock_keys = get_keys_in_rock_for_command(c);
+
+    if (rock_keys == shared.rock_cmd_fail)
+        return CHECK_ROCK_CMD_FAIL;
+
     if (rock_keys)
     {
         on_client_need_rock_keys(c, rock_keys);
         listRelease(rock_keys);
     }
 
-    return is_client_in_waiting_rock_value_state(c);
+    return is_client_in_waiting_rock_value_state(c) ? CHECK_ROCK_ASYNC_WAIT : CHECK_ROCK_GO_ON_TO_CALL;
 }
 
 /* Get one key from client's argv. 

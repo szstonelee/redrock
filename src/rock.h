@@ -28,6 +28,9 @@ void rock_evict(client *c);
 // list* get_keys_in_rock_for_command(const client *c);
 
 // int process_cmd_in_processInputBuffer(client *c);
+#define CHECK_ROCK_GO_ON_TO_CALL    0
+#define CHECK_ROCK_ASYNC_WAIT       1
+#define CHECK_ROCK_CMD_FAIL         2
 int check_and_set_rock_status_in_processCommand(client *c);
 
 

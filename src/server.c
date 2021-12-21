@@ -4257,7 +4257,32 @@ int processCommand(client *c) {
         queueMultiCommand(c);
         addReply(c,shared.queued);
     } else {
-        if (check_and_set_rock_status_in_processCommand(c))
+        
+        const int check_rock_res = check_and_set_rock_status_in_processCommand(c);
+        switch (check_rock_res)
+        {
+        case CHECK_ROCK_ASYNC_WAIT:
+            // return C_ROCK to the caller to bypass commandProcessed(c)
+            // check networking.c processCommandAndResetClient() for more details
+            return C_ROCK;
+
+        case CHECK_ROCK_GO_ON_TO_CALL:
+            call(c,CMD_CALL_FULL);
+            break;
+
+        case CHECK_ROCK_CMD_FAIL:
+            // NOTE: already reply error msg like call(), so do not need call again
+            break;
+
+        default:
+            serverPanic("Unknown return value for check_and_set_rock_status_in_processCommand() = %d", check_rock_res);
+        }
+
+        c->woff = server.master_repl_offset;
+        if (listLength(server.ready_keys))
+            handleClientsBlockedOnKeys();
+
+/*
         {
             return C_ROCK;
         }
@@ -4268,6 +4293,7 @@ int processCommand(client *c) {
             if (listLength(server.ready_keys))
                 handleClientsBlockedOnKeys();
         }
+*/
     }
 
     return C_OK;

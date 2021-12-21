@@ -227,9 +227,9 @@ def test_all():
     incrby()
     incrbyfloat()
     mget()
-    #psetex()
-    #set()
-    #setex()
+    psetex()
+    set()
+    setex()
     setrange()
     strlen()
 

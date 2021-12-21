@@ -997,6 +997,8 @@ struct sharedObjectsStruct {
     *bulkhdr[OBJ_SHARED_BULKHDR_LEN];  /* "$<value>\r\n" */
     sds minstring, maxstring;
 
+    list *rock_cmd_fail;
+
     robj *rock_val_str_int;
     robj *rock_val_str_other;
     robj *rock_val_list_quicklist;

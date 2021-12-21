@@ -2582,6 +2582,32 @@ dictType setAccumulatorDictType = {
     NULL                       /* allow to expand */
 };
 
+int zunion_inter_diff_generic_command_check_and_reply(client *c, robj *dstkey, int numkeysIndex, int op)
+{
+    UNUSED(dstkey);
+    UNUSED(op);
+
+    long setnum;
+
+    /* expect setnum input keys to be given */
+    if ((getLongFromObjectOrReply(c, c->argv[numkeysIndex], &setnum, NULL) != C_OK))
+        return 1;
+
+    if (setnum < 1) {
+        addReplyErrorFormat(c,
+            "at least 1 input key is needed for %s", c->cmd->name);
+        return 1;
+    }
+
+    /* test if the expected number of keys would overflow */
+    if (setnum > (c->argc-(numkeysIndex+1))) {
+        addReplyErrorObject(c,shared.syntaxerr);
+        return 1;
+    }
+
+    return 0;
+}
+
 /* The zunionInterDiffGenericCommand() function is called in order to implement the
  * following commands: ZUNION, ZINTER, ZDIFF, ZUNIONSTORE, ZINTERSTORE, ZDIFFSTORE.
  *
@@ -2855,6 +2881,9 @@ void zunionstoreCommand(client *c) {
 
 list* zunionstore_cmd_for_rock(const client *c)
 {
+    if (zunion_inter_diff_generic_command_check_and_reply((client*)c, c->argv[1], 2, SET_OP_UNION))
+        return shared.rock_cmd_fail;
+
     return generic_get_zset_num_for_rock(c, 1);
 }
 
@@ -2864,6 +2893,9 @@ void zinterstoreCommand(client *c) {
 
 list* zinterstore_cmd_for_rock(const client *c)
 {
+    if (zunion_inter_diff_generic_command_check_and_reply((client*)c, c->argv[1], 2, SET_OP_INTER))
+        return shared.rock_cmd_fail;
+
     return generic_get_zset_num_for_rock(c, 1);
 }
 
@@ -2873,7 +2905,10 @@ void zdiffstoreCommand(client *c) {
 
 list* zdiffstore_cmd_for_rock(const client *c)
 {
-    return generic_get_zset_num_for_rock(c, 1);
+    if (zunion_inter_diff_generic_command_check_and_reply((client*)c, c->argv[1], 2, SET_OP_DIFF))
+        return shared.rock_cmd_fail;
+
+    return generic_get_zset_num_for_rock(c, 0);
 }
 
 void zunionCommand(client *c) {
@@ -2882,6 +2917,9 @@ void zunionCommand(client *c) {
 
 list* zunion_cmd_for_rock(const client *c)
 {
+    if (zunion_inter_diff_generic_command_check_and_reply((client*)c, NULL, 1, SET_OP_UNION))
+        return shared.rock_cmd_fail;
+
     return generic_get_zset_num_for_rock(c, 0);
 }
 
@@ -2891,6 +2929,9 @@ void zinterCommand(client *c) {
 
 list* zinter_cmd_for_rock(const client *c)
 {
+    if (zunion_inter_diff_generic_command_check_and_reply((client*)c, NULL, 1, SET_OP_INTER))
+        return shared.rock_cmd_fail;
+
     return generic_get_zset_num_for_rock(c, 0);
 }
 
@@ -2900,6 +2941,9 @@ void zdiffCommand(client *c) {
 
 list* zdiff_cmd_for_rock(const client *c)
 {
+    if (zunion_inter_diff_generic_command_check_and_reply((client*)c, NULL, 1, SET_OP_DIFF))
+        return shared.rock_cmd_fail;
+
     return generic_get_zset_num_for_rock(c, 0);
 }
 
