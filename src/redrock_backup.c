@@ -276,3 +276,34 @@ int process_cmd_in_processInputBuffer(client *c)
 
     return ret;
 }
+
+/* Called in main thread to recover one key, i.e., rock_key.
+ * The caller guarantees lock mode, 
+ * so be careful of no reentry of the lock.
+ * Join (by moving to append) the waiting list for curent key to waiting_clients,
+ * and delete the key from read_rock_key_candidates 
+ * without destroy the waiting list for current rock_key.
+ */
+static void recover_one_key(const sds rock_key, const sds recover_val,
+                            list *waiting_clients)
+{
+    int dbid;
+    char *redis_key;
+    size_t redis_key_len;
+    decode_rock_key(rock_key, &dbid, &redis_key, &redis_key_len);
+    try_recover_val_object_in_redis_db(dbid, redis_key, redis_key_len, recover_val);
+
+    dictEntry *de = dictFind(read_rock_key_candidates, rock_key);
+    serverAssert(de);
+
+    list *current = dictGetVal(de);
+    serverAssert(current);
+
+    dictGetVal(de) = NULL;      // avoid clear the list of client ids in read_rock_key_candidates
+    // task resource will be reclaimed (the list is NULL right now)
+    dictDelete(read_rock_key_candidates, rock_key);
+
+    listJoin(waiting_clients, current);
+    serverAssert(listLength(current) == 0);
+    listRelease(current);
+}

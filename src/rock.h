@@ -16,7 +16,7 @@ void create_shared_object_for_rock();
 void init_rocksdb(const char* folder_original_path);
 void debug_rock(client *c);
 sds encode_rock_key(const int dbid, sds redis_to_rock_key);
-void decode_rock_key(const sds rock_key, int* dbid, char** redis_key, size_t* key_sz);
+void decode_rock_key(const sds rock_key, int* dbid, const char** redis_key, size_t* key_sz);
 
 void init_client_id_table();
 client* lookup_client_from_id(const uint64_t client_id);

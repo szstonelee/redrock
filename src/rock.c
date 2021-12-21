@@ -365,11 +365,11 @@ sds encode_rock_key(const int dbid, sds redis_to_rock_key)
  * so caller needs the address the instances of them.
  * No memory allocation and the caller needs to prevent the safety of rock_key.
  */
-void decode_rock_key(const sds rock_key, int* dbid, char** redis_key, size_t* key_sz)
+void decode_rock_key(const sds rock_key, int* dbid, const char** redis_key, size_t* key_sz)
 {
+    serverAssert(sdslen(rock_key) >= 1);
     *dbid = rock_key[0];
     *redis_key = rock_key+1;
-    serverAssert(sdslen(rock_key) >= 1);
     *key_sz = sdslen(rock_key) - 1;
 }
 
@@ -468,7 +468,7 @@ void create_shared_object_for_rock()
  * If the command need to check and find no key in rock value
  * return NULL.
  * Otherwise, return a list (not empty) for those keys (sds) 
- * and the sds can use the contents in client c.
+ * and the sds can point to the contents (argv) in client c.
  */
 static list* get_keys_in_rock_for_command(const client *c)
 {
@@ -731,10 +731,6 @@ void wait_rock_threads_exit()
 int keyIsExpired(redisDb *db, robj *key);       // in db.c
 void rock_evict(client *c)
 {
-    const int key_num = c->argc - 1;
-    addReplyArrayLen(c, key_num*2);
-
-    redisDb *db = c->db;
     sds already_rock_val = sdsnew("ALREADY_ROCK_VAL_MAYBE_EXPIRE");
     sds not_found = sdsnew("NOT_FOUND");
     sds expire_val = sdsnew("EXPIRE_VALUE");
@@ -742,6 +738,10 @@ void rock_evict(client *c)
     sds can_not_evict_type = sdsnew("VALUE_TYPE_CAN_NOT_EVICT_LIKE_STREAM");
     sds can_evict = sdsnew("CAN_EVICT_AND_WRITTEN_TO_ROCKSDB");
 
+    const int key_num = c->argc - 1;
+    addReplyArrayLen(c, key_num*2);
+    
+    redisDb *db = c->db;
     for (int i = 0; i < key_num; ++i)
     {
         const sds key = c->argv[i+1]->ptr;
@@ -750,6 +750,7 @@ void rock_evict(client *c)
         addReplyBulk(c, o_key);
     
         robj *r = NULL;
+        
         dictEntry *de = dictFind(db->dict, key);
         if (de == NULL)
         {
@@ -757,7 +758,7 @@ void rock_evict(client *c)
         }
         else
         {
-            robj *val = dictGetVal(de);
+            const robj *val = dictGetVal(de);
             if (is_rock_value(val))
             {
                 r = createStringObject(already_rock_val, sdslen(already_rock_val));

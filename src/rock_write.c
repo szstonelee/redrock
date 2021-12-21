@@ -82,10 +82,10 @@ static void init_write_ring_buffer()
  * keys and vals will be ownered by ring buffer.
  * We free memory only when overwrite old and abandoned key/value
  */
-static void batch_append_to_ringbuf(const int len, 
-                                    const sds* const keys, 
-                                    const sds* const vals) 
+static void batch_append_to_ringbuf(const int len, sds* keys, sds* vals) 
 {
+    // serverAssert(len > 0 && len <= RING_BUFFER_LEN - rbuf_len); // the caller guarantee
+
     for (int i = 0; i < len; ++i) 
     {
         const sds key = keys[i];
@@ -110,7 +110,8 @@ static void batch_append_to_ringbuf(const int len,
 }
 
 /* Called by Main thread in cron to determine how much space (key number) 
- * left for evicting to RocksDB.
+ * left in ring buffer for evicting to RocksDB.
+ *
  * NOTE: We need to use lock to guarantee the data race 
  *       (Write thread maybe decrease rbuf_len)
  */
@@ -126,14 +127,21 @@ int space_in_write_ring_buffer()
 
 /* Called in Main thread in cron (not directly).
  * The caller guarantees not in lock mode.
- * It must guarantee that these keys in redis db have been set val to rock values.
- * NOTE1: We must serialize vals in lock mode to avoid data race.
+ * 
+ * NOTE1: The caller must guarantee that these keys in redis db 
+ *        have been set the corresponding value to rock values.
+ * 
+ * NOTE2: Question??? I move out the marshal code out of lock mode.
+ *        The note2 is optimized to not using!!!!
+ *        We serialize vals in lock mode to avoid data race.
  *        Maybe we could serialize out of lock mode.
  *        But the guarantee of data integrity is very important 
  *        and main thread can use more time (all operations are for memory),
  *        so all are done in lock mode.
- * NOTE2: We will release the objs.
- *        The keys will be encoded with dbid and be tansfered the ownership to ring buffer.
+ * 
+ * NOTE3: We will release the objs.
+ *        The keys will be encoded with dbid and be tansfered the ownership 
+ *        to ring buffer by calling batch_append_to_ringbuf().
  *        So the caller needs to do :
  *           1. duplicate the keys from the source of keys in Redis db
  *           2. not use keys anymore
@@ -145,9 +153,6 @@ static void write_batch_append_and_abandon(const int len, const int *dbids, sds 
 
     sds vals[RING_BUFFER_LEN];
 
-    rock_w_lock();
-
-    serverAssert(rbuf_len + len <= RING_BUFFER_LEN);
     for (int i = 0; i < len; ++i)
     {
         sds key = keys[i];
@@ -157,12 +162,12 @@ static void write_batch_append_and_abandon(const int len, const int *dbids, sds 
         vals[i] = val;
     }
 
+    rock_w_lock();
+    serverAssert(rbuf_len + len <= RING_BUFFER_LEN);
 #ifdef RED_ROCK_DEBUG
     serverAssert(debug_check_no_candidates(len, keys));
 #endif
-
     batch_append_to_ringbuf(len, keys, vals);
-
     rock_w_unlock();
 
     // release objs
@@ -173,15 +178,17 @@ static void write_batch_append_and_abandon(const int len, const int *dbids, sds 
 }
 
 /* Called in main thread cron.
- * When cron() select some keys (before set rock_value), it will call here
+ * When cron() select some keys (before setting rock value), it will call here
  * to determine which keys can be evicted to RocksDB 
- * because we need exclude those keys in read_rock_key_candidates of rock_read.c. 
+ * because we need exclude those keys in read_rock_key_candidates. 
+ * Check rock_read.c for read_rock_key_candidates for more reference. 
+ * 
  * try_evict_to_rocksdb() will set value to rock value for these matched keys.
  * Return the actual number of keys for eviction.
  * 
- * NOTE1: The caller need to use space_in_write_ring_buffer() first
+ * NOTE1: The caller needs to use space_in_write_ring_buffer() first
  *        to know the available space for ring buffer.
- *        The caller need to guarantee check_len <= space.
+ *        The caller needs to guarantee check_len <= space.
  * 
  * NOTE2: The caller guarantee the vlaue can be evicted. (e.g. NOT stream value)
  */
@@ -190,16 +197,18 @@ int try_evict_to_rocksdb(const int check_len, const int *check_dbids, const sds 
     serverAssert(check_len > 0);
 
     int evict_len = 0;
+
     sds evict_keys[RING_BUFFER_LEN];
     int evict_dbids[RING_BUFFER_LEN];
     for (int i = 0; i < check_len; ++i)
     {
         const int dbid = check_dbids[i];
         const sds check_key = check_keys[i];
-        if (already_in_candidates(dbid, check_key))
+        if (already_in_candidates(dbid, check_key))     // the rock_read.c API
             continue;
 
-        evict_keys[evict_len] = sdsdup(check_key);  // NOTE: we must duplicate
+        // NOTE: we must duplicate for write_batch_append_and_abandon()
+        evict_keys[evict_len] = sdsdup(check_key);  
         evict_dbids[evict_len] = dbid;
         ++evict_len;
     }
@@ -210,9 +219,10 @@ int try_evict_to_rocksdb(const int check_len, const int *check_dbids, const sds 
         redisDb *db = server.db + evict_dbids[i];
         dictEntry *de = dictFind(db->dict, evict_keys[i]);
         serverAssert(de);
+
+        // change the value to rock value in Redis DB
         robj *v = dictGetVal(de);
-        serverAssert(is_evict_value(v));
-        // change the value to rock value in Redis db
+        serverAssert(is_evict_value(v));        
         dictGetVal(de) = get_match_rock_value(v);
         evict_vals[i] = v;    
     }
@@ -226,7 +236,7 @@ int try_evict_to_rocksdb(const int check_len, const int *check_dbids, const sds 
 /* Called in main thread for command ROCKEVICT
  * If succesful, return 1.
  * Otherwise, return 0. The caller can try again because the key may be in candidates 
- *                      and it take times for read thread to process (no recover but abandon).
+ *                      and it takes times for read thread to process (no recover but abandon).
  * 
  * The caller needs to guarantee the value in Redis exist and can be evicted to RocksDB.
  */
@@ -258,7 +268,6 @@ static int write_to_rocksdb()
         rock_w_unlock();
         return 0;
     }
-    serverAssert(rbuf_len > 0 && rbuf_len <= RING_BUFFER_LEN);
     int written = rbuf_len;
     int index = rbuf_s_index;
     rock_w_unlock();
@@ -266,6 +275,7 @@ static int write_to_rocksdb()
     rocksdb_writebatch_t *batch = rocksdb_writebatch_create();
     rocksdb_writeoptions_t *writeoptions = rocksdb_writeoptions_create();
     rocksdb_writeoptions_disable_WAL(writeoptions, 1);      // disable WAL
+
     for (int i = 0; i < written; ++i) 
     {
         // Guarantee to get the updated data from Main thread up to written
@@ -300,17 +310,17 @@ static int write_to_rocksdb()
 /*
  * The main entry for the thread of RocksDB write
  */
-#define MIN_SLEEP_MICRO   16
+#define MIN_SLEEP_MICRO     16
 #define MAX_SLEEP_MICRO     1024            // max sleep for 1 ms
 static void* rock_write_main(void* arg)
 {
     UNUSED(arg);
 
-    unsigned int sleep_us = MIN_SLEEP_MICRO;
     int loop = 0;
     while (loop == 0)
         atomicGet(rock_threads_loop_forever, loop);
         
+    unsigned int sleep_us = MIN_SLEEP_MICRO;
     while(loop)
     {        
         if (write_to_rocksdb() != 0)
@@ -331,9 +341,11 @@ static void* rock_write_main(void* arg)
     return NULL;
 }
 
-/* Check the key is in ring buffer.
- * The caller guarantee in lock mode.
+/* Check whether the key is in ring buffer.
  * If not found, return -1. Otherise, the index in ring buffer. 
+ *
+ * The caller guarantees in lock mode.
+ *
  * NOTE: We need check from the end of ring buffer, becuase 
  *       for duplicated keys in ring buf, the tail is newer than the head
  *       in the queue (i.e., ring buffer).
@@ -363,16 +375,23 @@ static int exist_in_ring_buf_and_return_index(const int dbid, const sds redis_ke
         if (index == -1)
             index = RING_BUFFER_LEN - 1;
     }
+
     sdsfree(rock_key);
     return -1;
 }
 
-/* This is the API for rock_read.c. The caller guarantees not in lock mode of write.
+/* This is the API for rock_read.c. 
+ * The caller guarantees not in lock mode of write.
+ *
  * When a client needs recover some keys, it needs check ring buffer first.
  * The return is a list of recover vals (as sds) with same size as redis_keys (as same order).
- * If the key is in the ring buffer, the recover val (sds) (serilized value) is duplicated.
+ * 
+ * If the key is in the ring buffer, the recover val (sds of serilized value) is duplicated.
  * Otherwise, recover val will be set to NULL. 
+ * 
  * If no key in ring buf, the return list will be NULL. (and no resource allocated)
+ * 
+ * The caller needs to reclaim the resource if allocated.
  */
 list* get_vals_from_write_ring_buf_first(const int dbid, const list *redis_keys)
 {
@@ -406,7 +425,7 @@ list* get_vals_from_write_ring_buf_first(const int dbid, const list *redis_keys)
 
     if (all_not_in_ring_buf)
     {
-        listSetFreeMethod(r, (void (*)(void*))sdsfree);
+        // listSetFreeMethod(r, (void (*)(void*))sdsfree);
         listRelease(r);
         return NULL;
     }
