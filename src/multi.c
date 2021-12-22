@@ -157,6 +157,29 @@ void execCommandAbort(client *c, sds error) {
         replicationFeedMonitors(c,server.monitors,c->db->id,c->argv,c->argc);
 }
 
+static int exec_command_check_and_reply(client *c)
+{
+    if (!(c->flags & CLIENT_MULTI)) {
+        addReplyError(c,"EXEC without MULTI");
+        return 1;
+    }
+
+    if (c->flags & (CLIENT_DIRTY_CAS|CLIENT_DIRTY_EXEC)) {
+        addReply(c, c->flags & CLIENT_DIRTY_EXEC ? shared.execaborterr :
+                                                   shared.nullarray[c->resp]);
+        discardTransaction(c);
+        goto handle_monitor;
+    }
+
+    return 0;       // succcess but ignore ACL check
+
+handle_monitor:
+    if (listLength(server.monitors) && !server.loading)
+        replicationFeedMonitors(c,server.monitors,c->db->id,c->argv,c->argc);
+
+    return 1;
+}
+
 void execCommand(client *c) {
     int j;
     robj **orig_argv;
@@ -277,10 +300,52 @@ handle_monitor:
         replicationFeedMonitors(c,server.monitors,c->db->id,c->argv,c->argc);
 }
 
-list* exec_cmd_for_rock(const client *c)
+list* exec_cmd_for_rock(const client *input_c)
 {
-    // TODO
-    return NULL;
+    client *c = (client *)input_c;
+    if (exec_command_check_and_reply(c))
+        return shared.rock_cmd_fail;
+
+    // backup context of c
+    int saved_argc = c->argc;
+    robj **saved_argv = c->argv;
+    struct redisCommand *saved_cmd = c->cmd;
+
+    list *multi_list = NULL;
+
+    for (int i = 0; i < c->mstate.count; ++i) 
+    {
+        multiCmd *mc = c->mstate.commands+i;
+        c->argc = mc->argc;
+        c->argv = mc->argv;
+        c->cmd = mc->cmd;
+
+        if (c->cmd->rock_proc) 
+        {
+            list* each_rock_keys = c->cmd->rock_proc(c);
+
+            if (each_rock_keys) 
+            {
+                serverAssert(listLength(each_rock_keys) > 0);
+                if (multi_list == NULL)
+                {
+                    multi_list = each_rock_keys;
+                }
+                else
+                {
+                    listJoin(multi_list, each_rock_keys);
+                    listRelease(each_rock_keys);    // only destory list but not the sds keys in it
+                }
+            }
+        }
+    }
+
+    // recover argc and argv
+    c->argc = saved_argc;
+    c->argv = saved_argv;
+    c->cmd = saved_cmd;
+   
+    return multi_list;
 }
 
 /* ===================== WATCH (CAS alike for MULTI/EXEC) ===================

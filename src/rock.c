@@ -744,6 +744,12 @@ void wait_rock_threads_exit()
 int keyIsExpired(redisDb *db, robj *key);       // in db.c
 void rock_evict(client *c)
 {
+    if (c->flags & CLIENT_MULTI)
+    {
+        addReplyError(c,"ROCKEVICT can not in transaction!");
+        return;
+    }
+
     sds already_rock_val = sdsnew("ALREADY_ROCK_VAL_MAYBE_EXPIRE");
     sds not_found = sdsnew("NOT_FOUND");
     sds expire_val = sdsnew("EXPIRE_VALUE");
