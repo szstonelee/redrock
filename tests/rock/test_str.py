@@ -7,7 +7,7 @@ key = "_test_rock_str_"
 
 def append():
     original_val = "abc"
-    append_val = "_append_something"
+    append_val = "_append"
     r.set(key, original_val)
     rock_evict(key)
     r.append(key, append_val)
@@ -15,6 +15,19 @@ def append():
     if check != original_val + append_val:
         print(check)
         raise Exception("append fail")
+
+
+def append_long_str():
+    original_val = "abc"
+    append_val = "_append" * 100
+    r.set(key, original_val)
+    rock_evict(key)
+    r.append(key, append_val)
+    check = r.get(key)
+    if check != original_val + append_val:
+        print(check)
+        raise Exception("append_long_str fail")
+
 
 
 def decr():
@@ -217,6 +230,7 @@ def strlen():
 
 def test_all():
     append()
+    append_long_str()
     decr()
     decrby()
     get()

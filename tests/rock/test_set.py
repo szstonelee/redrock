@@ -17,6 +17,18 @@ def sadd():
         raise Exception("sadd fail")
 
 
+def sadd_int():
+    r.execute_command("del", key)
+    r.sadd(key, 123)
+    r.sadd(key, 456)
+    rock_evict(key)
+    r.sadd(key, 789)
+    res = r.smembers(key)
+    if res != {"123", "456", "789"}:
+        print(res)
+        raise Exception("sadd_int fail")
+
+
 def scard():
     r.execute_command("del", key)
     r.sadd(key, "Hello")
@@ -216,21 +228,22 @@ def suionstore():
 
 
 def test_all():
-    sadd()
-    scard()
-    sdiff()
-    sdiffstore()
-    sinter()
-    sinterstore()
-    sismember()
-    smismember()
-    smembers()
-    smove()
-    srandmember()
-    spop()
-    srem()
-    suion()
-    suionstore()
+    # sadd()
+    sadd_int()
+    # scard()
+    # sdiff()
+    # sdiffstore()
+    # sinter()
+    # sinterstore()
+    # sismember()
+    # smismember()
+    # smembers()
+    # smove()
+    # srandmember()
+    # spop()
+    # srem()
+    # suion()
+    # suionstore()
 
 
 def _main():

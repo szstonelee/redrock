@@ -2908,7 +2908,7 @@ list* zdiffstore_cmd_for_rock(const client *c)
     if (zunion_inter_diff_generic_command_check_and_reply((client*)c, c->argv[1], 2, SET_OP_DIFF))
         return shared.rock_cmd_fail;
 
-    return generic_get_zset_num_for_rock(c, 0);
+    return generic_get_zset_num_for_rock(c, 1);
 }
 
 void zunionCommand(client *c) {

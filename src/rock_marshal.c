@@ -1,5 +1,5 @@
 #include "rock_marshal.h"
-
+#include "server.h"
 
 // #include "assert.h"
 
@@ -434,7 +434,7 @@ static robj* unmarshal_hash_ht(const char *buf, const size_t sz)
 
 static sds marshal_hash_ziplist(const robj *o, sds s)
 {
-    size_t zip_list_bytes_len = ziplistBlobLen(o->ptr);
+    size_t zip_list_bytes_len = ziplistBlobLen((unsigned char*)o->ptr);
     s = sdscatlen(s, &zip_list_bytes_len, sizeof(size_t));
     s = sdscatlen(s, o->ptr, zip_list_bytes_len);
 
@@ -446,7 +446,7 @@ static size_t cal_room_hash_ziplist(const robj *o)
     size_t room = 0;
 
     room += sizeof(size_t);
-    size_t zip_list_bytes_len = ziplistBlobLen(o->ptr);
+    size_t zip_list_bytes_len = ziplistBlobLen((unsigned char*)o->ptr);
     room += zip_list_bytes_len;
 
     return room;
@@ -454,28 +454,35 @@ static size_t cal_room_hash_ziplist(const robj *o)
 
 static robj* unmarshal_hash_ziplist(const char *buf, const size_t sz)
 {
-    char *s = (char*)buf;
+    unsigned char *s = (unsigned char*)buf;
     long long len = sz;
 
     size_t zip_list_bytes_len = *((size_t*)s);
     s += sizeof(size_t);
     len -= sizeof(size_t);
 
-    char *ziplist = zmalloc(zip_list_bytes_len);
+    #if defined RED_ROCK_DEBUG
+    serverAssert(hashZiplistValidateIntegrity(s, zip_list_bytes_len, 1));
+    #endif
+
+    unsigned char *ziplist = zmalloc(zip_list_bytes_len);
     memcpy(ziplist, s, zip_list_bytes_len);
     s += zip_list_bytes_len;
     len -= zip_list_bytes_len;
 
-    robj *o = createObject(OBJ_HASH, ziplist);
+    serverAssert(len == 0);
+
+    // robj *o = createObject(OBJ_HASH, ziplist);
+    robj *o = createObject(OBJ_STRING, ziplist);
+    o->type = OBJ_HASH;
     o->encoding = OBJ_ENCODING_ZIPLIST;
 
-    serverAssert(len == 0);
     return o;
 }
 
 static sds marshal_zset_ziplist(const robj *o, sds s)
 {
-    size_t zip_list_bytes_len = ziplistBlobLen(o->ptr);
+    size_t zip_list_bytes_len = ziplistBlobLen((unsigned char*)o->ptr);
     s = sdscatlen(s, &zip_list_bytes_len, sizeof(size_t));
     s = sdscatlen(s, o->ptr, zip_list_bytes_len);
 
@@ -487,7 +494,7 @@ static size_t cal_room_zset_ziplist(const robj *o)
     size_t room = 0;
 
     room += sizeof(size_t);
-    size_t zip_list_bytes_len = ziplistBlobLen(o->ptr);
+    size_t zip_list_bytes_len = ziplistBlobLen((unsigned char*)o->ptr);
     room += zip_list_bytes_len;
 
     return room;
@@ -495,20 +502,26 @@ static size_t cal_room_zset_ziplist(const robj *o)
 
 static robj* unmarshal_zset_ziplist(const char *buf, const size_t sz)
 {
-    char *s = (char*)buf;
+    unsigned char *s = (unsigned char*)buf;
     long long len = sz;
 
     size_t zip_list_bytes_len = *((size_t*)s);
     s += sizeof(size_t);
     len -= sizeof(size_t);
 
+    #if defined RED_ROCK_DEBUG
+    serverAssert(hashZiplistValidateIntegrity(s, zip_list_bytes_len, 1));
+    #endif
+
     char *ziplist = zmalloc(zip_list_bytes_len);
     memcpy(ziplist, s, zip_list_bytes_len);
     s += zip_list_bytes_len;
     len -= zip_list_bytes_len;
-
     serverAssert(len == 0);
-    robj *o = createObject(OBJ_ZSET, ziplist);
+
+    // robj *o = createObject(OBJ_ZSET, ziplist);
+    robj *o = createObject(OBJ_STRING, ziplist);
+    o->type = OBJ_ZSET;
     o->encoding = OBJ_ENCODING_ZIPLIST;
 
     return o;

@@ -131,6 +131,18 @@ def hset():
         raise Exception("hset fail")
 
 
+def hset_for_ht_encoding():
+    r.execute_command("del", key)
+    r.execute_command("hset", key, "field1", "foo", "field2", "bar")
+    long_val = "val" * 1000
+    rock_evict(key)
+    r.execute_command("hset", key, "field1", long_val, "field3", "val3")
+    res = r.hgetall(key)
+    if res != {"field1": long_val, "field2": "bar", "field3": "val3"}:
+        print(res)
+        raise Exception("hset_for_ht_encoding fail")
+
+
 def hsetnx():
     r.execute_command("del", key)
     r.execute_command("hset", key, "field", "Hello")
@@ -187,20 +199,21 @@ def hvals():
 
 def test_all():
     hdel()
-    # hexists()
-    # hget()
-    # hgetall()
-    # hincrby()
-    # hincrbyfloat()
-    # hkeys()
-    # hlen()
-    # hmget()
-    # hmset()
-    # hset()
-    # hsetnx()
-    # hrandfield()
-    # hstrlen()
-    # hvals()
+    hexists()
+    hget()
+    hgetall()
+    hincrby()
+    hincrbyfloat()
+    hkeys()
+    hlen()
+    hmget()
+    hmset()
+    hset()
+    hset_for_ht_encoding()
+    hsetnx()
+    hrandfield()
+    hstrlen()
+    hvals()
 
 
 def _main():
