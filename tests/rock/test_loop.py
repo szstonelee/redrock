@@ -1,4 +1,4 @@
-import test_str, test_set, test_hash, test_list, test_zset
+import test_str, test_set, test_hash, test_list, test_zset, test_bitmap, test_geo, test_hyperloglog
 
 
 def _main():
@@ -8,6 +8,9 @@ def _main():
         test_list.test_all()
         test_hash.test_all()
         test_zset.test_all()
+        test_bitmap.test_all()
+        test_geo.test_all()
+        test_hyperloglog.test_all()
 
 
 if __name__ == '__main__':
