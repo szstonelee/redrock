@@ -717,6 +717,7 @@ typedef struct redisDb {
     dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP)*/
     dict *ready_keys;           /* Blocked keys that received a PUSH */
     dict *watched_keys;         /* WATCHED keys for MULTI/EXEC CAS */
+    dict *rock_hash;            /* Keys of hash for RocksDB */ 
     int id;                     /* Database ID */
     long long avg_ttl;          /* Average TTL, just for stats */
     unsigned long expires_cursor; /* Cursor of the active expire cycle. */
@@ -1008,6 +1009,7 @@ struct sharedObjectsStruct {
     robj *rock_val_hash_ht;
     robj *rock_val_zset_ziplist;
     robj *rock_val_zset_skiplist;
+    sds hash_rock_val_for_field;
 };
 
 /* ZSETs use a specialized version of Skiplists */
@@ -1533,6 +1535,7 @@ struct redisServer {
     int sort_store;
     /* Zip structure config, see redis.conf for more information  */
     size_t hash_max_ziplist_entries;
+    size_t hash_max_rock_entries;
     size_t hash_max_ziplist_value;
     size_t set_max_intset_entries;
     size_t zset_max_ziplist_entries;

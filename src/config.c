@@ -2347,6 +2347,40 @@ int updateRequirePass(sds val, sds prev, const char **err) {
     return 1;
 }
 
+
+static int update_hash_max_ziplist_entries(long long val, long long prev, const char **err)
+{
+    UNUSED(prev);
+
+    if (server.hash_max_rock_entries == 0)
+        return 1;       // if hash_max_rock_entries not set, everything is OK.
+
+    if (val < (long long)server.hash_max_rock_entries)
+        return 1;       // must less than hash_max_rock_entries
+    
+
+    static char msg[128];
+    sprintf(msg, "hash-max-ziplist-entries must be less than hash-max-rock-entries which is %lu", server.hash_max_rock_entries);
+    *err = msg;
+    return 0;
+}
+
+static int update_hash_max_rock_entries(long long val, long long prev, const char **err)
+{
+    UNUSED(prev);
+
+    if (val == 0)
+        return 1;       // hash_max_rock_entries can always be set to zero, i.e., disabled.
+    
+    if (val > (long long)server.hash_max_ziplist_entries)
+        return 1;
+
+    static char msg[128];
+    sprintf(msg, "hash-max-rock-entries must be greater than hash-max-ziplist-entries which is %lu", server.hash_max_ziplist_entries);
+    *err = msg;
+    return 0;
+}
+
 #ifdef USE_OPENSSL
 static int updateTlsCfg(char *val, char *prev, const char **err) {
     UNUSED(val);
@@ -2529,7 +2563,8 @@ standardConfig configs[] = {
     createULongLongConfig("maxmemory", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.maxmemory, 0, MEMORY_CONFIG, NULL, updateMaxmemory),
 
     /* Size_t configs */
-    createSizeTConfig("hash-max-ziplist-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_ziplist_entries, 512, INTEGER_CONFIG, NULL, NULL),
+    createSizeTConfig("hash-max-ziplist-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_ziplist_entries, 512, INTEGER_CONFIG, NULL, update_hash_max_ziplist_entries),
+    createSizeTConfig("hash-max-rock-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_rock_entries, 0, INTEGER_CONFIG, NULL, update_hash_max_rock_entries),    
     createSizeTConfig("set-max-intset-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.set_max_intset_entries, 512, INTEGER_CONFIG, NULL, NULL),
     createSizeTConfig("zset-max-ziplist-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.zset_max_ziplist_entries, 128, INTEGER_CONFIG, NULL, NULL),
     createSizeTConfig("active-defrag-ignore-bytes", NULL, MODIFIABLE_CONFIG, 1, LLONG_MAX, server.active_defrag_ignore_bytes, 100<<20, MEMORY_CONFIG, NULL, NULL), /* Default: don't defrag if frag overhead is below 100mb */

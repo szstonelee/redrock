@@ -460,6 +460,8 @@ void create_shared_object_for_rock()
 
     shared.rock_val_zset_skiplist = createZsetObject();
     makeObjectShared(shared.rock_val_zset_skiplist);
+
+    shared.hash_rock_val_for_field = NULL;      // NOTE: must be NULL for make sdsfree() do nothing
 }
 
 /* Called in main thread 

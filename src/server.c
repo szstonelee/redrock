@@ -39,6 +39,7 @@
 #include "rock.h"
 #include "rock_write.h"
 #include "rock_read.h"
+#include "rock_hash.h"
 
 #include <time.h>
 #include <signal.h>
@@ -3258,6 +3259,7 @@ void initServer(void) {
         server.db[j].avg_ttl = 0;
         server.db[j].defrag_later = listCreate();
         listSetFreeMethod(server.db[j].defrag_later,(void (*)(void*))sdsfree);
+        server.db[j].rock_hash = init_rock_hash_dict();
     }
     evictionPoolAlloc(); /* Initialize the LRU keys pool. */
     server.pubsub_channels = dictCreate(&keylistDictType,NULL);
@@ -4257,7 +4259,7 @@ int processCommand(client *c) {
         queueMultiCommand(c);
         addReply(c,shared.queued);
     } else {
-        
+
         const int check_rock_res = check_and_set_rock_status_in_processCommand(c);
         switch (check_rock_res)
         {
