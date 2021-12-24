@@ -13,5 +13,6 @@ int debug_check_no_candidates(const int len, const sds *rock_keys);
 
 /* for read_write.c */
 int already_in_candidates_for_db(const int dbid, const sds redis_key);
+int already_in_candidates_for_hash(const int dbid, const sds redis_key, const sds field);
 
 #endif

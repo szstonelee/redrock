@@ -80,7 +80,8 @@ static void init_write_ring_buffer()
 }
 
 /* Called by Main thread in lock mode from caller.
- * keys and vals will be ownered by ring buffer.
+ * keys and vals will be ownered by ring buffer 
+ * so the caller can not use them anymore.
  * We free memory only when overwrite old and abandoned key/value
  */
 static void batch_append_to_ringbuf(const int len, sds* keys, sds* vals) 
@@ -132,8 +133,7 @@ int space_in_write_ring_buffer()
  * NOTE1: The caller must guarantee that these keys in redis db 
  *        have been set the corresponding value to rock values.
  * 
- * NOTE2: Question??? I move out the marshal code out of lock mode.
- *        The note2 is optimized to not using!!!!
+ * NOTE2: Need a deep think??? I move out the marshal code out of lock mode.
  *        We serialize vals in lock mode to avoid data race.
  *        Maybe we could serialize out of lock mode.
  *        But the guarantee of data integrity is very important 
@@ -148,17 +148,13 @@ int space_in_write_ring_buffer()
  *           2. not use keys anymore
  *           3. not use objs anymore
  */
-static void write_batch_append_and_abandon(const int len, const int *dbids, sds *keys, robj **objs)
+static void write_batch_for_db_and_abandon(const int len, const int *dbids, sds *keys, robj **objs)
 {
-    serverAssert(len > 0);
-
     sds vals[RING_BUFFER_LEN];
-
     for (int i = 0; i < len; ++i)
     {
-        sds key = keys[i];
-        key = encode_rock_key_for_db(dbids[i], key);
-        keys[i] = key;
+        sds rock_key = encode_rock_key_for_db(dbids[i], keys[i]);
+        keys[i] = rock_key;
         sds val = marshal_object(objs[i]);
         vals[i] = val;
     }
@@ -175,6 +171,34 @@ static void write_batch_append_and_abandon(const int len, const int *dbids, sds 
     for (int i = 0; i < len; ++i)
     {
         decrRefCount(objs[i]);
+    }
+}
+
+/* NOTE: The caller does not use keys, fields, vals anymore
+ *       because keys will changed to rock_key and tranfer ownership to ring buffer,
+ *       vals will be transfered ownership to ring buffer.
+ *       and fields will be reclaimed here.
+ */
+static void write_batch_for_hash_and_abandon(const int len, const int *dbids, sds *keys, sds *fields, sds *vals)
+{
+    for (int i = 0; i < len; ++i)
+    {        
+        sds rock_key = encode_rock_key_for_hash(dbids[i], keys[i], fields[i]);
+        keys[i] = rock_key;
+    }
+
+    rock_w_lock();
+    serverAssert(rbuf_len + len <= RING_BUFFER_LEN);
+#ifdef RED_ROCK_DEBUG
+    serverAssert(debug_check_no_candidates(len, keys));
+#endif
+    batch_append_to_ringbuf(len, keys, vals);
+    rock_w_unlock();
+
+    // release fields
+    for (int i = 0; i < len; ++i)
+    {
+        sdsfree(fields[i]);
     }
 }
 
@@ -235,7 +259,7 @@ int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, const s
     }
 
     if (evict_len)
-        write_batch_append_and_abandon(evict_len, evict_dbids, evict_keys, evict_vals);
+        write_batch_for_db_and_abandon(evict_len, evict_dbids, evict_keys, evict_vals);
 
     return evict_len;    
 }
@@ -258,21 +282,54 @@ int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, const s
  */
 int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const sds *try_keys, const sds *try_fields)
 {
-    UNUSED(try_dbids);
-    UNUSED(try_keys);
-    UNUSED(try_fields);
-
     serverAssert(try_len > 0);
 
-/*
     int evict_len = 0;
 
     int evict_dbids[RING_BUFFER_LEN];
     sds evict_keys[RING_BUFFER_LEN];
     sds evict_fields[RING_BUFFER_LEN];
-*/
+    for (int i = 0; i < try_len; ++i)
+    {
+        const int dbid = try_dbids[i];
+        const sds try_key = try_keys[i];
+        const sds try_field = try_fields[i];
 
-    return 0;
+        serverAssert(is_in_rock_hash(dbid, try_key));
+
+        if (already_in_candidates_for_hash(dbid, try_key, try_field))     // the rock_read.c API
+            continue;
+
+        // NOTE: we must duplicate for write_batch_append_and_abandon()
+        evict_keys[evict_len] = sdsdup(try_key);
+        evict_fields[evict_len] = sdsdup(try_field);  
+        evict_dbids[evict_len] = dbid;
+        ++evict_len; 
+    }
+
+    sds evict_vals[RING_BUFFER_LEN];
+    for (int i = 0; i < evict_len; ++i)
+    {
+        redisDb *db = server.db + evict_dbids[i];
+        dictEntry *de_db = dictFind(db->dict, evict_keys[i]);
+        serverAssert(de_db);
+        robj *o = dictGetVal(de_db);
+        serverAssert(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT);
+        dict *hash = o->ptr;
+        dictEntry *de_hash = dictFind(hash, evict_fields[i]);
+        serverAssert(de_hash);
+
+        // change the value to rock value in Redis DB
+        sds v = dictGetVal(de_hash);
+        serverAssert(is_evict_hash_value(v));        
+        dictGetVal(de_hash) = shared.hash_rock_val_for_field;
+        evict_vals[i] = v;    
+    }
+   
+    if (evict_len)
+        write_batch_for_hash_and_abandon(evict_len, evict_dbids, evict_keys, evict_fields, evict_vals);
+
+    return evict_len;
 }
 
 /* Called in main thread for command ROCKEVICT
@@ -422,6 +479,45 @@ static int exist_in_ring_buf_for_db_and_return_index(const int dbid, const sds r
     return -1;
 }
 
+/* Check whether the key and field is in ring buffer.
+ * If not found, return -1. Otherise, the index in ring buffer. 
+ *
+ * The caller guarantees in lock mode.
+ *
+ * NOTE: We need check from the end of ring buffer, becuase 
+ *       for duplicated keys in ring buf, the tail is newer than the head
+ *       in the queue (i.e., ring buffer).
+ */
+static int exist_in_ring_buf_for_hash_and_return_index(const int dbid, const sds redis_key, const sds field)
+{
+    if (rbuf_len == 0)
+        return -1;
+
+    sds rock_key = sdsdup(redis_key);
+    rock_key = encode_rock_key_for_hash(dbid, rock_key, field);
+    const size_t rock_key_len = sdslen(rock_key);
+
+    int index = rbuf_e_index - 1;
+    if (index == -1)
+        index = RING_BUFFER_LEN - 1;
+
+    for (int i = 0; i < rbuf_len; ++i)
+    {
+        if (rock_key_len == sdslen(rbuf_keys[index]) && sdscmp(rock_key, rbuf_keys[index]) == 0)
+        {
+            sdsfree(rock_key);
+            return index;
+        }
+
+        --index;
+        if (index == -1)
+            index = RING_BUFFER_LEN - 1;
+    }
+
+    sdsfree(rock_key);
+    return -1;
+}
+
 /* This is the API for rock_read.c. 
  * The caller guarantees not in lock mode of write.
  *
@@ -435,7 +531,7 @@ static int exist_in_ring_buf_for_db_and_return_index(const int dbid, const sds r
  * 
  * The caller needs to reclaim the resource if allocated.
  */
-list* get_vals_from_write_ring_buf_first(const int dbid, const list *redis_keys)
+list* get_vals_from_write_ring_buf_first_for_db(const int dbid, const list *redis_keys)
 {
     serverAssert(listLength(redis_keys) > 0);
 
@@ -467,7 +563,67 @@ list* get_vals_from_write_ring_buf_first(const int dbid, const list *redis_keys)
 
     if (all_not_in_ring_buf)
     {
-        // listSetFreeMethod(r, (void (*)(void*))sdsfree);
+        listRelease(r);
+        return NULL;
+    }
+    else
+    {
+        return r;
+    }
+}
+
+/* This is the API for rock_read.c. 
+ * The caller guarantees not in lock mode of write.
+ *
+ * When a client needs recover some hash keys with field, it needs check ring buffer first.
+ * The return is a list of recover vals (as sds) with same size as hash_keys (as same order).
+ * 
+ * If the key is in the ring buffer, the recover val (sds of serilized value) is duplicated.
+ * Otherwise, recover val will be set to NULL. 
+ * 
+ * If no key in ring buf, the return list will be NULL. (and no resource allocated)
+ * 
+ * The caller needs to reclaim the resource if allocated.
+ */
+list* get_vals_from_write_ring_buf_first_for_hash(const int dbid, const list *hash_keys, const list *fields)
+{
+    serverAssert(listLength(hash_keys) > 0);
+    serverAssert(listLength(hash_keys) == listLength(fields));
+
+    list *r = listCreate();
+    int all_not_in_ring_buf = 1;
+
+    rock_w_lock();
+
+    listIter li_key;
+    listNode *ln_key;
+    listRewind((list*)hash_keys, &li_key);
+    listIter li_field;
+    listNode *ln_field;
+    listRewind((list*)fields, &li_field);
+    while ((ln_key = listNext(&li_key)))
+    {
+        ln_field = listNext(&li_field);
+
+        sds hash_key = listNodeValue(ln_key);
+        sds field = listNodeValue(ln_field);
+        const int index = exist_in_ring_buf_for_hash_and_return_index(dbid, hash_key, field);
+        if (index == -1)
+        {
+            listAddNodeTail(r, NULL);
+        }
+        else
+        {
+            sds copy_val = sdsdup(rbuf_vals[index]);
+            listAddNodeTail(r, copy_val);
+            all_not_in_ring_buf = 0;
+        }
+    }
+
+    rock_w_unlock();
+
+    if (all_not_in_ring_buf)
+    {
         listRelease(r);
         return NULL;
     }

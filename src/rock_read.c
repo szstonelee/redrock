@@ -611,7 +611,7 @@ static void go_on_need_rock_keys_from_rocksdb(const uint64_t client_id,
 static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list *redis_keys)
 {
     // Call the API for ring buf in rock_write.c
-    list *vals = get_vals_from_write_ring_buf_first(dbid, redis_keys);
+    list *vals = get_vals_from_write_ring_buf_first_for_db(dbid, redis_keys);
     if (vals == NULL)
         return NULL;
 
@@ -767,10 +767,30 @@ int debug_check_no_candidates(const int len, const sds *rock_keys)
  */
 int already_in_candidates_for_db(const int dbid, const sds redis_key)
 {
-    int exist = 0;
     sds rock_key = sdsdup(redis_key);
     rock_key = encode_rock_key_for_db(dbid, rock_key);
 
+    int exist = 0;
+    rock_r_lock();
+    if (dictFind(read_rock_key_candidates, rock_key) != NULL)
+        exist = 1;
+    rock_r_unlock();
+
+    sdsfree(rock_key);
+
+    return exist;
+}
+
+/* API for rock_write.c for checking whether the key with the field is in candidates
+ * Called in main thread.
+ * Return 1 if it is in read_rock_key_candidates. Otherwise 0.
+ */
+int already_in_candidates_for_hash(const int dbid, const sds redis_key, const sds field)
+{
+    sds rock_key = sdsdup(redis_key);
+    rock_key = encode_rock_key_for_hash(dbid, rock_key, field);
+
+    int exist = 0;
     rock_r_lock();
     if (dictFind(read_rock_key_candidates, rock_key) != NULL)
         exist = 1;

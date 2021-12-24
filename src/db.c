@@ -32,6 +32,7 @@
 #include "atomicvar.h"
 
 #include "rock.h"
+#include "rock_hash.h"
 
 #include <signal.h>
 #include <ctype.h>
@@ -244,6 +245,8 @@ void dbOverwrite(redisDb *db, robj *key, robj *val) {
     }
 
     dictFreeVal(db->dict, &auxentry);
+
+    on_del_hash_from_db(db->id, key->ptr);
 }
 
 /* High level Set operation. This function can be used in order to set
@@ -333,6 +336,8 @@ int dbSyncDelete(redisDb *db, robj *key) {
 /* This is a wrapper whose behavior depends on the Redis lazy free
  * configuration. Deletes the key synchronously or asynchronously. */
 int dbDelete(redisDb *db, robj *key) {
+    on_del_hash_from_db(db->id, key->ptr);
+
     return server.lazyfree_lazy_server_del ? dbAsyncDelete(db,key) :
                                              dbSyncDelete(db,key);
 }

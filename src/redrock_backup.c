@@ -307,3 +307,18 @@ static void recover_one_key(const sds rock_key, const sds recover_val,
     serverAssert(listLength(current) == 0);
     listRelease(current);
 }
+
+
+static void debug_check_sds_equal(const int dbid, const sds redis_key, const robj *o, const sds field)
+{
+    redisDb *db = server.db + dbid;
+    dictEntry *de_db = dictFind(db->dict, redis_key);
+    serverAssert(de_db);
+    serverAssert(dictGetKey(de_db) == redis_key);
+    serverAssert(dictGetVal(de_db) == o);
+
+    dict *hash = o->ptr;
+    dictEntry *de_hash = dictFind(hash, field);
+    serverAssert(de_hash);
+    serverAssert(dictGetKey(de_hash) == field);
+}

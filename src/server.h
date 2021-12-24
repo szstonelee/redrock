@@ -2296,7 +2296,8 @@ robj *setTypeDup(robj *o);
 void hashTypeConvert(robj *o, int enc);
 void hashTypeTryConversion(robj *subject, robj **argv, int start, int end);
 int hashTypeExists(robj *o, sds key);
-int hashTypeDelete(robj *o, sds key);
+int hashTypeDelete(const int dbid, const sds key, robj *o, sds field);
+int hashTypeDelete_for_module(robj *o, sds field);
 unsigned long hashTypeLength(const robj *o);
 hashTypeIterator *hashTypeInitIterator(robj *subject);
 void hashTypeReleaseIterator(hashTypeIterator *hi);
@@ -2310,7 +2311,8 @@ void hashTypeCurrentObject(hashTypeIterator *hi, int what, unsigned char **vstr,
 sds hashTypeCurrentObjectNewSds(hashTypeIterator *hi, int what);
 robj *hashTypeLookupWriteOrCreate(client *c, robj *key);
 robj *hashTypeGetValueObject(robj *o, sds field);
-int hashTypeSet(robj *o, sds field, sds value, int flags);
+int hashTypeSet(const int dbid, const sds key, robj *o, sds field, sds value, int flags);
+int hashTypeSet_for_module(robj *o, sds field, sds value, int flags);
 robj *hashTypeDup(robj *o);
 int hashZiplistValidateIntegrity(unsigned char *zl, size_t size, int deep);
 

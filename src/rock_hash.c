@@ -51,19 +51,6 @@ dictType fieldLruDictType = {
     dictExpandAllowed           /* allow to expand */
 };
 
-static void debug_check_sds_equal(const int dbid, const sds redis_key, const robj *o, const sds field)
-{
-    redisDb *db = server.db + dbid;
-    dictEntry *de_db = dictFind(db->dict, redis_key);
-    serverAssert(de_db);
-    serverAssert(dictGetKey(de_db) == redis_key);
-    serverAssert(dictGetVal(de_db) == o);
-
-    dict *hash = o->ptr;
-    dictEntry *de_hash = dictFind(hash, field);
-    serverAssert(de_hash);
-    serverAssert(dictGetKey(de_hash) == field);
-}
 
 static void debug_check_lru(dict *hash, dict *lrus)
 {
@@ -100,8 +87,8 @@ static void debug_check_lru(dict *hash, dict *lrus)
  * Otherwise, create the dict of valid lrus for all fields.
  * 
  * NOTE:
- * 1. redis_key must be the key of sds in redis db dict because sharing.
- * 2. field must be the field of sds in internal dict of o becausse sharing.
+ *      We will use the internal key in redis DB and field in hahs
+ *      because rock_hash shared them.
  */
 void on_hash_key_add_field(const int dbid, const sds redis_key, const robj *o, const sds field)
 {
@@ -109,10 +96,6 @@ void on_hash_key_add_field(const int dbid, const sds redis_key, const robj *o, c
 
     if (o->encoding != OBJ_ENCODING_HT)
         return;
-
-    #if defined RED_ROCK_DEBUG
-    debug_check_sds_equal(dbid, redis_key, o, field);
-    #endif
 
     if (server.hash_max_rock_entries == 0)
         return;
@@ -122,12 +105,21 @@ void on_hash_key_add_field(const int dbid, const sds redis_key, const robj *o, c
         return;
 
     redisDb *db = server.db + dbid;
+
+    dictEntry *de_db = dictFind(db->dict, redis_key);
+    serverAssert(de_db);
+    const sds internal_redis_key = dictGetKey(de_db);
+    serverAssert(dictGetVal(de_db) == o);
+
     uint64_t clock = LRU_CLOCK();
-    dictEntry *de_rock_hash = dictFind(db->rock_hash, redis_key);
+    dictEntry *de_rock_hash = dictFind(db->rock_hash, internal_redis_key);
     if (de_rock_hash)
     {
         dict *lrus = dictGetVal(de_rock_hash);
-        serverAssert(dictAdd(lrus, field, (void*)clock) == DICT_OK);
+        dictEntry *de_hash = dictFind(hash, field);
+        serverAssert(de_hash);
+        const sds internal_field = dictGetKey(de_hash);
+        serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);
         #if defined RED_ROCK_DEBUG
         debug_check_lru(o->ptr, lrus);
         #endif
@@ -136,18 +128,17 @@ void on_hash_key_add_field(const int dbid, const sds redis_key, const robj *o, c
     {
         // create a dict of lrus, add all fields to the lrus
         // then add redis_key and lrus to rock_hash 
-        dict *hash = o->ptr;
         dict *lrus = dictCreate(&fieldLruDictType, NULL);
         dictIterator *di_hash = dictGetIterator(hash);
         dictEntry* de_hash;
         while ((de_hash = dictNext(di_hash)))
         {
-            const sds field = dictGetKey(de_hash);
+            const sds internal_field = dictGetKey(de_hash);
             serverAssert(dictGetVal(de_hash) != shared.hash_rock_val_for_field);
-            serverAssert(dictAdd(lrus, field, (void*)clock) == DICT_OK);
+            serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);
         }
         dictReleaseIterator(di_hash);
-        serverAssert(dictAdd(db->rock_hash, redis_key, lrus) == DICT_OK);    
+        serverAssert(dictAdd(db->rock_hash, internal_redis_key, lrus) == DICT_OK);    
     }
 }
 
@@ -222,6 +213,7 @@ void on_recover_field_of_hash(const int dbid, const sds redis_key, const robj *o
 void on_rockval_field_of_hash(const int dbid, const sds redis_key, const robj *o, const sds field)
 {
     serverAssert(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT);
+
     redisDb *db = server.db + dbid;
     dictEntry *de_rock_hash = dictFind(db->rock_hash, redis_key);
     serverAssert(de_rock_hash);
@@ -232,7 +224,8 @@ void on_rockval_field_of_hash(const int dbid, const sds redis_key, const robj *o
     #endif    
 }
 
-/* When a db delete a hash with the key of redis_key
+/* Before or after a redis db delete a hash with the key of redis_key
+ * NOTE: It could be del a key or overwrite a key for the redis db.
  */
 void on_del_hash_from_db(const int dbid, const sds redis_key)
 {

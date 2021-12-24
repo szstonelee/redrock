@@ -22,6 +22,6 @@ int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const
 int try_evict_one_key_to_rocksdb(const int dbid, const sds key);
 
 // for rock_read.c
-list* get_vals_from_write_ring_buf_first(const int dbid, const list *redis_keys);
+list* get_vals_from_write_ring_buf_first_for_db(const int dbid, const list *redis_keys);
 
 #endif
