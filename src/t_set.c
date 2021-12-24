@@ -321,8 +321,11 @@ void saddCommand(client *c) {
     addReplyLongLong(c,added);
 }
 
-list* sadd_cmd_for_rock(const client *c)
+list* sadd_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -354,8 +357,11 @@ void sremCommand(client *c) {
     addReplyLongLong(c,deleted);
 }
 
-list* srem_cmd_for_rock(const client *c)
+list* srem_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -414,8 +420,11 @@ void smoveCommand(client *c) {
     addReply(c,shared.cone);
 }
 
-list* smove_cmd_for_rock(const client *c)
+list* smove_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
 
@@ -431,8 +440,11 @@ void sismemberCommand(client *c) {
         addReply(c,shared.czero);
 }
 
-list* sismember_cmd_for_rock(const client *c)
+list* sismember_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -455,8 +467,11 @@ void smismemberCommand(client *c) {
     }
 }
 
-list* smismember_cmd_for_rock(const client *c)
+list* smismember_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -469,8 +484,11 @@ void scardCommand(client *c) {
     addReplyLongLong(c,setTypeSize(o));
 }
 
-list* scard_cmd_for_rock(const client *c)
+list* scard_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -676,8 +694,11 @@ void spopCommand(client *c) {
     server.dirty++;
 }
 
-list* spop_cmd_for_rock(const client *c)
+list* spop_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -867,8 +888,11 @@ void srandmemberCommand(client *c) {
     }
 }
 
-list* srandmember_cmd_for_rock(const client *c)
+list* srandmember_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1021,13 +1045,19 @@ void sinterCommand(client *c) {
     sinterGenericCommand(c,c->argv+1,c->argc-1,NULL);
 }
 
-list* smembers_cmd_for_rock(const client *c)
+list* smembers_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
-list* sinter_cmd_for_rock(const client *c)
+list* sinter_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 
@@ -1035,8 +1065,11 @@ void sinterstoreCommand(client *c) {
     sinterGenericCommand(c,c->argv+2,c->argc-2,c->argv[1]);
 }
 
-list* sinterstore_cmd_for_rock(const client *c)
+list* sinterstore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 
@@ -1209,8 +1242,11 @@ void sunionCommand(client *c) {
     sunionDiffGenericCommand(c,c->argv+1,c->argc-1,NULL,SET_OP_UNION);
 }
 
-list* sunion_cmd_for_rock(const client *c)
+list* sunion_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 
@@ -1218,8 +1254,11 @@ void sunionstoreCommand(client *c) {
     sunionDiffGenericCommand(c,c->argv+2,c->argc-2,c->argv[1],SET_OP_UNION);
 }
 
-list* suionstore_cmd_for_rock(const client *c)
+list* suionstore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 
@@ -1227,8 +1266,11 @@ void sdiffCommand(client *c) {
     sunionDiffGenericCommand(c,c->argv+1,c->argc-1,NULL,SET_OP_DIFF);
 }
 
-list* sdiff_cmd_for_rock(const client *c)
+list* sdiff_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 
@@ -1236,8 +1278,11 @@ void sdiffstoreCommand(client *c) {
     sunionDiffGenericCommand(c,c->argv+2,c->argc-2,c->argv[1],SET_OP_DIFF);
 }
 
-list* sdiffstore_cmd_for_rock(const client *c)
+list* sdiffstore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 
@@ -1251,7 +1296,10 @@ void sscanCommand(client *c) {
     scanGenericCommand(c,set,cursor);
 }
 
-list* sscan_cmd_for_rock(const client *c)
+list* sscan_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }

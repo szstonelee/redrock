@@ -893,8 +893,11 @@ NULL
     }
 }
 
-list* debug_cmd_for_rock(const client *c)
+list* debug_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+    
     if (c->argc == 3)
     {
         return generic_get_one_key_for_rock(c, 2);

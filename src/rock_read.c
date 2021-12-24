@@ -386,17 +386,6 @@ static void try_assign_tasks()
 int processCommandAndResetClient(client *c);        // networkng.c, no declaration in any header
 static void resume_command_for_client_in_async_mode(client *c)
 {
-#if 0
-    serverAssert(c->rock_key_num == 0);
-    
-    process_cmd_in_processInputBuffer(c);       // resume the command in async mode
-
-    /* Then process client if it has more data in it's buffer. */
-    /* check block.c for reference */
-    if (c->querybuf && sdslen(c->querybuf) > 0) 
-        processInputBuffer(c);
-#endif
-
     serverAssert(!is_client_in_waiting_rock_value_state(c));
 
     processCommandAndResetClient(c);
@@ -466,6 +455,37 @@ static void try_recover_val_object_in_redis_db(const int dbid,
     sdsfree(key);
 }
 
+/* Called in main thread to recover one key for redis db
+ * The caller guarantee in lcok mode.
+ *
+ * It will try to recover the obj in DB if it can.
+ * 
+ * The client list will append to waiting_clients 
+ * and will be set NULL in read_rock_key_candidates
+ */
+static void recover_data_for_db(const sds task,
+                                const sds recover_val,
+                                list **waiting_clients)
+{
+    int dbid;
+    const char *redis_key;
+    size_t redis_key_len;
+    decode_rock_key_for_db(task, &dbid, &redis_key, &redis_key_len);
+
+    try_recover_val_object_in_redis_db(dbid, redis_key, redis_key_len, recover_val);
+
+    dictEntry *de = dictFind(read_rock_key_candidates, task);
+    serverAssert(de && dictGetKey(de) == task);
+
+    list *current = dictGetVal(de);
+    serverAssert(current && listLength(current) > 0);
+    listJoin(*waiting_clients, current);
+    listRelease(current);   // the current right now is empty
+
+    // avoid clear the list of client ids in read_rock_key_candidates when dictDelete
+    dictGetVal(de) = NULL;      
+}
+
 /* Called in main thread to recover the data from RocksDB.
  * For every finished task, we try to recover the val in Redis DB.
  * And we need join all waiting client ids for all finished tasks.
@@ -478,7 +498,6 @@ static void recover_data()
     list *waiting_clients = listCreate();
 
     rock_r_lock();
-
     serverAssert(task_status == READ_RETURN_TASK);
     serverAssert(read_key_tasks[0] != NULL);
     for (int i = 0; i < READ_TOTAL_LEN; ++i)
@@ -486,24 +505,16 @@ static void recover_data()
         const sds task = read_key_tasks[i];
         if (task == NULL)
             break;
-        
-        int dbid;
-        const char *redis_key;
-        size_t redis_key_len;
-        decode_rock_key(task, &dbid, &redis_key, &redis_key_len);
 
-        try_recover_val_object_in_redis_db(dbid, redis_key, redis_key_len, read_return_vals[i]);
-
-        dictEntry *de = dictFind(read_rock_key_candidates, task);
-        serverAssert(de && dictGetKey(de) == task);
-
-        list *current = dictGetVal(de);
-        serverAssert(current && listLength(current) > 0);
-        listJoin(waiting_clients, current);
-        listRelease(current);   // the current right now is empty
-
-        // avoid clear the list of client ids in read_rock_key_candidates when dictDelete
-        dictGetVal(de) = NULL;      
+        if (is_rock_key_for_db(task))
+        {
+            recover_data_for_db(task, read_return_vals[i], &waiting_clients);
+        }
+        else
+        {
+            serverAssert(task[0] == ROCK_KEY_FOR_HASH);
+            serverPanic("TODO with hash");
+        }
         
         // must set NULL for next batch task assignment
         read_key_tasks[i] = NULL;
@@ -511,9 +522,7 @@ static void recover_data()
         read_return_vals[i] = NULL;
         dictDelete(read_rock_key_candidates, task);
     }
-
     try_assign_tasks();
-
     rock_r_unlock();
 
     // NOTE: not in lock mode to call check_client_resume_after_recover_data()
@@ -562,7 +571,7 @@ static void go_on_need_rock_keys_from_rocksdb(const uint64_t client_id,
         const sds redis_key = listNodeValue(ln);
 
         sds rock_key = sdsdup(redis_key);
-        rock_key = encode_rock_key(dbid, rock_key);
+        rock_key = encode_rock_key_for_db(dbid, rock_key);
 
         dictEntry *de = dictFind(read_rock_key_candidates, rock_key);
         if (de == NULL)
@@ -599,7 +608,7 @@ static void go_on_need_rock_keys_from_rocksdb(const uint64_t client_id,
  *
  * NOTE: same key could repeat in redis_keys.
  */
-static list* check_ring_buf_first_and_recover(const int dbid, const list *redis_keys)
+static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list *redis_keys)
 {
     // Call the API for ring buf in rock_write.c
     list *vals = get_vals_from_write_ring_buf_first(dbid, redis_keys);
@@ -687,7 +696,7 @@ static void debug_check_all_value_is_rock_value(const int dbid, const list *redi
  * 
  * The caller needs to reclaim the list after that (which is created by the caller)
  */
-int on_client_need_rock_keys(client *c, const list *redis_keys)
+int on_client_need_rock_keys_for_db(client *c, const list *redis_keys)
 {
     serverAssert(redis_keys && listLength(redis_keys) > 0);
 
@@ -701,7 +710,7 @@ int on_client_need_rock_keys(client *c, const list *redis_keys)
     const uint64_t client_id = c->id;
 
     int sync_mode = 0;
-    list *left = check_ring_buf_first_and_recover(dbid, redis_keys);
+    list *left = check_ring_buf_first_and_recover_for_db(dbid, redis_keys);
     if (left == NULL)
     {
         // nothing found in ring buffer
@@ -756,11 +765,11 @@ int debug_check_no_candidates(const int len, const sds *rock_keys)
  * Called in main thread.
  * Return 1 if it is in read_rock_key_candidates. Otherwise 0.
  */
-int already_in_candidates(const int dbid, const sds redis_key)
+int already_in_candidates_for_db(const int dbid, const sds redis_key)
 {
     int exist = 0;
     sds rock_key = sdsdup(redis_key);
-    rock_key = encode_rock_key(dbid, rock_key);
+    rock_key = encode_rock_key_for_db(dbid, rock_key);
 
     rock_r_lock();
     if (dictFind(read_rock_key_candidates, rock_key) != NULL)

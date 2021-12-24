@@ -240,3 +240,11 @@ void on_del_hash_from_db(const int dbid, const sds redis_key)
     dictDelete(db->rock_hash, redis_key);
 }
 
+/* If in rock hash, return 1.
+ * Otherwise, return 0.
+ */
+int is_in_rock_hash(const int dbid, const sds redis_key)
+{
+    redisDb *db = server.db + dbid;
+    return dictFind(db->rock_hash, redis_key) != NULL;
+}

@@ -552,8 +552,11 @@ void expireCommand(client *c) {
     expireGenericCommand(c,mstime(),UNIT_SECONDS);
 }
 
-list* expire_cmd_for_rock(const client *c)
+list* expire_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -562,8 +565,11 @@ void expireatCommand(client *c) {
     expireGenericCommand(c,0,UNIT_SECONDS);
 }
 
-list* expireat_cmd_for_rock(const client *c)
+list* expireat_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -572,8 +578,11 @@ void pexpireCommand(client *c) {
     expireGenericCommand(c,mstime(),UNIT_MILLISECONDS);
 }
 
-list* pexpire_cmd_for_rock(const client *c)
+list* pexpire_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -582,8 +591,11 @@ void pexpireatCommand(client *c) {
     expireGenericCommand(c,0,UNIT_MILLISECONDS);
 }
 
-list* pexpireat_cmd_for_rock(const client *c)
+list* pexpireat_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -615,8 +627,11 @@ void ttlCommand(client *c) {
     ttlGenericCommand(c, 0);
 }
 
-list* ttl_cmd_for_rock(const client *c)
+list* ttl_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -625,8 +640,11 @@ void pttlCommand(client *c) {
     ttlGenericCommand(c, 1);
 }
 
-list* pttl_cmd_for_rock(const client *c)
+list* pttl_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -646,8 +664,11 @@ void persistCommand(client *c) {
     }
 }
 
-list* persist_cmd_for_rock(const client *c)
+list* persist_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -659,8 +680,11 @@ void touchCommand(client *c) {
     addReplyLongLong(c,touched);
 }
 
-list* touch_cmd_for_rock(const client *c)
+list* touch_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 

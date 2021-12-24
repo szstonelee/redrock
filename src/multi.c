@@ -312,6 +312,8 @@ list* exec_cmd_for_rock(const client *input_c)
     struct redisCommand *saved_cmd = c->cmd;
 
     list *multi_list = NULL;
+    list *hash_keys = NULL;
+    list *hash_fields = NULL;
 
     for (int i = 0; i < c->mstate.count; ++i) 
     {
@@ -322,7 +324,7 @@ list* exec_cmd_for_rock(const client *input_c)
 
         if (c->cmd->rock_proc) 
         {
-            list* each_rock_keys = c->cmd->rock_proc(c);
+            list* each_rock_keys = c->cmd->rock_proc(c, &hash_keys, &hash_fields);
 
             if (each_rock_keys) 
             {

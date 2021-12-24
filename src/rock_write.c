@@ -2,6 +2,7 @@
 #include "rock.h"
 #include "rock_marshal.h"
 #include "rock_read.h"
+#include "rock_hash.h"
 
 // #include <stddef.h>
 // #include <assert.h>
@@ -156,7 +157,7 @@ static void write_batch_append_and_abandon(const int len, const int *dbids, sds 
     for (int i = 0; i < len; ++i)
     {
         sds key = keys[i];
-        key = encode_rock_key(dbids[i], key);
+        key = encode_rock_key_for_db(dbids[i], key);
         keys[i] = key;
         sds val = marshal_object(objs[i]);
         vals[i] = val;
@@ -177,13 +178,14 @@ static void write_batch_append_and_abandon(const int len, const int *dbids, sds 
     }
 }
 
-/* Called in main thread cron.
+/* Called in main thread cron and command ROCKEVICT.
+ *
  * When cron() select some keys (before setting rock value), it will call here
  * to determine which keys can be evicted to RocksDB 
  * because we need exclude those keys in read_rock_key_candidates. 
  * Check rock_read.c for read_rock_key_candidates for more reference. 
  * 
- * try_evict_to_rocksdb() will set value to rock value for these matched keys.
+ * try_evict_to_rocksdb_for_db() will set value to rock value for these matched keys.
  * Return the actual number of keys for eviction.
  * 
  * NOTE1: The caller needs to use space_in_write_ring_buffer() first
@@ -191,24 +193,29 @@ static void write_batch_append_and_abandon(const int len, const int *dbids, sds 
  *        The caller needs to guarantee check_len <= space.
  * 
  * NOTE2: The caller guarantee the vlaue can be evicted. (e.g. NOT stream value)
+ * 
+ * NOTE3: The keys must be not in rock hash.
  */
-int try_evict_to_rocksdb(const int check_len, const int *check_dbids, const sds *check_keys)
+int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, const sds *try_keys)
 {
-    serverAssert(check_len > 0);
+    serverAssert(try_len > 0);
 
     int evict_len = 0;
 
-    sds evict_keys[RING_BUFFER_LEN];
     int evict_dbids[RING_BUFFER_LEN];
-    for (int i = 0; i < check_len; ++i)
+    sds evict_keys[RING_BUFFER_LEN];
+    for (int i = 0; i < try_len; ++i)
     {
-        const int dbid = check_dbids[i];
-        const sds check_key = check_keys[i];
-        if (already_in_candidates(dbid, check_key))     // the rock_read.c API
+        const int dbid = try_dbids[i];
+        const sds try_key = try_keys[i];
+
+        serverAssert(!is_in_rock_hash(dbid, try_key));
+
+        if (already_in_candidates_for_db(dbid, try_key))     // the rock_read.c API
             continue;
 
         // NOTE: we must duplicate for write_batch_append_and_abandon()
-        evict_keys[evict_len] = sdsdup(check_key);  
+        evict_keys[evict_len] = sdsdup(try_key);  
         evict_dbids[evict_len] = dbid;
         ++evict_len;
     }
@@ -233,6 +240,41 @@ int try_evict_to_rocksdb(const int check_len, const int *check_dbids, const sds 
     return evict_len;    
 }
 
+/* Called in main thread cron and command ROCKEVICTHASH
+ *
+ * When cron() select some fields from some hashes (before setting rock value), it will call here
+ * to determine which fields can be evicted to RocksDB 
+ * because we need exclude those keys in read_rock_key_candidates. 
+ * Check rock_read.c for read_rock_key_candidates for more reference. 
+ *
+ * try_evict_to_rocksdb_for_hash() will set value to rock value for these matched fields.
+ * Return the actual number of fields for eviction.
+ *
+  * NOTE1: The caller needs to use space_in_write_ring_buffer() first
+ *        to know the available space for ring buffer.
+ *        The caller needs to guarantee check_len <= space.
+ *
+ * NOTE2: The caller guarantee the vlaue can be evicted, i.e., the value for the field is not rock value.
+ */
+int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const sds *try_keys, const sds *try_fields)
+{
+    UNUSED(try_dbids);
+    UNUSED(try_keys);
+    UNUSED(try_fields);
+
+    serverAssert(try_len > 0);
+
+/*
+    int evict_len = 0;
+
+    int evict_dbids[RING_BUFFER_LEN];
+    sds evict_keys[RING_BUFFER_LEN];
+    sds evict_fields[RING_BUFFER_LEN];
+*/
+
+    return 0;
+}
+
 /* Called in main thread for command ROCKEVICT
  * If succesful, return 1.
  * Otherwise, return 0. The caller can try again because the key may be in candidates 
@@ -246,7 +288,7 @@ int try_evict_one_key_to_rocksdb(const int dbid, const sds key)
     if (space == 0)
         return 0;
     
-    if (try_evict_to_rocksdb(1, &dbid, &key) == 0)
+    if (try_evict_to_rocksdb_for_db(1, &dbid, &key) == 0)
     {
         return 0;
     }
@@ -350,13 +392,13 @@ static void* rock_write_main(void* arg)
  *       for duplicated keys in ring buf, the tail is newer than the head
  *       in the queue (i.e., ring buffer).
  */
-static int exist_in_ring_buf_and_return_index(const int dbid, const sds redis_key)
+static int exist_in_ring_buf_for_db_and_return_index(const int dbid, const sds redis_key)
 {
     if (rbuf_len == 0)
         return -1;
 
     sds rock_key = sdsdup(redis_key);
-    rock_key = encode_rock_key(dbid, rock_key);
+    rock_key = encode_rock_key_for_db(dbid, rock_key);
     const size_t rock_key_len = sdslen(rock_key);
 
     int index = rbuf_e_index - 1;
@@ -408,7 +450,7 @@ list* get_vals_from_write_ring_buf_first(const int dbid, const list *redis_keys)
     while ((ln = listNext(&li)))
     {
         sds redis_key = listNodeValue(ln);
-        const int index = exist_in_ring_buf_and_return_index(dbid, redis_key);
+        const int index = exist_in_ring_buf_for_db_and_return_index(dbid, redis_key);
         if (index == -1)
         {
             listAddNodeTail(r, NULL);

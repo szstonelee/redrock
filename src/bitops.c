@@ -563,8 +563,11 @@ void setbitCommand(client *c) {
     addReply(c, bitval ? shared.cone : shared.czero);
 }
 
-list* setbit_cmd_for_rock(const client *c)
+list* setbit_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -595,8 +598,11 @@ void getbitCommand(client *c) {
     addReply(c, bitval ? shared.cone : shared.czero);
 }
 
-list* getbit_cmd_for_rock(const client* c)
+list* getbit_cmd_for_rock(const client* c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -790,8 +796,11 @@ void bitopCommand(client *c) {
     addReplyLongLong(c,maxlen); /* Return the output string length in bytes. */
 }
 
-list* bitop_cmd_for_rock(const client *c)
+list* bitop_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock(c, 3, 1);
 }
 
@@ -844,8 +853,11 @@ void bitcountCommand(client *c) {
     }
 }
 
-list* bitcount_cmd_for_rock(const client *c)
+list* bitcount_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -927,8 +939,11 @@ void bitposCommand(client *c) {
     }
 }
 
-list* bitpos_cmd_for_rock(const client *c)
+list* bitpos_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+   
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1186,8 +1201,11 @@ void bitfieldCommand(client *c) {
     bitfieldGeneric(c, BITFIELD_FLAG_NONE);
 }
 
-list* bitfield_cmd_for_rock(const client* c)
+list* bitfield_cmd_for_rock(const client* c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1195,7 +1213,10 @@ void bitfieldroCommand(client *c) {
     bitfieldGeneric(c, BITFIELD_FLAG_READONLY);
 }
 
-list* bitfield_ro_cmd_for_rock(const client *c)
+list* bitfield_ro_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }

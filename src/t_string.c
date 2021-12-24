@@ -270,8 +270,11 @@ void setCommand(client *c) {
 }
 
 /* NOTE: for SET command, if only SET <key> <val>, no need for rock key */
-list* set_cmd_for_rock(const client *c)
+list* set_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     if (c->argc == 3)
     {
         return NULL;
@@ -292,8 +295,11 @@ void setexCommand(client *c) {
     setGenericCommand(c,OBJ_EX,c->argv[1],c->argv[3],c->argv[2],UNIT_SECONDS,NULL,NULL);
 }
 
-list* setex_cmd_for_rock(const client *c)
+list* setex_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -302,8 +308,11 @@ void psetexCommand(client *c) {
     setGenericCommand(c,OBJ_PX,c->argv[1],c->argv[3],c->argv[2],UNIT_MILLISECONDS,NULL,NULL);
 }
 
-list* psetex_cmd_for_rock(const client *c)
+list* psetex_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -325,8 +334,11 @@ void getCommand(client *c) {
     getGenericCommand(c);
 }
 
-list* get_cmd_for_rock(const client *c)
+list* get_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);     // GET command: get <key>
 }
 
@@ -426,8 +438,11 @@ void getexCommand(client *c) {
     }
 }
 
-list* getex_cmd_for_rock(const client *c)
+list* getex_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -445,8 +460,11 @@ void getdelCommand(client *c) {
     }
 }
 
-list* getdel_cmd_for_rock(const client *c)
+list* getdel_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -461,8 +479,11 @@ void getsetCommand(client *c) {
     rewriteClientCommandArgument(c,0,shared.set);
 }
 
-list* getset_cmd_for_rock(const client *c)
+list* getset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -526,8 +547,11 @@ void setrangeCommand(client *c) {
     addReplyLongLong(c,sdslen(o->ptr));
 }
 
-list* setrange_cmd_for_rock(const client *c)
+list* setrange_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -572,8 +596,11 @@ void getrangeCommand(client *c) {
     }
 }
 
-list* getrange_cmd_for_rock(const client *c)
+list* getrange_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -595,8 +622,11 @@ void mgetCommand(client *c) {
     }
 }
 
-list* mget_cmd_for_rock(const client *c)
+list* mget_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 
@@ -678,8 +708,11 @@ void incrCommand(client *c) {
     incrDecrCommand(c,1);
 }
 
-list* incr_cmd_for_rock(const client* c)
+list* incr_cmd_for_rock(const client* c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -687,8 +720,11 @@ void decrCommand(client *c) {
     incrDecrCommand(c,-1);
 }
 
-list* decr_cmd_for_rock(const client *c)
+list* decr_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -699,8 +735,11 @@ void incrbyCommand(client *c) {
     incrDecrCommand(c,incr);
 }
 
-list* incrby_cmd_for_rock(const client *c)
+list* incrby_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -711,8 +750,11 @@ void decrbyCommand(client *c) {
     incrDecrCommand(c,-incr);
 }
 
-list* decrby_cmd_for_rock(const client *c)
+list* decrby_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -749,8 +791,11 @@ void incrbyfloatCommand(client *c) {
     rewriteClientCommandArgument(c,3,shared.keepttl);
 }
 
-list* incrbyfloat_cmd_for_rock(const client *c)
+list* incrbyfloat_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -787,8 +832,11 @@ void appendCommand(client *c) {
     addReplyLongLong(c,totlen);
 }
 
-list* append_cmd_for_rock(const client *c)
+list* append_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -799,8 +847,11 @@ void strlenCommand(client *c) {
     addReplyLongLong(c,stringObjectLen(o));
 }
 
-list* strlen_cmd_for_rock(const client *c)
+list* strlen_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 

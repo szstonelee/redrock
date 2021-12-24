@@ -10,6 +10,7 @@
 #include "server.h"
 #include "rock_write.h"
 #include "rock_read.h"
+#include "rock_hash.h"
 
 #include <dirent.h>
 #include <ftw.h>
@@ -232,7 +233,7 @@ void debug_rock(client *c)
         }
         if (len)
         {
-            int ecvict_num = try_evict_to_rocksdb(len, dbids, keys);
+            int ecvict_num = try_evict_to_rocksdb_for_db(len, dbids, keys);
             serverLog(LL_NOTICE, "debug evictkeys, ecvict_num = %d", ecvict_num);
         }
     }
@@ -255,7 +256,7 @@ void debug_rock(client *c)
         }
         if (listLength(rock_keys) != 0)
         {
-            on_client_need_rock_keys(c, rock_keys);
+            on_client_need_rock_keys_for_db(c, rock_keys);
         }
         listRelease(rock_keys);
     }
@@ -340,37 +341,94 @@ void debug_rock(client *c)
     addReplyBulk(c,c->argv[0]);
 }
 
-/* Encode the dbid with the input key, dbid will be encoded in one byte 
- * and be inserted in the head of the key, 
- * so dbid must greater than 0 and less than dbnum and 127.
- * NOTE: For 127, it is because char is signed or unsigned. (gcc use unsigned as default but can change) 
- * We try to not use more memory for one byte insertion.
- * NOTE: key's memory may be different after the calling which means 
+/* Encode the dbid with the input key for db.
+ *
+ * The first byte is the flag indicating the rock key is for db, 
+ * i.e., only encode with db key (not hash key + hash field)
+ * 
+ * dbid will be encoded in one byte and be inserted in the second byte of the key, 
+ * so dbid must greater than 0 and less than dbnum and 255.
+ * 
+ * NOTE: redis_to_rock_key's memory may be different after the calling which means 
  *       you need to use the return sds value for key in futrue.
  */
-sds encode_rock_key(const int dbid, sds redis_to_rock_key)
+sds encode_rock_key_for_db(const int dbid, sds redis_to_rock_key)
 {
-    serverAssert(dbid >= 0 && dbid < server.dbnum && dbid <= 127);
+    serverAssert(dbid >= 0 && dbid < server.dbnum && dbid <= 255);   
+
+    size_t ken_len = sdslen(redis_to_rock_key); 
+    redis_to_rock_key = sdsMakeRoomFor(redis_to_rock_key, 2);
     // memmove() is safe for overlapping and may be more efficient for word alignment
-    redis_to_rock_key = sdsMakeRoomFor(redis_to_rock_key, 1);
-    memmove(redis_to_rock_key+1, redis_to_rock_key, sdslen(redis_to_rock_key));         
-    redis_to_rock_key[0] = (char)dbid;
-    sdsIncrLen(redis_to_rock_key, 1);
+    memmove(redis_to_rock_key+2, redis_to_rock_key, ken_len);   
+    redis_to_rock_key[0] = ROCK_KEY_FOR_DB;      
+    redis_to_rock_key[1] = (unsigned char)dbid;
+    sdsIncrLen(redis_to_rock_key, 2);
 
     return redis_to_rock_key;
 }
 
-/* Decode the input rock_key.
- * dbid, key, sz are the pointer to the result 
- * so caller needs the address the instances of them.
- * No memory allocation and the caller needs to prevent the safety of rock_key.
+/* Encode the dbid with the input key and field for the hash.
+ *
+ * The first byte is the flag indicating the rock key is for hash, 
+ * i.e., encode with hash key and hash field.
+ * 
+ * dbid will be encoded in one byte and be inserted in the second byte of the key, 
+ * so dbid must greater than 0 and less than dbnum and 255.
+ * 
+ * NOTE: hash_key_to_rock_key's memory may be different after the calling which means 
+ *       you need to use the return sds value for key in futrue.
  */
-void decode_rock_key(const sds rock_key, int* dbid, const char** redis_key, size_t* key_sz)
+sds encode_rock_key_for_hash(const int dbid, sds hash_key_to_rock_key, const sds hash_field)
 {
-    serverAssert(sdslen(rock_key) >= 1);
-    *dbid = rock_key[0];
-    *redis_key = rock_key+1;
-    *key_sz = sdslen(rock_key) - 1;
+    serverAssert(dbid >= 0 && dbid < server.dbnum && dbid <= 255);
+    size_t key_len = sdslen(hash_key_to_rock_key);
+    size_t field_len = sdslen(hash_field);
+    hash_key_to_rock_key = sdsMakeRoomFor(hash_key_to_rock_key, 2 + sizeof(size_t) + field_len);
+    memmove(hash_key_to_rock_key+2+sizeof(size_t), hash_key_to_rock_key, key_len);
+    unsigned char* p = (unsigned char*)hash_key_to_rock_key;
+    *p = ROCK_KEY_FOR_HASH;
+    ++p;
+    *p = (unsigned char)dbid;
+    ++p;
+    *((size_t*)p) = key_len;
+    p += sizeof(size_t);
+    p += key_len;
+    memcpy(p, hash_field, field_len);
+    sdsIncrLen(hash_key_to_rock_key, 2 + sizeof(size_t) + field_len);
+
+    return hash_key_to_rock_key;
+}
+
+/* Decode the input rock_key as a db key.
+ * dbid, redis_key, key_sz are the pointer to the result,
+ * No memory allocation and the caller needs to guarantee the safety of rock_key.
+ */
+void decode_rock_key_for_db(const sds rock_key, int* dbid, const char** redis_key, size_t* key_sz)
+{
+    serverAssert(sdslen(rock_key) >= 2);
+    serverAssert(rock_key[0] == ROCK_KEY_FOR_DB);
+    *dbid = rock_key[1];
+    *redis_key = rock_key + 2;
+    *key_sz = sdslen(rock_key) - 2;
+}
+
+/* Decode the input rock_key as a hash key.
+ * dbid, key, key_sz, field, field_sz are the pointer to the result,
+ * No memory allocation and the caller needs to guarantee the safety of rock_key.
+ */
+void decode_rock_key_for_hash(const sds rock_key, int *dbid, 
+                              const char **key, size_t *key_sz,
+                              const char **field, size_t *field_sz)
+{
+    serverAssert(sdslen(rock_key) >= 2 + sizeof(size_t));
+    serverAssert(rock_key[0] == ROCK_KEY_FOR_HASH);
+    *dbid = rock_key[1];
+    size_t key_len = *((size_t*)(rock_key+2));
+    serverAssert(sdslen(rock_key) >= 2 + sizeof(size_t) + key_len);
+    *key = rock_key + 2 + sizeof(size_t);
+    *key_sz = key_len;
+    *field = rock_key + 2 + sizeof(size_t) + key_len;
+    *field_sz = sdslen(rock_key) - 2 - sizeof(size_t) - key_len;
 }
 
 /* for client id to client* hash table and rock.c readCandidatesDictType */
@@ -496,7 +554,9 @@ static list* get_keys_in_rock_for_command(const client *c)
     if (cmd->rock_proc == NULL) 
         return NULL;
 
-    list *redis_keys = cmd->rock_proc(c);
+    list *hash_keys = NULL;
+    list *hash_fields = NULL;
+    list *redis_keys = cmd->rock_proc(c, &hash_keys, &hash_fields);
     if (redis_keys == NULL)
     {
         return NULL;        // no rock value found
@@ -529,15 +589,15 @@ int check_and_set_rock_status_in_processCommand(client *c)
     serverAssert(!is_client_in_waiting_rock_value_state(c));
 
     // check and set rock state if there are some keys needed to read for async mode
-    list *rock_keys = get_keys_in_rock_for_command(c);
+    list *redis_keys = get_keys_in_rock_for_command(c);
 
-    if (rock_keys == shared.rock_cmd_fail)
+    if (redis_keys == shared.rock_cmd_fail)
         return CHECK_ROCK_CMD_FAIL;
 
-    if (rock_keys)
+    if (redis_keys)
     {
-        on_client_need_rock_keys(c, rock_keys);
-        listRelease(rock_keys);
+        on_client_need_rock_keys_for_db(c, redis_keys);
+        listRelease(redis_keys);
     }
 
     return is_client_in_waiting_rock_value_state(c) ? CHECK_ROCK_ASYNC_WAIT : CHECK_ROCK_GO_ON_TO_CALL;
@@ -758,6 +818,7 @@ void rock_evict(client *c)
     sds shared_val = sdsnew("SHARED_VALUE_NO_NEED_TO_EVICT");
     sds can_not_evict_type = sdsnew("VALUE_TYPE_CAN_NOT_EVICT_LIKE_STREAM");
     sds can_evict = sdsnew("CAN_EVICT_AND_WRITTEN_TO_ROCKSDB");
+    sds alreay_in_rock_hash = sdsnew("CAN_NOT_EVICT_BECAUSE_IT_IS_ROCK_HASH");
 
     const int key_num = c->argc - 1;
     addReplyArrayLen(c, key_num*2);
@@ -792,6 +853,10 @@ void rock_evict(client *c)
             {
                 r = createStringObject(can_not_evict_type, sdslen(can_not_evict_type));
             }
+            else if (is_in_rock_hash(db->id, key))
+            {
+                r = createStringObject(alreay_in_rock_hash, sdslen(alreay_in_rock_hash));
+            }
             else
             {
                 if (keyIsExpired(db, o_key))
@@ -820,4 +885,5 @@ void rock_evict(client *c)
     sdsfree(can_evict);
     sdsfree(shared_val);
     sdsfree(can_not_evict_type);
+    sdsfree(alreay_in_rock_hash);
 }

@@ -15,7 +15,8 @@ void init_and_start_rock_write_thread();    // for server.c
 int space_in_write_ring_buffer();  
 
 // for server cron
-int try_evict_to_rocksdb(const int check_len, const int *check_dbids, const sds *check_keys); 
+int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, const sds *try_keys); 
+int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const sds *try_keys, const sds *try_fields);
 
 // for command ROCKEVICT
 int try_evict_one_key_to_rocksdb(const int dbid, const sds key);

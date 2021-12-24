@@ -256,8 +256,11 @@ void lpushCommand(client *c) {
     pushGenericCommand(c,LIST_HEAD,0);
 }
 
-list* lpush_cmd_for_rock(const client *c)
+list* lpush_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -266,8 +269,11 @@ void rpushCommand(client *c) {
     pushGenericCommand(c,LIST_TAIL,0);
 }
 
-list* rpush_cmd_for_rock(const client *c)
+list* rpush_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -276,8 +282,11 @@ void lpushxCommand(client *c) {
     pushGenericCommand(c,LIST_HEAD,1);
 }
 
-list* lpushx_cmd_for_rock(const client *c)
+list* lpushx_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -286,8 +295,11 @@ void rpushxCommand(client *c) {
     pushGenericCommand(c,LIST_TAIL,1);
 }
 
-list* rpushx_cmd_for_rock(const client *c)
+list* rpushx_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -336,8 +348,11 @@ void linsertCommand(client *c) {
     addReplyLongLong(c,listTypeLength(subject));
 }
 
-list* linsert_cmd_for_rock(const client *c)
+list* linsert_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -348,8 +363,11 @@ void llenCommand(client *c) {
     addReplyLongLong(c,listTypeLength(o));
 }
 
-list* llen_cmd_for_rock(const client *c)
+list* llen_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -378,8 +396,11 @@ void lindexCommand(client *c) {
     }
 }
 
-list* lindex_cmd_for_rock(const client *c)
+list* lindex_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -410,8 +431,11 @@ void lsetCommand(client *c) {
     }
 }
 
-list* lset_cmd_for_rock(const client *c)
+list* lset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -528,8 +552,11 @@ void lpopCommand(client *c) {
     popGenericCommand(c,LIST_HEAD);
 }
 
-list* lpop_cmd_for_rock(const client *c)
+list* lpop_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -538,8 +565,11 @@ void rpopCommand(client *c) {
     popGenericCommand(c,LIST_TAIL);
 }
 
-list* rpop_cmd_for_rock(const client *c)
+list* rpop_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -557,8 +587,11 @@ void lrangeCommand(client *c) {
     addListRangeReply(c,o,start,end,0);
 }
 
-list* lrange_cmd_for_rock(const client *c)
+list* lrange_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -609,8 +642,11 @@ void ltrimCommand(client *c) {
     addReply(c,shared.ok);
 }
 
-list* ltrim_cmd_for_rock(const client *c)
+list* ltrim_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -725,8 +761,11 @@ void lposCommand(client *c) {
     }
 }
 
-list* lpos_cmd_for_rock(const client *c)
+list* lpos_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -775,8 +814,11 @@ void lremCommand(client *c) {
     addReplyLongLong(c,removed);
 }
 
-list* lrem_cmd_for_rock(const client *c)
+list* lrem_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -873,8 +915,11 @@ void lmoveCommand(client *c) {
     lmoveGenericCommand(c, wherefrom, whereto);
 }
 
-list* lmove_cmd_for_rock(const client *c)
+list* lmove_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
 
@@ -897,8 +942,11 @@ void rpoplpushCommand(client *c) {
     lmoveGenericCommand(c, LIST_TAIL, LIST_HEAD);
 }
 
-list* rpoplpush_cmd_for_rock(const client *c)
+list* rpoplpush_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
 
@@ -1035,8 +1083,11 @@ void blpopCommand(client *c) {
     blockingPopGenericCommand(c,LIST_HEAD);
 }
 
-list* blpop_cmd_for_rock(const client *c)
+list* blpop_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock_exclude_tails(c, 1, 1, 1);
 }
 
@@ -1045,8 +1096,11 @@ void brpopCommand(client *c) {
     blockingPopGenericCommand(c,LIST_TAIL);
 }
 
-list* brpop_cmd_for_rock(const client *c)
+list* brpop_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock_exclude_tails(c, 1, 1, 1);
 }
 
@@ -1085,8 +1139,11 @@ void blmoveCommand(client *c) {
     blmoveGenericCommand(c,wherefrom,whereto,timeout);
 }
 
-list* blmoove_cmd_for_rock(const client *c)
+list* blmoove_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
 
@@ -1098,7 +1155,10 @@ void brpoplpushCommand(client *c) {
     blmoveGenericCommand(c, LIST_TAIL, LIST_HEAD, timeout);
 }
 
-list* brpoplpush_cmd_for_rock(const client *c)
+list* brpoplpush_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock_exclude_tails(c, 1, 1, 1);
 }

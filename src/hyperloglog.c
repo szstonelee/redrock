@@ -1217,8 +1217,11 @@ void pfaddCommand(client *c) {
     addReply(c, updated ? shared.cone : shared.czero);
 }
 
-list* pfadd_cmd_for_rock(const client *c)
+list* pfadd_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1312,8 +1315,11 @@ void pfcountCommand(client *c) {
     }
 }
 
-list* pfcount_cmd_for_rock(const client *c)
+list* pfcount_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 
@@ -1391,8 +1397,11 @@ void pfmergeCommand(client *c) {
     addReply(c,shared.ok);
 }
 
-list* pfmerge_cmd_for_rock(const client *c)
+list* pfmerge_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock(c, 1, 1);
 }
 
@@ -1609,7 +1618,10 @@ arityerr:
         "Wrong number of arguments for the '%s' subcommand",cmd);
 }
 
-list* pfdebug_cmd_for_rock(const client *c)
+list* pfdebug_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 2);
 }

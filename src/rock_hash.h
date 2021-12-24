@@ -11,4 +11,6 @@ void on_visit_field_of_hash(const int dbid, const sds redis_key, const robj *o, 
 void on_recover_field_of_hash(const int dbid, const sds redis_key, const robj *o, const sds field);
 void on_rockval_field_of_hash(const int dbid, const sds redis_key, const robj *o, const sds field);
 
+int is_in_rock_hash(const int dbid, const sds redis_key);
+
 #endif

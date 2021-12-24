@@ -1660,7 +1660,7 @@ typedef struct {
 
 typedef void redisCommandProc(client *c);
 typedef int redisGetKeysProc(struct redisCommand *cmd, robj **argv, int argc, getKeysResult *result);
-typedef list* redisCommandGetRockKeyProc(const client *c);
+typedef list* redisCommandGetRockKeyProc(const client *c, list **hash_keys, list **hash_fields);
 struct redisCommand {
     char *name;
     redisCommandGetRockKeyProc *rock_proc;

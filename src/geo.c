@@ -497,8 +497,11 @@ void geoaddCommand(client *c) {
     zaddCommand(c);
 }
 
-list* geoadd_cmd_for_rock(const client *c)
+list* geoadd_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -819,8 +822,11 @@ void georadiusCommand(client *c) {
     georadiusGeneric(c, 1, RADIUS_COORDS);
 }
 
-list* georadius_cmd_for_rock(const client *c)
+list* georadius_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -829,8 +835,11 @@ void georadiusbymemberCommand(client *c) {
     georadiusGeneric(c, 1, RADIUS_MEMBER);
 }
 
-list* georadiusbymember_cmd_for_rock(const client *c)
+list* georadiusbymember_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -839,8 +848,11 @@ void georadiusroCommand(client *c) {
     georadiusGeneric(c, 1, RADIUS_COORDS|RADIUS_NOSTORE);
 }
 
-list* georadius_ro_cmd_for_rock(const client *c)
+list* georadius_ro_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -849,8 +861,11 @@ void georadiusbymemberroCommand(client *c) {
     georadiusGeneric(c, 1, RADIUS_MEMBER|RADIUS_NOSTORE);
 }
 
-list* georadiusbymember_ro_cmd_for_rock(const client *c)
+list* georadiusbymember_ro_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -858,8 +873,11 @@ void geosearchCommand(client *c) {
     georadiusGeneric(c, 1, GEOSEARCH);
 }
 
-list* geosearch_cmd_for_rock(const client *c)
+list* geosearch_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -867,8 +885,11 @@ void geosearchstoreCommand(client *c) {
     georadiusGeneric(c, 2, GEOSEARCH|GEOSEARCHSTORE);
 }
 
-list* geosearchstore_cmd_for_rock(const client *c)
+list* geosearchstore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
 
@@ -934,8 +955,11 @@ void geohashCommand(client *c) {
     }
 }
 
-list* geohash_cmd_for_rock(const client *c)
+list* geohash_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -971,8 +995,11 @@ void geoposCommand(client *c) {
     }
 }
 
-list* geopos_cmd_for_rock(const client *c)
+list* geopos_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1015,8 +1042,11 @@ void geodistCommand(client *c) {
             geohashGetDistance(xyxy[0],xyxy[1],xyxy[2],xyxy[3]) / to_meter);
 }
 
-list* geodist_cmd_for_rock(const client *c)
+list* geodist_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 

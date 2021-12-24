@@ -1134,8 +1134,11 @@ void renameCommand(client *c) {
     renameGenericCommand(c,0);
 }
 
-list* rename_cmd_for_rock(const client *c)
+list* rename_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1143,8 +1146,11 @@ void renamenxCommand(client *c) {
     renameGenericCommand(c,1);
 }
 
-list* renamenx_cmd_for_rock(const client *c)
+list* renamenx_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1210,8 +1216,11 @@ void moveCommand(client *c) {
     addReply(c,shared.cone);
 }
 
-list* move_cmd_for_rock(const client *c)
+list* move_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1317,8 +1326,11 @@ void copyCommand(client *c) {
     addReply(c,shared.cone);
 }
 
-list* copy_cmd_for_rock(const client *c)
+list* copy_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 

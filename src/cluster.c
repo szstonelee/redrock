@@ -5214,8 +5214,11 @@ void restoreCommand(client *c) {
     server.dirty++;
 }
 
-list* dump_cmd_for_rock(const client *c)
+list* dump_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -5672,8 +5675,11 @@ socket_err:
     return;
 }
 
-list* migrate_cmd_for_rock(const client *c)
+list* migrate_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 3);
 }
 

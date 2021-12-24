@@ -1840,8 +1840,11 @@ void zaddCommand(client *c) {
     zaddGenericCommand(c,ZADD_IN_NONE);
 }
 
-list* zadd_cmd_for_rock(const client *c)
+list* zadd_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1849,8 +1852,11 @@ void zincrbyCommand(client *c) {
     zaddGenericCommand(c,ZADD_IN_INCR);
 }
 
-list* zincrby_cmd_for_rock(const client *c)
+list* zincrby_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1881,8 +1887,11 @@ void zremCommand(client *c) {
     addReplyLongLong(c,deleted);
 }
 
-list* zrem_cmd_for_rock(const client *c)
+list* zrem_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -2005,8 +2014,11 @@ void zremrangebyrankCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_RANK);
 }
 
-list* zremrangebyrank_cmd_for_rock(const client *c)
+list* zremrangebyrank_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -2014,8 +2026,11 @@ void zremrangebyscoreCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_SCORE);
 }
 
-list* zremrangebyscore_cmd_for_rock(const client *c)
+list* zremrangebyscore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -2023,8 +2038,11 @@ void zremrangebylexCommand(client *c) {
     zremrangeGenericCommand(c,ZRANGE_LEX);
 }
 
-list* zremrangebylex_cmd_for_rock(const client *c)
+list* zremrangebylex_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -2879,8 +2897,11 @@ void zunionstoreCommand(client *c) {
     zunionInterDiffGenericCommand(c, c->argv[1], 2, SET_OP_UNION);
 }
 
-list* zunionstore_cmd_for_rock(const client *c)
+list* zunionstore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     if (zunion_inter_diff_generic_command_check_and_reply((client*)c, c->argv[1], 2, SET_OP_UNION))
         return shared.rock_cmd_fail;
 
@@ -2891,8 +2912,11 @@ void zinterstoreCommand(client *c) {
     zunionInterDiffGenericCommand(c, c->argv[1], 2, SET_OP_INTER);
 }
 
-list* zinterstore_cmd_for_rock(const client *c)
+list* zinterstore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     if (zunion_inter_diff_generic_command_check_and_reply((client*)c, c->argv[1], 2, SET_OP_INTER))
         return shared.rock_cmd_fail;
 
@@ -2903,8 +2927,11 @@ void zdiffstoreCommand(client *c) {
     zunionInterDiffGenericCommand(c, c->argv[1], 2, SET_OP_DIFF);
 }
 
-list* zdiffstore_cmd_for_rock(const client *c)
+list* zdiffstore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     if (zunion_inter_diff_generic_command_check_and_reply((client*)c, c->argv[1], 2, SET_OP_DIFF))
         return shared.rock_cmd_fail;
 
@@ -2915,8 +2942,11 @@ void zunionCommand(client *c) {
     zunionInterDiffGenericCommand(c, NULL, 1, SET_OP_UNION);
 }
 
-list* zunion_cmd_for_rock(const client *c)
+list* zunion_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     if (zunion_inter_diff_generic_command_check_and_reply((client*)c, NULL, 1, SET_OP_UNION))
         return shared.rock_cmd_fail;
 
@@ -2927,8 +2957,11 @@ void zinterCommand(client *c) {
     zunionInterDiffGenericCommand(c, NULL, 1, SET_OP_INTER);
 }
 
-list* zinter_cmd_for_rock(const client *c)
+list* zinter_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     if (zunion_inter_diff_generic_command_check_and_reply((client*)c, NULL, 1, SET_OP_INTER))
         return shared.rock_cmd_fail;
 
@@ -2939,8 +2972,11 @@ void zdiffCommand(client *c) {
     zunionInterDiffGenericCommand(c, NULL, 1, SET_OP_DIFF);
 }
 
-list* zdiff_cmd_for_rock(const client *c)
+list* zdiff_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     if (zunion_inter_diff_generic_command_check_and_reply((client*)c, NULL, 1, SET_OP_DIFF))
         return shared.rock_cmd_fail;
 
@@ -3216,8 +3252,11 @@ void zrangestoreCommand (client *c) {
     zrangeGenericCommand(&handler, 2, 1, ZRANGE_AUTO, ZRANGE_DIRECTION_AUTO);
 }
 
-list* zrangestore_cmd_for_rock(const client *c)
+list* zrangestore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
 
@@ -3228,8 +3267,11 @@ void zrangeCommand(client *c) {
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_AUTO, ZRANGE_DIRECTION_AUTO);
 }
 
-list* zrange_cmd_for_rock(const client *c)
+list* zrange_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3240,8 +3282,11 @@ void zrevrangeCommand(client *c) {
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_RANK, ZRANGE_DIRECTION_REVERSE);
 }
 
-list* zrevrange_cmd_for_rock(const client *c)
+list* zrevrange_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3371,8 +3416,11 @@ void zrangebyscoreCommand(client *c) {
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_SCORE, ZRANGE_DIRECTION_FORWARD);
 }
 
-list* zrangebyscore_cmd_for_rock(const client *c)
+list* zrangebyscore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3383,8 +3431,11 @@ void zrevrangebyscoreCommand(client *c) {
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_SCORE, ZRANGE_DIRECTION_REVERSE);
 }
 
-list* zrevrangebyscore_cmd_for_rock(const client *c)
+list* zrevrangebyscore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3465,8 +3516,11 @@ void zcountCommand(client *c) {
     addReplyLongLong(c, count);
 }
 
-list* zcount_cmd_for_rock(const client *c)
+list* zcount_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3549,8 +3603,11 @@ void zlexcountCommand(client *c) {
     addReplyLongLong(c, count);
 }
 
-list* zlexcount_cmd_for_rock(const client *c)
+list* zlexcount_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3676,8 +3733,11 @@ void zrangebylexCommand(client *c) {
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_LEX, ZRANGE_DIRECTION_FORWARD);
 }
 
-list* zrangebylex_cmd_for_rock(const client *c)
+list* zrangebylex_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3688,8 +3748,11 @@ void zrevrangebylexCommand(client *c) {
     zrangeGenericCommand(&handler, 1, 0, ZRANGE_LEX, ZRANGE_DIRECTION_REVERSE);
 }
 
-list* zrevrangebylex_cmd_for_rock(const client *c)
+list* zrevrangebylex_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3858,8 +3921,11 @@ void zcardCommand(client *c) {
     addReplyLongLong(c,zsetLength(zobj));
 }
 
-list* zcard_cmd_for_rock(const client *c)
+list* zcard_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3878,8 +3944,11 @@ void zscoreCommand(client *c) {
     }
 }
 
-list* zscore_cmd_for_rock(const client *c)
+list* zscore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3901,8 +3970,11 @@ void zmscoreCommand(client *c) {
     }
 }
 
-list* zmscore_cmd_for_rock(const client *c)
+list* zmscore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3928,8 +4000,11 @@ void zrankCommand(client *c) {
     zrankGenericCommand(c, 0);
 }
 
-list* zrank_cmd_for_rock(const client *c)
+list* zrank_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3937,8 +4012,11 @@ void zrevrankCommand(client *c) {
     zrankGenericCommand(c, 1);
 }
 
-list* zrevrank_cmd_for_rock(const client *c)
+list* zrevrank_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -3952,8 +4030,11 @@ void zscanCommand(client *c) {
     scanGenericCommand(c,o,cursor);
 }
 
-list* zscan_cmd_for_rock(const client *c)
+list* zscan_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -4080,8 +4161,11 @@ void zpopminCommand(client *c) {
         c->argc == 3 ? c->argv[2] : NULL);
 }
 
-list* zpopmin_cmd_for_rock(const client *c)
+list* zpopmin_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -4095,8 +4179,11 @@ void zpopmaxCommand(client *c) {
         c->argc == 3 ? c->argv[2] : NULL);
 }
 
-list* zpopmax_cmd_for_rock(const client *c)
+list* zpopmax_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -4141,8 +4228,11 @@ void bzpopminCommand(client *c) {
     blockingGenericZpopCommand(c,ZSET_MIN);
 }
 
-list* bzpopmin_cmd_for_rock(const client *c)
+list* bzpopmin_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock_exclude_tails(c, 1, 1, 1);
 }
 
@@ -4151,8 +4241,11 @@ void bzpopmaxCommand(client *c) {
     blockingGenericZpopCommand(c,ZSET_MAX);
 }
 
-list* bzpopmax_cmd_for_rock(const client *c)
+list* bzpopmax_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_multi_keys_for_rock_exclude_tails(c, 1, 1, 1);
 }
 
@@ -4401,7 +4494,10 @@ void zrandmemberCommand(client *c) {
     zsetReplyFromZiplistEntry(c,&ele);
 }
 
-list* zrandmember_cmd_for_rock(const client *c)
+list* zrandmember_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }

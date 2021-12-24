@@ -653,8 +653,11 @@ void hsetnxCommand(client *c) {
     }
 }
 
-list* hsetnx_cmd_for_rock(const client *c)
+list* hsetnx_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -688,14 +691,20 @@ void hsetCommand(client *c) {
 }
 
 
-list* hmset_cmd_for_rock(const client *c)
+list* hmset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
 
-list* hset_cmd_for_rock(const client *c)
+list* hset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -734,8 +743,11 @@ void hincrbyCommand(client *c) {
     server.dirty++;
 }
 
-list* hincrby_cmd_for_rock(const client *c)
+list* hincrby_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -787,8 +799,11 @@ void hincrbyfloatCommand(client *c) {
     decrRefCount(newobj);
 }
 
-list* hincrbyfloat_cmd_for_rock(const client *c)
+list* hincrbyfloat_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -836,8 +851,11 @@ void hgetCommand(client *c) {
     addHashFieldToReply(c, o, c->argv[2]->ptr);
 }
 
-list* hget_cmd_for_rock(const client *c)
+list* hget_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -856,8 +874,11 @@ void hmgetCommand(client *c) {
     }
 }
 
-list* hmget_cmd_for_rock(const client *c)
+list* hmget_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -889,8 +910,11 @@ void hdelCommand(client *c) {
     addReplyLongLong(c,deleted);
 }
 
-list* hdel_cmd_for_rock(const client *c)
+list* hdel_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -903,8 +927,11 @@ void hlenCommand(client *c) {
     addReplyLongLong(c,hashTypeLength(o));
 }
 
-list* hlen_cmd_for_rock(const client *c)
+list* hlen_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -916,8 +943,11 @@ void hstrlenCommand(client *c) {
     addReplyLongLong(c,hashTypeGetValueLength(o,c->argv[2]->ptr));
 }
 
-list* hstrlen_cmd_for_rock(const client *c)
+list* hstrlen_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -982,8 +1012,11 @@ void hkeysCommand(client *c) {
     genericHgetallCommand(c,OBJ_HASH_KEY);
 }
 
-list* hkeys_cmd_for_rock(const client *c)
+list* hkeys_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -991,8 +1024,11 @@ void hvalsCommand(client *c) {
     genericHgetallCommand(c,OBJ_HASH_VALUE);
 }
 
-list* hvals_cmd_for_rock(const client *c)
+list* hvals_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1000,8 +1036,11 @@ void hgetallCommand(client *c) {
     genericHgetallCommand(c,OBJ_HASH_KEY|OBJ_HASH_VALUE);
 }
 
-list* hgetall_cmd_for_rock(const client *c)
+list* hgetall_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1013,8 +1052,11 @@ void hexistsCommand(client *c) {
     addReply(c, hashTypeExists(o,c->argv[2]->ptr) ? shared.cone : shared.czero);
 }
 
-list* hexists_cmd_for_rock(const client *c)
+list* hexists_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1028,8 +1070,11 @@ void hscanCommand(client *c) {
     scanGenericCommand(c,o,cursor);
 }
 
-list* hscan_cmd_for_rock(const client *c)
+list* hscan_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -1282,7 +1327,10 @@ void hrandfieldCommand(client *c) {
     hashReplyFromZiplistEntry(c, &ele);
 }
 
-list* hrandfield_cmd_for_rock(const client *c)
+list* hrandfield_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    UNUSED(hash_keys);
+    UNUSED(hash_fields);
+
     return generic_get_one_key_for_rock(c, 1);
 }
