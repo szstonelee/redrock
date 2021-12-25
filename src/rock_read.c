@@ -548,7 +548,7 @@ static void on_recover_data(struct aeEventLoop *eventLoop, int fd, void *clientD
 }
 
 /* Called in main thread.
- * After the check for ring buffer, 
+ * After the check for ring buffer for db key, 
  * it goes on to recover value from RocksDB in async way.
  * 
  * NOTE: redis_keys will be duplicated for rock key format and saved in candidates.
@@ -597,15 +597,71 @@ static void go_on_need_rock_keys_from_rocksdb(const uint64_t client_id,
     rock_r_unlock();
 }
 
-/* If some key already in ring buf, recover them in Redis DB.
- * Return a list for un-recover keys (may be empty if all redis_keys in ring buffer)
- *
- * NOTE: the un-rocover key is same as the one from the input argument of redis_keys.
+/* Called in main thread.
+ * After the check for ring buffer for hash,
+ * it goes on to recover value from RocksDB in async way.
  * 
+ * NOTE: hash_keys and hash_fields will be duplicated for rock key format and saved in candidates.
+ *       So the caller deals with the resource of redis_keys independently.
+ */
+static void go_on_need_rock_hashes_from_rocksdb(const uint64_t client_id, const int dbid, 
+                                                const list *hash_keys, const list *hash_fields)
+{
+    serverAssert(listLength(hash_keys) > 0 && listLength(hash_keys) == listLength(hash_fields));
+
+    listIter li_key;
+    listNode *ln_key;
+    listIter li_field;
+    listNode *ln_field;
+    listRewind((list*)hash_keys, &li_key);
+    listRewind((list*)hash_fields, &li_field);
+
+    rock_r_lock();
+
+    int added = 0;
+    while ((ln_key = listNext(&li_key)))
+    {
+        ln_field = listNext(&li_field);
+
+        const sds hash_key = listNodeValue(ln_key);
+        const sds hash_field = listNodeValue(ln_field);
+
+        sds rock_key = sdsdup(hash_key);
+        rock_key = encode_rock_key_for_hash(dbid, rock_key, hash_field);
+
+        dictEntry *de = dictFind(read_rock_key_candidates, rock_key);
+        if (de == NULL)
+        {
+            list *client_ids = listCreate();
+            listAddNodeHead(client_ids, (void*)client_id);  
+            // transfer ownership of rock_key and client_ids to read_rock_key_candidates
+            dictAdd(read_rock_key_candidates, rock_key, client_ids);    
+            added = 1;
+        }
+        else
+        {
+            list *client_ids = dictGetVal(de);
+            serverAssert(listLength(client_ids) > 0);
+            listAddNodeTail(client_ids, (void*)client_id);
+            sdsfree(rock_key);
+        }
+    }
+
+    if (added)
+        try_assign_tasks();
+
+    rock_r_unlock();
+}
+
+/* If some key already in ring buf, recover them in Redis DB.
+ * Return a list for un-recovered keys (may be empty if all redis_keys in ring buffer)
  * If no key in ring buf, return NULL. 
  *
  * The caller guarantee not in lock mode.
  *
+ * NOTE: the un-rocovered keys share the sds pointer 
+ *       as the one from the input argument of redis_keys.
+ * 
  * NOTE: same key could repeat in redis_keys.
  */
 static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list *redis_keys)
@@ -618,6 +674,7 @@ static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list 
     serverAssert(listLength(vals) == listLength(redis_keys));
 
     list *left = listCreate();
+
     redisDb *db = server.db + dbid;
 
     listIter li_vals;
@@ -630,6 +687,7 @@ static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list 
     while ((ln_vals = listNext(&li_vals)))
     {
         ln_keys = listNext(&li_keys);
+
         const sds redis_key = listNodeValue(ln_keys);
 
         const sds recover_val = listNodeValue(ln_vals);
@@ -654,11 +712,93 @@ static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list 
     listSetFreeMethod(vals, (void (*)(void*))sdsfree);
     listRelease(vals);
 
-    serverAssert(listLength(left) < listLength(redis_keys));
     return left;
 }
 
-static void debug_check_all_value_is_rock_value(const int dbid, const list *redis_keys)
+/* If some hash key and field already in ring buf, recover them in Redis DB.
+ * Return is for left_keys and left_fields as
+ * lists for un-recovered keys and fiields (may be empty if all redis_keys in ring buffer)
+ * If no key in ring buf, both are NULL. 
+ *
+ * The caller guarantee not in lock mode.
+ *
+ * NOTE: the left_keys and  left_fields share the sds pointer 
+ *       as hash_keys and hash_fields.
+ * 
+ * NOTE: same key and field could repeat in redis_keys.
+ */
+static void check_ring_buf_first_and_recover_for_hash(const int dbid,
+                                                      const list *hash_keys, const list *hash_fields,
+                                                      list **unrecovered_keys, list **unrecovered_fields)
+{
+    serverAssert(*unrecovered_keys == NULL && *unrecovered_fields == NULL);
+
+    // Call the API for ring buf in rock_write.c
+    list *vals = get_vals_from_write_ring_buf_first_for_hash(dbid, hash_keys, hash_fields);
+    if (vals == NULL)
+        return;
+
+    serverAssert(listLength(vals) == listLength(hash_keys));
+
+    list *left_keys = listCreate();
+    list *left_fields = listCreate();
+
+    redisDb *db = server.db + dbid;
+
+    listIter li_vals;
+    listNode *ln_vals;
+    listIter li_keys;
+    listNode *ln_keys;
+    listIter li_fields;
+    listNode *ln_fields;
+    listRewind(vals, &li_vals);
+    listRewind((list*)hash_keys, &li_keys);
+    listRewind((list*)hash_fields, &li_fields);
+
+    while ((ln_vals = listNext(&li_vals)))
+    {
+        ln_keys = listNext(&li_keys);
+        ln_fields = listNext(&li_fields);
+
+        const sds hash_key = listNodeValue(ln_keys);
+        const sds hash_field = listNodeValue(ln_fields);
+
+        const sds recover_val = listNodeValue(ln_vals);
+         if (recover_val == NULL)
+         {
+            // not found in ring buffer
+            listAddNodeTail(left_keys, hash_key);
+            listAddNodeTail(left_fields, hash_field);
+         }
+         else
+         {
+            // need to recover data which is duplicated from ring buffer
+            // NOTE: no need to deal with rock_key_num in client. The caller will take care
+            dictEntry *de_db = dictFind(db->dict, hash_key);
+            serverAssert(de_db);
+            robj *o = dictGetVal(de_db);
+            dict *hash = o->ptr;
+            dictEntry *de_hash = dictFind(hash, hash_field);
+            serverAssert(de_hash);
+            if (dictGetVal(de_hash) == shared.hash_rock_val_for_field)      // NOTE: the same key could repeate for ring buf recovering
+            {
+                dictGetVal(de_hash) = recover_val;     // revocer in redis db
+                listNodeValue(ln_vals) = NULL;      // avoid reclaim in the end of the fuction
+            }
+         }
+    }
+
+    // reclaim the resource of vals which are allocated 
+    // in get_vals_from_write_ring_buf_first() 
+    // NOTE: the recover val's ownership has been transfered to the hash in redis db
+    listSetFreeMethod(vals, (void (*)(void*))sdsfree);
+    listRelease(vals);   
+
+    *unrecovered_keys = left_keys;
+    *unrecovered_fields = left_fields;
+}
+
+static void debug_check_all_db_keys_are_rock_value(const int dbid, const list *redis_keys)
 {
     redisDb *db = server.db + dbid;
     listIter li;
@@ -675,8 +815,38 @@ static void debug_check_all_value_is_rock_value(const int dbid, const list *redi
     }
 }
 
+static void debug_check_all_hash_fields_are_rock_value(const int dbid, 
+                                                       const list *hash_keys, const list *hash_fields)
+{
+    redisDb *db = server.db + dbid;
+
+    listIter li_key;
+    listNode *ln_key;
+    listRewind((list*)hash_keys, &li_key);
+    listIter li_field;
+    listNode *ln_field;
+    listRewind((list*)hash_fields, &li_field);
+    while ((ln_key = listNext(&li_key)))
+    {
+        ln_field = listNext(&li_field);
+
+        sds key = listNodeValue(ln_key);
+        sds field = listNodeValue(ln_field);
+
+        dictEntry *de_db = dictFind(db->dict, key);
+        serverAssert(de_db);
+        serverAssert(!is_rock_value(dictGetVal(de_db)));
+        robj *o = dictGetVal(de_db);
+        dict *hash = o->ptr;
+        dictEntry *de_hash = dictFind(hash, field);
+        serverAssert(de_hash);
+        sds val = dictGetVal(de_hash);
+        serverAssert(val != shared.hash_rock_val_for_field);
+    }
+}
+
 /* Called in main thread when a client finds it needs some redis keys to
- * continue for a command.
+ * continue for a command because the whole key's value is in RocksDB.
  * The caller guarantee not using read lock.
  * 
  * The client's rock_key_num guarantees zero before calling
@@ -691,8 +861,11 @@ static void debug_check_all_value_is_rock_value(const int dbid, const list *redi
  * which are needed to recover from RocksDB (async mode),
  * we go on to recover them from RocksDB and return 0 meaning it will be for async mode.
  * 
- * Otherwise, etrun 1 indicating no need for async and
- * the caller can execute the command right now (sync mode).
+ * Otherwise, return 1 indicating no need for async (NOTE: only for key but not including hash field) 
+ * and the caller can execute the command right now (sync mode)
+ * if and only if no hash field is needed (check on_client_need_rock_fields_for_hashes).
+ * For no transaction, it is easy to decide, 
+ * but for transaction it is complicated and we will mix with on_client_need_rock_fields_for_hashes().
  * 
  * The caller needs to reclaim the list after that (which is created by the caller)
  */
@@ -701,7 +874,7 @@ int on_client_need_rock_keys_for_db(client *c, const list *redis_keys)
     serverAssert(redis_keys && listLength(redis_keys) > 0);
 
     #if defined RED_ROCK_DEBUG
-    debug_check_all_value_is_rock_value(c->db->id, redis_keys);
+    debug_check_all_db_keys_are_rock_value(c->db->id, redis_keys);
     #endif
 
     serverAssert(c->rock_key_num == 0);
@@ -709,8 +882,9 @@ int on_client_need_rock_keys_for_db(client *c, const list *redis_keys)
     const int dbid = c->db->id;
     const uint64_t client_id = c->id;
 
-    int sync_mode = 0;
+    int sync_mode_for_db = 0;
     list *left = check_ring_buf_first_and_recover_for_db(dbid, redis_keys);
+
     if (left == NULL)
     {
         // nothing found in ring buffer
@@ -720,7 +894,7 @@ int on_client_need_rock_keys_for_db(client *c, const list *redis_keys)
     else if (listLength(left) == 0)
     {
         // all found in ring buffer
-        sync_mode = 1;
+        sync_mode_for_db = 1;
         // keep c->rock_key_num == 0 in sync mode
     } 
     else 
@@ -733,7 +907,78 @@ int on_client_need_rock_keys_for_db(client *c, const list *redis_keys)
         // The left has the same key in redis_keys, so only release the list
         listRelease(left);      
 
-    return sync_mode;
+    return sync_mode_for_db;
+}
+
+/* Called in main thread when a client finds it needs some hash keys 
+ * and hash fields to continue for a command because the field's value is in RocksDB.
+ * The caller guarantee not using read lock.
+ * 
+ * The client's rock_key_num guarantees zero before calling
+ * and we will calculate it and set it in this function.
+ * 
+ * The hash_keys and the hash_fields are the list of keys and fields
+ * needed by the command for hash (i.e., field's value with rock value)
+ * NOTE: hash key and hash field could be repeated (e.g., transaction or just hmget key f1 f1 ...)
+ * 
+ * First, we need check ring buffer to recover the hash if exist.
+ * 
+ * After the ring buffer recovering, if some left 
+ * which are needed to recover from RocksDB (async mode),
+ * we go on to recover them from RocksDB and return 0 meaning it will be for async mode.
+ * 
+ * Otherwise, etrun 1 indicating no need for async and
+ * the caller can execute the command right now (sync mode)
+ * if and only if the client need no rock key (not include these hash keys).
+ * For no transaction, it is easy to decide,
+ * but for transaction, it is complicated and needs to mix with on_client_need_rock_keys_for_db().
+ * 
+ * The caller needs to reclaim the list after that (which is created by the caller)
+ */
+int on_client_need_rock_fields_for_hashes(client *c, const list *hash_keys, const list *hash_fields)
+{
+    serverAssert(hash_keys && listLength(hash_keys) > 0 && listLength(hash_keys) == listLength(hash_fields));
+
+    #if defined RED_ROCK_DEBUG
+    debug_check_all_hash_fields_are_rock_value(c->db->id, hash_keys, hash_fields);
+    #endif
+
+    // we can not serverAssert(c->rock_key_num == 0) because keys are processed
+    // before hash and if in transaction, it could be c->rock_key_num != 0
+
+    const int dbid = c->db->id;
+    const uint64_t client_id = c->id;
+
+    int sync_mode_for_hash = 0;
+    list *left_keys = NULL;
+    list *left_fields = NULL;
+    check_ring_buf_first_and_recover_for_hash(dbid, hash_keys, hash_fields, &left_keys, &left_fields);
+
+    if (left_keys == NULL)
+    {
+        // nothing found in ring buffer
+        c->rock_key_num += listLength(hash_keys);
+        go_on_need_rock_hashes_from_rocksdb(client_id, dbid, hash_keys, hash_fields);
+    }
+    else if (listLength(left_keys) == 0)
+    {
+        // all found in ring buffer
+        sync_mode_for_hash = 1;
+        // keep the previous c->rock_key_num (from db key processing) in sync mode
+    }
+    else
+    {
+        c->rock_key_num += listLength(left_keys);
+        go_on_need_rock_hashes_from_rocksdb(client_id, dbid, left_keys, left_fields);
+    }
+
+    if (left_keys)
+    {
+        listRelease(left_keys);
+        listRelease(left_fields);
+    }
+
+    return sync_mode_for_hash;
 }
 
 /* Called in main thread when evict some keys to RocksDB in rock_write.c.

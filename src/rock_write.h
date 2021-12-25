@@ -20,8 +20,10 @@ int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const
 
 // for command ROCKEVICT
 int try_evict_one_key_to_rocksdb(const int dbid, const sds key);
+int try_evict_one_field_to_rocksdb(const int dbid, const sds key, const sds field);
 
 // for rock_read.c
 list* get_vals_from_write_ring_buf_first_for_db(const int dbid, const list *redis_keys);
+list* get_vals_from_write_ring_buf_first_for_hash(const int dbid, const list *hash_keys, const list *fields);
 
 #endif

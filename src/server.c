@@ -1115,6 +1115,10 @@ struct redisCommand redisCommandTable[] = {
      "read-only random @keyspace",
      0,NULL,0,0,0,0,0,0},
 
+    {"rockevicthash", NULL, rock_evict_hash,-3,
+     "read-only random @keyspace",
+     0,NULL,0,0,0,0,0,0},
+
     {"debugrock", NULL, debug_rock,-2,
      "read-only random",
      0,NULL,0,0,0,0,0,0}
@@ -3145,7 +3149,7 @@ void makeThreadKillable(void) {
 
 /* Called from initServer() to init the RedRock environment */
 static void init_redrock()
-{
+{    
     init_client_id_table();     // for rock common
 
     init_rocksdb("/opt/redrock/rocksdb");
@@ -6447,6 +6451,8 @@ int main(int argc, char **argv) {
 
     redisSetCpuAffinity(server.server_cpulist);
     setOOMScoreAdj(-1);
+
+    init_rock_hash_before_enter_event_loop();  
 
     aeMain(server.el);
     aeDeleteEventLoop(server.el);

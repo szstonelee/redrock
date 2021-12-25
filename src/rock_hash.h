@@ -3,6 +3,7 @@
 
 #include "server.h"
 
+void init_rock_hash_before_enter_event_loop();
 dict* init_rock_hash_dict();
 
 void on_hash_key_add_field(const int dbid, const sds redis_key, const robj *o, const sds field);

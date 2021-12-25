@@ -79,6 +79,34 @@ static void debug_check_lru(dict *hash, dict *lrus)
     serverAssert(sz_rock + sz_lrus == sz_hash);
 }
 
+/* Add a whole hash to rock hash by allocating the lrus for all fields.
+ * The caller guarantee that the hash not exist in rock_hash
+ * and the internal_redis_key is the db->dict key for the hash.
+ */
+static void add_whole_hash_to_rock_hash(const sds internal_redis_key, const dict *hash, redisDb *db)
+{
+    #if defined RED_ROCK_DEBUG
+    dictEntry *de_check = dictFind(db->dict, internal_redis_key);
+    serverAssert(de_check);
+    serverAssert(dictGetKey(de_check) == internal_redis_key);
+    #endif
+
+    const uint64_t clock = LRU_CLOCK();
+
+    dict *lrus = dictCreate(&fieldLruDictType, NULL);
+    dictIterator *di_hash = dictGetIterator((dict*)hash);
+    dictEntry *de_hash;
+    while ((de_hash = dictNext(di_hash)))
+    {
+        const sds internal_field = dictGetKey(de_hash);
+        serverAssert(dictGetVal(de_hash) != shared.hash_rock_val_for_field);
+        serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);
+    }
+    dictReleaseIterator(di_hash);
+
+    serverAssert(dictAdd(db->rock_hash, internal_redis_key, lrus) == DICT_OK);    
+}
+
 /* After a hash key add a field, it will call here to determine
  * whether it needs to add itself to db->rock_hash.
  * If the server disable the feature, do nothing.
@@ -93,6 +121,7 @@ static void debug_check_lru(dict *hash, dict *lrus)
 void on_hash_key_add_field(const int dbid, const sds redis_key, const robj *o, const sds field)
 {
     serverAssert(o->type == OBJ_HASH);
+
 
     if (o->encoding != OBJ_ENCODING_HT)
         return;
@@ -111,10 +140,10 @@ void on_hash_key_add_field(const int dbid, const sds redis_key, const robj *o, c
     const sds internal_redis_key = dictGetKey(de_db);
     serverAssert(dictGetVal(de_db) == o);
 
-    uint64_t clock = LRU_CLOCK();
     dictEntry *de_rock_hash = dictFind(db->rock_hash, internal_redis_key);
     if (de_rock_hash)
     {
+        const uint64_t clock = LRU_CLOCK();
         dict *lrus = dictGetVal(de_rock_hash);
         dictEntry *de_hash = dictFind(hash, field);
         serverAssert(de_hash);
@@ -128,17 +157,7 @@ void on_hash_key_add_field(const int dbid, const sds redis_key, const robj *o, c
     {
         // create a dict of lrus, add all fields to the lrus
         // then add redis_key and lrus to rock_hash 
-        dict *lrus = dictCreate(&fieldLruDictType, NULL);
-        dictIterator *di_hash = dictGetIterator(hash);
-        dictEntry* de_hash;
-        while ((de_hash = dictNext(di_hash)))
-        {
-            const sds internal_field = dictGetKey(de_hash);
-            serverAssert(dictGetVal(de_hash) != shared.hash_rock_val_for_field);
-            serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);
-        }
-        dictReleaseIterator(di_hash);
-        serverAssert(dictAdd(db->rock_hash, internal_redis_key, lrus) == DICT_OK);    
+        add_whole_hash_to_rock_hash(internal_redis_key, hash, db);
     }
 }
 
@@ -240,4 +259,38 @@ int is_in_rock_hash(const int dbid, const sds redis_key)
 {
     redisDb *db = server.db + dbid;
     return dictFind(db->rock_hash, redis_key) != NULL;
+}
+
+/* When redis server start and load RDB/AOF,
+ * we need to add the matched hash to rock hash.
+ */
+void init_rock_hash_before_enter_event_loop()
+{
+    if (server.hash_max_rock_entries == 0)
+        return;
+
+    const size_t threshold = server.hash_max_rock_entries;
+
+    for (int i = 0; i < server.dbnum; ++i)
+    {
+        redisDb *db = server.db + i;
+        dict* key_space = db->dict;
+
+        dictIterator *di = dictGetIterator(key_space);
+        dictEntry *de;
+        while ((de = dictNext(di)))
+        {
+            robj *o = dictGetVal(de);
+            if (o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT)
+            {
+                dict *hash = o->ptr;
+                if (dictSize(hash) > threshold)
+                {
+                    sds internal_redis_key = dictGetKey(de);
+                    add_whole_hash_to_rock_hash(internal_redis_key, hash, db);
+                }
+            }
+        }
+        dictReleaseIterator(di);
+    }
 }

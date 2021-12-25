@@ -355,6 +355,31 @@ int try_evict_one_key_to_rocksdb(const int dbid, const sds key)
     }
 }
 
+/* Called in main thread for command ROCKEVICTHASH
+ * If succesful, return 1.
+ * Otherwise, return 0. The caller can try again because the key may be in candidates 
+ *                      and it takes times for read thread to process (no recover but abandon).
+ * 
+ * The caller needs to guarantee the value in Redis exist and can be evicted to RocksDB.
+ */
+int try_evict_one_field_to_rocksdb(const int dbid, const sds key, const sds field)
+{
+    const int space = space_in_write_ring_buffer();
+    if (space == 0)
+        return 0;
+
+
+    if (try_evict_to_rocksdb_for_hash(1, &dbid, &key, &field) == 0)
+    {
+        return 0;
+    }
+    else
+    {
+        return 1;
+    }
+}
+
+
 /* Called by write thread.
  * If nothing written to RocksDB, return 0. Otherwise, the number of key written to db.
  */
@@ -578,7 +603,7 @@ list* get_vals_from_write_ring_buf_first_for_db(const int dbid, const list *redi
  * When a client needs recover some hash keys with field, it needs check ring buffer first.
  * The return is a list of recover vals (as sds) with same size as hash_keys (as same order).
  * 
- * If the key is in the ring buffer, the recover val (sds of serilized value) is duplicated.
+ * If the key is in the ring buffer, the recover val is duplicated.
  * Otherwise, recover val will be set to NULL. 
  * 
  * If no key in ring buf, the return list will be NULL. (and no resource allocated)

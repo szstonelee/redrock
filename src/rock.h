@@ -41,6 +41,7 @@ void on_add_a_new_client(client* const c);
 void on_del_a_destroy_client(const client* const c);
 
 void rock_evict(client *c);
+void rock_evict_hash(client *c);
 
 void debug_rock(client *c);
 

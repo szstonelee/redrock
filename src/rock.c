@@ -531,9 +531,10 @@ void create_shared_object_for_rock()
  * Otherwise, return a list (not empty) for those keys (sds) 
  * and the sds can point to the contents (argv) in client c.
  */
-static list* get_keys_in_rock_for_command(const client *c)
+static list* get_keys_in_rock_for_command(const client *c, list **hash_keys, list **hash_fields)
 {
-    serverAssert(c->rock_key_num == 0);
+    serverAssert(!is_client_in_waiting_rock_value_state(c));
+    serverAssert(*hash_keys == NULL && *hash_fields == NULL);
 
     struct redisCommand *cmd = lookupCommand(c->argv[0]->ptr);
     /*
@@ -554,18 +555,7 @@ static list* get_keys_in_rock_for_command(const client *c)
     if (cmd->rock_proc == NULL) 
         return NULL;
 
-    list *hash_keys = NULL;
-    list *hash_fields = NULL;
-    list *redis_keys = cmd->rock_proc(c, &hash_keys, &hash_fields);
-    if (redis_keys == NULL)
-    {
-        return NULL;        // no rock value found
-    }
-    else
-    {
-        serverAssert(listLength(redis_keys) != 0);
-        return redis_keys;
-    }
+    return cmd->rock_proc(c, hash_keys, hash_fields);
 }
 
 
@@ -589,15 +579,33 @@ int check_and_set_rock_status_in_processCommand(client *c)
     serverAssert(!is_client_in_waiting_rock_value_state(c));
 
     // check and set rock state if there are some keys needed to read for async mode
-    list *redis_keys = get_keys_in_rock_for_command(c);
+    list *hash_keys = NULL;
+    list *hash_fields = NULL;
+    list *redis_keys = get_keys_in_rock_for_command(c, &hash_keys, &hash_fields);
 
     if (redis_keys == shared.rock_cmd_fail)
+    {
+        if (hash_keys) listRelease(hash_keys);
+        if (hash_fields) listRelease(hash_fields);
         return CHECK_ROCK_CMD_FAIL;
+    }
 
+    // MUST deal with redis_keys first
     if (redis_keys)
     {
+        serverAssert(listLength(redis_keys) > 0);
         on_client_need_rock_keys_for_db(c, redis_keys);
         listRelease(redis_keys);
+    }
+
+    // then deal with hash_keys and hash_fields
+    if (hash_keys)
+    {
+        serverAssert(listLength(hash_keys) > 0);
+        serverAssert(listLength(hash_keys) == listLength(hash_fields));
+        on_client_need_rock_fields_for_hashes(c, hash_keys, hash_fields);
+        listRelease(hash_keys);
+        listRelease(hash_fields);
     }
 
     return is_client_in_waiting_rock_value_state(c) ? CHECK_ROCK_ASYNC_WAIT : CHECK_ROCK_GO_ON_TO_CALL;
@@ -808,7 +816,7 @@ void rock_evict(client *c)
 {
     if (c->flags & CLIENT_MULTI)
     {
-        addReplyError(c,"ROCKEVICT can not in transaction!");
+        addReplyError(c, "ROCKEVICT can not in transaction!");
         return;
     }
 
@@ -886,4 +894,92 @@ void rock_evict(client *c)
     sdsfree(shared_val);
     sdsfree(can_not_evict_type);
     sdsfree(alreay_in_rock_hash);
+}
+
+void rock_evict_hash(client *c)
+{
+    if (c->flags & CLIENT_MULTI)
+    {
+        addReplyError(c, "ROCKEVICTHASH can not in transaction!");
+        return;
+    }
+
+    redisDb *db = c->db;
+    int dbid = db->id;
+    sds key = c->argv[1]->ptr;
+    dictEntry *de = dictFind(db->dict, key);
+    if (de == NULL)
+    {
+        addReplyError(c, "can not find the key");
+        return;
+    }
+
+    if (keyIsExpired(db, c->argv[1]))
+    {
+        addReplyError(c, "key is expried");
+        return; 
+    }
+
+    robj *o = dictGetVal(de);
+    if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
+    {
+        addReplyError(c,"not hash key or hash key not encoded as ht");
+        return;
+    }
+
+    if (is_rock_value(o))
+    {
+        addReplyError(c,"hask key's value alreay in RocksDB totally");
+        return;
+    }
+
+    if (!is_in_rock_hash(dbid, key))
+    {
+        addReplyError(c,"hask key not in rock hash, try add more fields");
+        return;
+    }
+
+    dict *hash = o->ptr;
+    const int field_num = c->argc - 2;
+    addReplyArrayLen(c, field_num*2);
+    sds not_found = sdsnew("field not found");
+    sds already_evict = sdsnew("field already evicted");
+    sds can_evict = sdsnew("field successfully evicted");
+    for (int i = 0; i < field_num; ++i)
+    {
+        sds field = c->argv[i+2]->ptr;
+        robj *o_field = createStringObject(field, sdslen(field));
+        addReplyBulk(c, o_field);
+
+        robj *r = NULL;
+        dictEntry *de = dictFind(hash, field);
+        if (de == NULL)
+        {
+            r = createStringObject(not_found, sdslen(not_found));
+        }
+        else
+        {
+            sds val = dictGetVal(de);
+            if (val == shared.hash_rock_val_for_field)
+            {
+                r = createStringObject(already_evict, sdslen(already_evict));
+            }
+            else
+            {
+                // can evcit this field
+                while (!try_evict_one_field_to_rocksdb(db->id, key, field));     // loop until success
+                
+                r = createStringObject(can_evict, sdslen(can_evict));
+            }
+        }
+
+        addReplyBulk(c, r);
+
+        decrRefCount(o_field);
+        decrRefCount(r);
+    }
+
+    sdsfree(not_found);     
+    sdsfree(already_evict);
+    sdsfree(can_evict);
 }
