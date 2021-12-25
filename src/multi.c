@@ -300,8 +300,11 @@ handle_monitor:
         replicationFeedMonitors(c,server.monitors,c->db->id,c->argv,c->argc);
 }
 
-list* exec_cmd_for_rock(const client *input_c)
+list* exec_cmd_for_rock(const client *input_c, list **hash_keys, list **hash_fields)
 {
+    // because exec command guarantee to be one single command (transaction not support nested)
+    serverAssert(*hash_keys == NULL && *hash_fields == NULL);
+
     client *c = (client *)input_c;
     if (exec_command_check_and_reply(c))
         return shared.rock_cmd_fail;
@@ -312,8 +315,6 @@ list* exec_cmd_for_rock(const client *input_c)
     struct redisCommand *saved_cmd = c->cmd;
 
     list *multi_list = NULL;
-    list *hash_keys = NULL;
-    list *hash_fields = NULL;
 
     for (int i = 0; i < c->mstate.count; ++i) 
     {
@@ -324,7 +325,7 @@ list* exec_cmd_for_rock(const client *input_c)
 
         if (c->cmd->rock_proc) 
         {
-            list* each_rock_keys = c->cmd->rock_proc(c, &hash_keys, &hash_fields);
+            list* each_rock_keys = c->cmd->rock_proc(c, hash_keys, hash_fields);
 
             if (each_rock_keys) 
             {

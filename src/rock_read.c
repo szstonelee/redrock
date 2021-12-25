@@ -219,6 +219,7 @@ static void read_from_rocksdb(const int cnt, const sds *keys, sds *vals)
         rockdb_key_sizes[i] = sdslen(keys[i]);
     }
 
+    // for manual debug
     // serverLog(LL_WARNING, "read thread read rocksdb start (sleep for 10 seconds) ...");
     // sleep(10);
     // serverLog(LL_WARNING, "read thread read rocksdb end!!!!!");
@@ -430,15 +431,16 @@ static void check_client_resume_after_recover_data(const list *client_ids)
  * If the recover redis key has rock val, recover it.
  * Otherwise do nothing because the key may be deleted or regenerated
  */
-static void try_recover_val_object_in_redis_db(const int dbid, 
-                                               const char *redis_key, const size_t redis_key_len,
-                                               const sds recover_val)
+static void try_recover_val_object_in_redis_db(const int dbid, const sds recover_val,
+                                               const char *redis_key, const size_t redis_key_len)
+                                               
 {
     if (recover_val == NULL)
         serverPanic("try_recover_val_object_in_redis_db() the recover_val is NULL(not found) for redis key = %s, dbid = %d", 
                     redis_key, dbid);
 
     sds key = sdsnewlen(redis_key, redis_key_len);
+
     redisDb *db = server.db + dbid;
     dictEntry *de = dictFind(db->dict, key);
     if (de != NULL)
@@ -453,6 +455,66 @@ static void try_recover_val_object_in_redis_db(const int dbid,
         }
     }
     sdsfree(key);
+}
+
+/* Called in main thread.
+ * If the recover a hash field which has rock value, recover it.
+ * Otherwise do nothing because the field may be deleted or regenerated
+ * even the whole hash could be deleted because this is async mode.
+ */
+static void try_recover_field_in_hash(const int dbid, const sds recover_val,
+                                      const char *input_hash_key, const size_t input_hash_key_len,
+                                      const char *input_hash_field, const size_t input_hash_field_len)
+{
+    if (recover_val == NULL)
+        serverPanic("try_recover_field_in_hash() the recover_val is NULL(not found) for hash key = %s, hash_field = %s, dbid = %d", 
+                    input_hash_key, input_hash_field, dbid);
+
+    sds hash_key = sdsnewlen(input_hash_key, input_hash_key_len);
+    sds hash_field = sdsnewlen(input_hash_field, input_hash_field_len);
+
+    redisDb *db = server.db + dbid;
+    dictEntry *de_db = dictFind(db->dict, hash_key);
+    if (de_db == NULL)
+        goto reclaim;   // the hash key may be deleted by other client
+    
+    robj *o = dictGetVal(de_db);
+    if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
+        goto reclaim;   // the hash key may be overwritten by other client
+    
+    dict *hash = o->ptr;
+    dictEntry *de_hash = dictFind(hash, hash_field);
+    if (de_hash == NULL)
+        goto reclaim;   // the field may be deleted by other cliient
+    
+    sds val = dictGetVal(de_hash);
+    if (val != shared.hash_rock_val_for_field)
+        goto reclaim;   // the field's value may be overwritten by other cliient
+
+    sds copy_val = sdsdup(recover_val);
+    dictGetVal(de_hash) = copy_val;     // NOTE: we need a copy for the recover val
+
+reclaim:
+    sdsfree(hash_key);
+    sdsfree(hash_field);
+}
+
+/* Called in main thread.
+ * Join the clients for current task to waiting_clients
+ * and release some resource for it.
+ */
+static void join_waiting_clients(const sds task, list **waiting_clients)
+{
+    dictEntry *de = dictFind(read_rock_key_candidates, task);
+    serverAssert(de && dictGetKey(de) == task);
+
+    list *current = dictGetVal(de);
+    serverAssert(current && listLength(current) > 0);
+    listJoin(*waiting_clients, current);
+    listRelease(current);   // the current right now is empty
+
+    // avoid clear the list of client ids in read_rock_key_candidates when dictDelete
+    dictGetVal(de) = NULL;      
 }
 
 /* Called in main thread to recover one key for redis db
@@ -472,19 +534,27 @@ static void recover_data_for_db(const sds task,
     size_t redis_key_len;
     decode_rock_key_for_db(task, &dbid, &redis_key, &redis_key_len);
 
-    try_recover_val_object_in_redis_db(dbid, redis_key, redis_key_len, recover_val);
+    try_recover_val_object_in_redis_db(dbid, recover_val, redis_key, redis_key_len);
 
-    dictEntry *de = dictFind(read_rock_key_candidates, task);
-    serverAssert(de && dictGetKey(de) == task);
-
-    list *current = dictGetVal(de);
-    serverAssert(current && listLength(current) > 0);
-    listJoin(*waiting_clients, current);
-    listRelease(current);   // the current right now is empty
-
-    // avoid clear the list of client ids in read_rock_key_candidates when dictDelete
-    dictGetVal(de) = NULL;      
+    join_waiting_clients(task, waiting_clients);
 }
+
+static void recover_data_for_hash(const sds task,
+                                 const sds recover_val,
+                                 list **waiting_clients)
+{
+    int dbid;
+    const char *hash_key;
+    size_t hash_key_len;
+    const char *hash_field;
+    size_t hash_field_len;
+    decode_rock_key_for_hash(task, &dbid, &hash_key, &hash_key_len, &hash_field, &hash_field_len);
+
+    try_recover_field_in_hash(dbid, recover_val, hash_key, hash_key_len, hash_field, hash_field_len);
+
+    join_waiting_clients(task, waiting_clients);
+}
+
 
 /* Called in main thread to recover the data from RocksDB.
  * For every finished task, we try to recover the val in Redis DB.
@@ -513,7 +583,7 @@ static void recover_data()
         else
         {
             serverAssert(task[0] == ROCK_KEY_FOR_HASH);
-            serverPanic("TODO with hash");
+            recover_data_for_hash(task, read_return_vals[i], &waiting_clients);
         }
         
         // must set NULL for next batch task assignment
@@ -841,7 +911,7 @@ static void debug_check_all_hash_fields_are_rock_value(const int dbid,
         dictEntry *de_hash = dictFind(hash, field);
         serverAssert(de_hash);
         sds val = dictGetVal(de_hash);
-        serverAssert(val != shared.hash_rock_val_for_field);
+        serverAssert(val == shared.hash_rock_val_for_field);
     }
 }
 

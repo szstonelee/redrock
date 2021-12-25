@@ -130,6 +130,12 @@ list* generic_get_multi_keys_for_rock_exclude_tails(const client *c, const int i
 list* generic_get_multi_keys_for_rock_in_range(const client *c, const int start, const int end);
 list* generic_get_zset_num_for_rock(const client *c, const int have_dest);
 
+void generic_get_one_field_for_rock(const client *c, const sds key, const int index,
+                                    list **hash_keys, list **hash_fields);
+void generic_get_all_fields_for_rock(const client *c, const sds key, list **hash_keys, list **hash_fields);
+void generic_get_multi_fields_for_rock(const client *c, const sds key, const int index, const int step,
+                                       list **hash_keys, list **hash_fields);
+
 // string (t_string.c)
 list* get_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
 list* getex_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);

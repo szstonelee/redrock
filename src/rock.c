@@ -636,6 +636,144 @@ list* generic_get_one_key_for_rock(const client *c, const int index)
     return keys;
 }
 
+/* Get one field for a hash from client's argv.
+ * like HGET <key> <field>
+ */
+void generic_get_one_field_for_rock(const client *c, const sds key, const int index,
+                                    list **hash_keys, list **hash_fields)
+{
+    serverAssert(index >= 1 && c->argc > index);
+
+    dictEntry *de_db = dictFind(c->db->dict, key);
+    if (de_db == NULL)
+        return;
+
+    robj *o = dictGetVal(de_db);
+    if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
+        return;
+
+    dict *hash = o->ptr;
+
+    const sds field = c->argv[index]->ptr;
+    dictEntry *de_hash = dictFind(hash, field);
+    if (de_hash == NULL)
+        return;
+
+    const sds val = dictGetVal(de_hash);
+    if (val != shared.hash_rock_val_for_field)
+        return;
+
+    list *join_keys = *hash_keys;
+    list *join_fields = *hash_fields;
+
+    if (join_keys == NULL)
+    {
+        serverAssert(join_fields == NULL);
+        join_keys = listCreate();
+        join_fields = listCreate();
+    }
+    serverAssert(listLength(join_keys) == listLength(join_fields));
+    
+    listAddNodeTail(join_keys, key);
+    listAddNodeTail(join_fields, field);
+
+    *hash_keys = join_keys;
+    *hash_fields = join_fields;
+}
+
+/* For command like HMGET <key> <field1> <field2> ...
+ * Reference generic_get_multi_keys_for_rock() for some help, it is similiar for index and step.
+ */
+void generic_get_multi_fields_for_rock(const client *c, const sds key, const int index, const int step,
+                                       list **hash_keys, list **hash_fields)
+{
+    serverAssert(index >= 1 && c->argc > index);
+
+    dictEntry *de_db = dictFind(c->db->dict, key);
+    if (de_db == NULL)
+        return;
+
+    robj *o = dictGetVal(de_db);
+    if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
+        return;
+
+    dict *hash = o->ptr;
+
+    list *join_keys = *hash_keys;
+    list *join_fields = *hash_fields;
+
+    for (int i = index; i < c->argc; i += step)
+    {
+        const sds field = c->argv[i]->ptr;
+
+        dictEntry *de_hash = dictFind(hash, field);
+        if (de_hash == NULL)
+            continue;
+        
+        const sds val = dictGetVal(de_hash);
+        if (val != shared.hash_rock_val_for_field)
+            continue;
+
+        if (join_keys == NULL)
+        {
+            serverAssert(join_fields == NULL);
+            join_keys = listCreate();
+            join_fields = listCreate();
+        }
+        serverAssert(listLength(join_keys) == listLength(join_fields));
+        
+        listAddNodeTail(join_keys, key);
+        listAddNodeTail(join_fields, field);
+    }
+
+    *hash_keys = join_keys;
+    *hash_fields = join_fields;
+}
+
+/* For command like HGETALL <key>
+ */
+void generic_get_all_fields_for_rock(const client *c, const sds key, list **hash_keys, list **hash_fields)
+{
+    dictEntry *de_db = dictFind(c->db->dict, key);
+    if (de_db == NULL)
+        return;
+
+    robj *o = dictGetVal(de_db);
+    if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
+        return;
+
+    dict *hash = o->ptr;
+
+    list *join_keys = *hash_keys;
+    list *join_fields = *hash_fields;
+
+    dictIterator *di = dictGetIterator(hash);
+    dictEntry *de;
+    while ((de = dictNext(di)))
+    {
+        const sds field = dictGetKey(de);
+        const sds val = dictGetVal(de);
+
+        if (val == shared.hash_rock_val_for_field)
+        {
+            if (join_keys == NULL)
+            {
+                serverAssert(join_fields == NULL);
+                join_keys = listCreate();
+                join_fields = listCreate();
+            }
+            serverAssert(listLength(join_keys) == listLength(join_fields));
+
+            listAddNodeTail(join_keys, key);
+            listAddNodeTail(join_fields, field);
+        }
+    }
+    dictReleaseIterator(di);
+
+    *hash_keys = join_keys;
+    *hash_fields = join_fields;
+}
+
 /* Get multi keys from client's argv from range [start, end).
  * E.g., BLMOVE source destination LEFT|RIGHT LEFT|RIGHT timeout
  * start is the start index in argv, usually 1.

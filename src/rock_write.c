@@ -396,6 +396,11 @@ static int write_to_rocksdb()
     int index = rbuf_s_index;
     rock_w_unlock();
        
+    // for manual debug
+    // serverLog(LL_WARNING, "write thread write rocksdb start (sleep for 10 seconds) ...");
+    // sleep(10);
+    // serverLog(LL_WARNING, "write thread write rocksdb end!!!!!");
+
     rocksdb_writebatch_t *batch = rocksdb_writebatch_create();
     rocksdb_writeoptions_t *writeoptions = rocksdb_writeoptions_create();
     rocksdb_writeoptions_disable_WAL(writeoptions, 1);      // disable WAL

@@ -298,6 +298,8 @@ int yesnotoi(char *s) {
 }
 
 void appendServerSaveParams(time_t seconds, int changes) {
+    return;     // disable rdb save for Debug. TODO: comment this when release
+
     server.saveparams = zrealloc(server.saveparams,sizeof(struct saveparam)*(server.saveparamslen+1));
     server.saveparams[server.saveparamslen].seconds = seconds;
     server.saveparams[server.saveparamslen].changes = changes;
@@ -2365,6 +2367,20 @@ static int update_hash_max_ziplist_entries(long long val, long long prev, const 
     return 0;
 }
 
+static int is_hash_max_rock_entries_valid(long long val, const char **err)
+{
+    if (val == 0)
+        return 1;
+    
+    if (val <= (long long)server.hash_max_ziplist_entries)
+    {
+        *err = "hash-max-rock_entries can be zero ro must be greater than hash-max-ziplist-entries";
+        return 0;
+    }
+
+    return 1;
+}
+
 static int update_hash_max_rock_entries(long long val, long long prev, const char **err)
 {
     UNUSED(prev);
@@ -2564,7 +2580,7 @@ standardConfig configs[] = {
 
     /* Size_t configs */
     createSizeTConfig("hash-max-ziplist-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_ziplist_entries, 2, INTEGER_CONFIG, NULL, update_hash_max_ziplist_entries),
-    createSizeTConfig("hash-max-rock-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_rock_entries, 4, INTEGER_CONFIG, NULL, update_hash_max_rock_entries),    
+    createSizeTConfig("hash-max-rock-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_rock_entries, 4, INTEGER_CONFIG, is_hash_max_rock_entries_valid, update_hash_max_rock_entries),    
     createSizeTConfig("set-max-intset-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.set_max_intset_entries, 512, INTEGER_CONFIG, NULL, NULL),
     createSizeTConfig("zset-max-ziplist-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.zset_max_ziplist_entries, 128, INTEGER_CONFIG, NULL, NULL),
     createSizeTConfig("active-defrag-ignore-bytes", NULL, MODIFIABLE_CONFIG, 1, LLONG_MAX, server.active_defrag_ignore_bytes, 100<<20, MEMORY_CONFIG, NULL, NULL), /* Default: don't defrag if frag overhead is below 100mb */

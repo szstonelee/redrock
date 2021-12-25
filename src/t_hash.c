@@ -865,10 +865,17 @@ void hincrbyCommand(client *c) {
 
 list* hincrby_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    list *keys = generic_get_one_key_for_rock(c, 1);
 
-    return generic_get_one_key_for_rock(c, 1);
+    if (keys == NULL)
+    {
+        // Only when keys are not found, i.e., key's total value are not rock value,
+        // we go on for rock field.
+        const sds key = c->argv[1]->ptr;
+        generic_get_one_field_for_rock(c, key, 2, hash_keys, hash_fields);
+    }
+
+    return keys;
 }
 
 void hincrbyfloatCommand(client *c) {
@@ -921,10 +928,17 @@ void hincrbyfloatCommand(client *c) {
 
 list* hincrbyfloat_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    list *keys = generic_get_one_key_for_rock(c, 1);
 
-    return generic_get_one_key_for_rock(c, 1);
+    if (keys == NULL)
+    {
+        // Only when keys are not found, i.e., key's total value are not rock value,
+        // we go on for rock field.
+        const sds key = c->argv[1]->ptr;
+        generic_get_one_field_for_rock(c, key, 2, hash_keys, hash_fields);
+    }
+
+    return keys;
 }
 
 static void addHashFieldToReply(client *c, robj *o, sds field) {
@@ -973,10 +987,17 @@ void hgetCommand(client *c) {
 
 list* hget_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    list *keys = generic_get_one_key_for_rock(c, 1);
 
-    return generic_get_one_key_for_rock(c, 1);
+    if (keys == NULL)
+    {
+        // Only when keys are not found, i.e., key's total value are not rock value,
+        // we go on for rock field.
+        const sds key = c->argv[1]->ptr;
+        generic_get_one_field_for_rock(c, key, 2, hash_keys, hash_fields);
+    }
+
+    return keys;
 }
 
 void hmgetCommand(client *c) {
@@ -996,10 +1017,17 @@ void hmgetCommand(client *c) {
 
 list* hmget_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    list *keys = generic_get_one_key_for_rock(c, 1);
 
-    return generic_get_one_key_for_rock(c, 1);
+    if (keys == NULL)
+    {
+        // Only when keys are not found, i.e., key's total value are not rock value,
+        // we go on for rock field.
+        const sds key = c->argv[1]->ptr;
+        generic_get_multi_fields_for_rock(c, key, 2, 1, hash_keys, hash_fields);
+    }
+
+    return keys;
 }
 
 void hdelCommand(client *c) {
@@ -1065,10 +1093,17 @@ void hstrlenCommand(client *c) {
 
 list* hstrlen_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    list *keys = generic_get_one_key_for_rock(c, 1);
 
-    return generic_get_one_key_for_rock(c, 1);
+    if (keys == NULL)
+    {
+        // Only when keys are not found, i.e., key's total value are not rock value,
+        // we go on for rock field.
+        const sds key = c->argv[1]->ptr;
+        generic_get_one_field_for_rock(c, key, 2, hash_keys, hash_fields);
+    }
+
+    return keys;
 }
 
 static void addHashIteratorCursorToReply(client *c, hashTypeIterator *hi, int what) {
@@ -1146,10 +1181,15 @@ void hvalsCommand(client *c) {
 
 list* hvals_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    list *keys = generic_get_one_key_for_rock(c, 1);
 
-    return generic_get_one_key_for_rock(c, 1);
+    if (keys == NULL)
+    {
+        const sds key = c->argv[1]->ptr;
+        generic_get_all_fields_for_rock(c, key, hash_keys, hash_fields);
+    }
+
+    return keys;
 }
 
 void hgetallCommand(client *c) {
@@ -1158,10 +1198,15 @@ void hgetallCommand(client *c) {
 
 list* hgetall_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    list *keys = generic_get_one_key_for_rock(c, 1);
 
-    return generic_get_one_key_for_rock(c, 1);
+    if (keys == NULL)
+    {
+        const sds key = c->argv[1]->ptr;
+        generic_get_all_fields_for_rock(c, key, hash_keys, hash_fields);
+    }
+
+    return keys;
 }
 
 void hexistsCommand(client *c) {
@@ -1192,10 +1237,15 @@ void hscanCommand(client *c) {
 
 list* hscan_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    list *keys = generic_get_one_key_for_rock(c, 1);
 
-    return generic_get_one_key_for_rock(c, 1);
+    if (keys == NULL)
+    {
+        const sds key = c->argv[1]->ptr;
+        generic_get_all_fields_for_rock(c, key, hash_keys, hash_fields);
+    }
+
+    return keys;
 }
 
 static void harndfieldReplyWithZiplist(client *c, unsigned int count, ziplistEntry *keys, ziplistEntry *vals) {
@@ -1419,6 +1469,28 @@ void hrandfieldWithCountCommand(client *c, long l, int withvalues) {
     }
 }
 
+static int hrandfield_commannd_check_and_reply(client *c)
+{
+    long l;
+    robj *hash;
+
+    if (c->argc >= 3) {
+        if (getLongFromObjectOrReply(c,c->argv[2],&l,NULL) != C_OK) return 1;
+        if (c->argc > 4 || (c->argc == 4 && strcasecmp(c->argv[3]->ptr,"withvalues"))) {
+            addReplyErrorObject(c,shared.syntaxerr);
+            return 1;
+        } 
+    }
+
+    /* Handle variant without <count> argument. Reply with simple bulk string */
+    if ((hash = lookupKeyReadOrReply(c,c->argv[1],shared.null[c->resp]))== NULL ||
+        checkType(c,hash,OBJ_HASH)) {
+        return 1;
+    }
+
+    return 0;
+}
+
 /* HRANDFIELD [<count> WITHVALUES] */
 void hrandfieldCommand(client *c) {
     long l;
@@ -1449,8 +1521,17 @@ void hrandfieldCommand(client *c) {
 
 list* hrandfield_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    if (hrandfield_commannd_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
-    return generic_get_one_key_for_rock(c, 1);
+    int withvalues = 0;
+    if (c->argc == 4) 
+        withvalues = 1;
+    
+    list *keys = generic_get_one_key_for_rock(c, 1);
+
+    if (keys == NULL && withvalues == 1)
+        generic_get_all_fields_for_rock(c, c->argv[1]->ptr, hash_keys, hash_fields);
+
+    return keys;
 }
