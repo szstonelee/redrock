@@ -26,4 +26,7 @@ int try_evict_one_field_to_rocksdb(const int dbid, const sds key, const sds fiel
 list* get_vals_from_write_ring_buf_first_for_db(const int dbid, const list *redis_keys);
 list* get_vals_from_write_ring_buf_first_for_hash(const int dbid, const list *hash_keys, const list *fields);
 
+// for flushdb or flushall commands
+void on_empty_db_for_rock_write(const int dbnum);
+
 #endif

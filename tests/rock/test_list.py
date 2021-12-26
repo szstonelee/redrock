@@ -204,29 +204,31 @@ def lset():
         raise Exception("lset fail")
 
 
+# https://hub.fastgit.org/redis/redis-py/issues/1776
 def lmove():
-    myotherlist = key + "_mother"
-    r.execute_command("del", key)
-    r.execute_command("del", myotherlist)
-    r.rpush(key, "one", "two", "three")
-    rock_evict(key)
-    res = r.execute_command("lmove", key, myotherlist, "right", "left")
-    if res != "three":
-         print(res)
-         raise Exception("lmove fail")
-    rock_evict(key)
-    res = r.execute_command("lmove", key, myotherlist, "left", "right")
+    pass
+    # myotherlist = key + "_mother"
+    # r.execute_command("del", key)
+    # r.execute_command("del", myotherlist)
+    # r.rpush(key, "one", "two", "three")
+    # rock_evict(key)
+    # res = r.execute_command("lmove", key, myotherlist, "right", "left")
+    # if res != "three":
+    #      print(res)
+    #      raise Exception("lmove fail")
+    # rock_evict(key)
+    # res = r.execute_command("lmove", key, myotherlist, "left", "right")
     # if res != "one":
+    #      print(res)
+    #      raise Exception("lmove fail2")
+    # res = r.lrange(key, 0, -1)
+    # if res != ["two"]:
     #     print(res)
-    #     raise Exception("lmove fail2")
-    res = r.lrange(key, 0, -1)
-    if res != ["two"]:
-        print(res)
-        raise Exception("lmove fail3")
-    res = r.lrange(myotherlist, 0, -1)
-    if res != ["three", "one"]:
-        print(res)
-        raise Exception("lmove fail4")
+    #     raise Exception("lmove fail3")
+    # res = r.lrange(myotherlist, 0, -1)
+    # if res != ["three", "one"]:
+    #     print(res)
+    #     raise Exception("lmove fail4")
 
 
 def ltrim():
@@ -248,6 +250,12 @@ def blpop():
     if res != (key, "1"):
         print(res)
         raise Exception("blpop fail")
+    other_key = key + "_other"
+    r.execute_command("del", other_key)
+    res = r.execute_command("blpop", other_key, key, 1)
+    if res != (key, "2"):
+        print(res)
+        raise Exception("blpop fail2")
 
 
 def brpop():
@@ -307,7 +315,7 @@ def test_all():
     rpushx()
     lpos()
     lset()
-    # lmove()       # https://hub.fastgit.org/redis/redis-py/issues/1776
+    lmove()       # https://hub.fastgit.org/redis/redis-py/issues/1776
     ltrim()
     blpop()
     brpop()
@@ -316,7 +324,7 @@ def test_all():
 
 
 def _main():
-    lmove()
+    test_all()
 
 
 if __name__ == '__main__':

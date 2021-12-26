@@ -4,6 +4,7 @@
 #include "sds.h"
 #include "rock_marshal.h"
 #include "rock_write.h"
+#include "rock_hash.h"
 
 /* Write Spin Lock for Apple OS and Linux */
 #if defined(__APPLE__)
@@ -493,6 +494,7 @@ static void try_recover_field_in_hash(const int dbid, const sds recover_val,
 
     sds copy_val = sdsdup(recover_val);
     dictGetVal(de_hash) = copy_val;     // NOTE: we need a copy for the recover val
+    on_recover_field_of_hash(dbid, hash_key, o, hash_field);
 
 reclaim:
     sdsfree(hash_key);
@@ -853,6 +855,7 @@ static void check_ring_buf_first_and_recover_for_hash(const int dbid,
             if (dictGetVal(de_hash) == shared.hash_rock_val_for_field)      // NOTE: the same key could repeate for ring buf recovering
             {
                 dictGetVal(de_hash) = recover_val;     // revocer in redis db
+                on_recover_field_of_hash(dbid, hash_key, o, hash_field);
                 listNodeValue(ln_vals) = NULL;      // avoid reclaim in the end of the fuction
             }
          }

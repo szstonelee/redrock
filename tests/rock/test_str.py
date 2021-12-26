@@ -138,22 +138,47 @@ def incrbyfloat():
 
 
 def mget():
-    k1 = "_k1"
+    k1 = key + "_k1"
     v1 = "v1"
     r.set(k1, v1)
-    k2 = "_k2"
+    k2 = key + "_k2"
     v2 = 2
     r.set(k2, v2)
-    k3 = "_k3"
+    k3 = key + "_k3"
     v3 = 10.1
     r.set(k3, v3)
-    k4 = "_k4"
+    k4 = key + "_k4"
     r.execute_command("del", k4)
     rock_evict(k1, k2, k3, k4)
     res = r.mget(k1, k2, k3, k4)
     if res != [v1, str(v2), str(v3), None]:
         print(res)
         raise Exception("mget fail")
+    rock_evict(k1, k2, k3, k4)
+    res = r.execute_command("mget", k1, k1, k2, k2, k3, k3, k4, k4)
+    if res != ["v1", "v1", "2", "2", "10.1", "10.1", None, None]:
+        print(res)
+        raise Exception("mget fail2")
+
+
+def mset():
+    k1 = key + "_k1"
+    v1 = "v1"
+    k2 = key + "_k2"
+    v2 = 2
+    k3 = key + "_k3"
+    v3 = 10.3
+    k4 = key + "_k4"
+    r.execute_command("del", k4)
+    r.set(k1, v1)
+    r.set(k2, v2)
+    r.set(k3, v3)
+    rock_evict(k1, k2, k3, k4)
+    r.execute_command("mset", k1, v1, k2, v2, k1, v1, k3, v2, k3, v3)
+    res = r.execute_command("mget", k1, k2, k3, k4)
+    if res != [v1, str(v2), str(v3), None]:
+        print(res)
+        raise Exception("mset fail")
 
 
 def psetex():
@@ -235,12 +260,13 @@ def test_all():
     decrby()
     get()
     getdel()
-    #getex()
+    getex()
     getset()
     incr()
     incrby()
     incrbyfloat()
     mget()
+    mset()
     psetex()
     set()
     setex()

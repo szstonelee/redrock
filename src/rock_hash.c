@@ -252,6 +252,30 @@ void on_del_hash_from_db(const int dbid, const sds redis_key)
     dictDelete(db->rock_hash, redis_key);
 }
 
+/* When flushdb or flushalldb, it will empty the db(s).
+ * and we need reclaim the rock hash in the db.
+ * if dbnum == -1, it means all db
+ */
+void on_empty_db_for_hash(const int dbnum)
+{
+    serverAssert(dbnum == -1 || (dbnum >= 0 && dbnum < server.dbnum));
+
+    int start = dbnum;
+    if (dbnum == -1)
+        start = 0;
+
+    int end = dbnum + 1;
+    if (dbnum == -1)
+        end = server.dbnum;
+
+    for (int dbid = start; dbid < end; ++dbid)
+    {
+        redisDb *db = server.db + dbid;
+        dict *rock_hash = db->rock_hash;
+        dictEmpty(rock_hash, NULL);
+    }
+}
+
 /* If in rock hash, return 1.
  * Otherwise, return 0.
  */

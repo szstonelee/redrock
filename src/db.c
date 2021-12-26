@@ -33,6 +33,7 @@
 
 #include "rock.h"
 #include "rock_hash.h"
+#include "rock_write.h"
 
 #include <signal.h>
 #include <ctype.h>
@@ -451,6 +452,17 @@ long long emptyDb(int dbnum, int flags, void(callback)(void*)) {
 
     /* Empty redis database structure. */
     removed = emptyDbStructure(server.db, dbnum, async, callback);
+
+    /* We need empty the relavant values for rock hash, rock write and rock read */
+    on_empty_db_for_hash(dbnum);
+    on_empty_db_for_rock_write(dbnum);
+    // NOTE: We do not need deal with rock read
+    // because all read task won't recover 
+    // (including 1. key not eixist in new db.
+    //            2. type not match 
+    //            3. key match but not in rock value 
+    // The new key for new db can not be evictd to rocksdb if previous one exist in candidates
+    // And this can guarantee to resume the waiting clients for the candidates' key. 
 
     /* Flush slots to keys map if enable cluster, we can flush entire
      * slots to keys map whatever dbnum because only support one DB

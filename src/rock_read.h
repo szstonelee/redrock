@@ -12,6 +12,7 @@ void init_and_start_rock_read_thread();
 int on_client_need_rock_keys_for_db(client *c, const list *redis_keys);
 int on_client_need_rock_fields_for_hashes(client *c, const list *hash_keys, const list *hash_fields);
 
+
 int debug_check_no_candidates(const int len, const sds *rock_keys);
 
 /* for read_write.c */

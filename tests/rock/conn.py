@@ -19,6 +19,10 @@ def rock_evict(*keys):
     r.execute_command("rockevict", *keys)
 
 
+def rock_evict_hash(key, *fields):
+    r.execute_command("rockevicthash", key, *fields)
+
+
 def _main():
     r.set(name="k1", value="123")
     # print(r.get(name="k1"))

@@ -61,6 +61,7 @@ pthread_t rock_write_thread_id;
 
 static sds rbuf_keys[RING_BUFFER_LEN];
 static sds rbuf_vals[RING_BUFFER_LEN];
+static int rbuf_invalids[RING_BUFFER_LEN];      // indicating whether the db is just emptied
 static int rbuf_s_index;     // start index in queue (include if rbuf_len != 0)
 static int rbuf_e_index;     // end index in queue (exclude if rbuf_len != 0)
 static int rbuf_len;         // used(available) length
@@ -73,6 +74,7 @@ static void init_write_ring_buffer()
     {
         rbuf_keys[i] = NULL;
         rbuf_vals[i] = NULL;
+        rbuf_invalids[i] = 0;
     }
     rbuf_s_index = rbuf_e_index = 0;
     rbuf_len = 0;
@@ -103,6 +105,7 @@ static void batch_append_to_ringbuf(const int len, sds* keys, sds* vals)
 
         rbuf_keys[rbuf_e_index] = key;
         rbuf_vals[rbuf_e_index] = val;
+        rbuf_invalids[rbuf_e_index] = 0;        // must set 0 to overwirte possible 1 for the previous used index
 
         ++rbuf_e_index;
         if (rbuf_e_index == RING_BUFFER_LEN) 
@@ -174,7 +177,8 @@ static void write_batch_for_db_and_abandon(const int len, const int *dbids, sds 
     }
 }
 
-/* NOTE: The caller does not use keys, fields, vals anymore
+/* Called in main thread.
+ * NOTE: The caller does not use keys, fields, vals anymore
  *       because keys will changed to rock_key and tranfer ownership to ring buffer,
  *       vals will be transfered ownership to ring buffer.
  *       and fields will be reclaimed here.
@@ -323,6 +327,7 @@ int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const
         sds v = dictGetVal(de_hash);
         serverAssert(is_evict_hash_value(v));        
         dictGetVal(de_hash) = shared.hash_rock_val_for_field;
+        on_rockval_field_of_hash(evict_dbids[i], evict_keys[i], o, evict_fields[i]);
         evict_vals[i] = v;    
     }
    
@@ -470,14 +475,19 @@ static void* rock_write_main(void* arg)
     return NULL;
 }
 
-/* Check whether the key is in ring buffer.
+/* Called in main thread.
+ *
+ * Check whether the key is in ring buffer.
  * If not found, return -1. Otherise, the index in ring buffer. 
  *
  * The caller guarantees in lock mode.
  *
- * NOTE: We need check from the end of ring buffer, becuase 
- *       for duplicated keys in ring buf, the tail is newer than the head
- *       in the queue (i.e., ring buffer).
+ * NOTE1: We need check from the end of ring buffer, becuase 
+ *        for duplicated keys in ring buf, the tail is newer than the head
+ *        in the queue (i.e., ring buffer).
+ * 
+ * NOTE2: If the invalid of the key is true, it means the db has just been emptied,
+ *        we can not use it, and we do not need to advance for any more. 
  */
 static int exist_in_ring_buf_for_db_and_return_index(const int dbid, const sds redis_key)
 {
@@ -497,7 +507,7 @@ static int exist_in_ring_buf_for_db_and_return_index(const int dbid, const sds r
         if (rock_key_len == sdslen(rbuf_keys[index]) && sdscmp(rock_key, rbuf_keys[index]) == 0)
         {
             sdsfree(rock_key);
-            return index;
+            return rbuf_invalids[index] ? -1 : index;
         }
 
         --index;
@@ -509,7 +519,9 @@ static int exist_in_ring_buf_for_db_and_return_index(const int dbid, const sds r
     return -1;
 }
 
-/* Check whether the key and field is in ring buffer.
+/* Called in main thead.
+ *
+ * Check whether the key and field is in ring buffer.
  * If not found, return -1. Otherise, the index in ring buffer. 
  *
  * The caller guarantees in lock mode.
@@ -536,7 +548,7 @@ static int exist_in_ring_buf_for_hash_and_return_index(const int dbid, const sds
         if (rock_key_len == sdslen(rbuf_keys[index]) && sdscmp(rock_key, rbuf_keys[index]) == 0)
         {
             sdsfree(rock_key);
-            return index;
+            return rbuf_invalids[index] ? -1 : index;
         }
 
         --index;
@@ -548,7 +560,9 @@ static int exist_in_ring_buf_for_hash_and_return_index(const int dbid, const sds
     return -1;
 }
 
-/* This is the API for rock_read.c. 
+/* Called in main thread.
+ *
+ * This is the API for rock_read.c. 
  * The caller guarantees not in lock mode of write.
  *
  * When a client needs recover some keys, it needs check ring buffer first.
@@ -602,7 +616,9 @@ list* get_vals_from_write_ring_buf_first_for_db(const int dbid, const list *redi
     }
 }
 
-/* This is the API for rock_read.c. 
+/* Called in main thread.
+ *
+ * This is the API for rock_read.c. 
  * The caller guarantees not in lock mode of write.
  *
  * When a client needs recover some hash keys with field, it needs check ring buffer first.
@@ -663,6 +679,7 @@ list* get_vals_from_write_ring_buf_first_for_hash(const int dbid, const list *ha
     }
 }
 
+/* Called in main thread */
 void init_and_start_rock_write_thread()
 {
     // Write spin lock must be inited before initiation of ring buffer
@@ -674,3 +691,53 @@ void init_and_start_rock_write_thread()
         serverPanic("Unable to create a rock write thread.");
 }
 
+/* Called in main thread to set invalid flag for ring buffer.
+ * The caller guarantee in lock mode.
+ */
+static void invalid_ring_buf_for_dbid(const int dbid)
+{
+    int index = rbuf_s_index;
+    for (int i = 0; i < rbuf_len; ++i)
+    {
+        const sds rock_key = rbuf_keys[index];
+        const int dbid_in_key = (unsigned char)rock_key[1];
+        if (dbid_in_key == dbid)
+            rbuf_invalids[index] = 1;
+
+        ++index;
+        if (index == RING_BUFFER_LEN)
+            index = 0;
+    }
+}
+
+/* Called in main thread for flushdb or flushall( dbnum == -1) command
+ * We need to set rbuf_invalids to true for these dbs,
+ * because ring buffer can not removed from the middle,
+ * but the rock read will lookup them from ring buufer by API 
+ * get_vals_from_write_ring_buf_first_for_db() and get_vals_from_write_ring_buf_first_for_hash()
+ */
+void on_empty_db_for_rock_write(const int dbnum)
+{
+    int start = dbnum;
+    if (dbnum == -1)
+        start = 0;
+
+    int end = dbnum + 1;
+    if (dbnum == -1)
+        end = server.dbnum;
+
+    rock_w_lock();
+
+    if (rbuf_len == 0)
+    {
+        rock_w_unlock();
+        return;
+    }
+
+    for (int dbid = start; dbid < end; ++dbid)
+    {
+        invalid_ring_buf_for_dbid(dbid);
+    }
+
+    rock_w_unlock();
+}

@@ -17,6 +17,12 @@ def hdel():
     if res != 0:
         print(res)
         raise Exception("hdel fail2")
+    r.execute_command("hset", key, "field4", "val4")
+    rock_evict(key)
+    res = r.execute_command("del", key, "field4", "field3", "field4")
+    if res != 1:
+        print(res)
+        raise Exception("hdel fail3")
 
 
 def hexists():
@@ -107,6 +113,11 @@ def hmget():
     if res != ["foo", "bar", None]:
         print(res)
         raise Exception("hmget fail")
+    rock_evict(key)
+    res = r.execute_command("hmget", key, "field1", "field2", "nofiled", "field1", "field2", "nofiled")
+    if res != ["foo", "bar", None, "foo", "bar", None]:
+        print(res)
+        raise Exception("hmget fail2")
 
 
 def hmset():
@@ -118,6 +129,12 @@ def hmset():
     if res != {"field1": "new_foo", "field2": "bar", "field3": "val3"}:
         print(res)
         raise Exception("hmset fail")
+    rock_evict(key)
+    r.execute_command("hmset", key, "field1", "new_foo", "field2", "bar", "field1", "back_to_foo")
+    res = r.hgetall(key)
+    if res != {'field2': 'bar', 'field1': 'back_to_foo', 'field3': 'val3'}:
+        print(res)
+        raise Exception("hmset fail2")
 
 
 def hset():

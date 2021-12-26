@@ -15,6 +15,11 @@ def sadd():
     if res != {"Hello", "Master", "World"}:
         print(res)
         raise Exception("sadd fail")
+    rock_evict(key)
+    res = r.execute_command("sadd", key, "one", "two", "one")
+    if res != 2:
+        print(res)
+        raise Exception("sadd fail2")
 
 
 def sadd_int():
@@ -122,6 +127,11 @@ def smismember():
     if res != [1, 0]:
         print(res)
         raise Exception("smismber fail")
+    rock_evict(key)
+    res = r.execute_command("smismember", key, "one", "notamember", "one", "notamember")
+    if res != [1, 0, 1, 0]:
+        print(res)
+        raise Exception("smismember fail2")
 
 
 def smembers():
@@ -196,6 +206,11 @@ def srem():
     if res != {"two", "three"}:
         print(res)
         raise Exception("srem fail")
+    rock_evict(key)
+    res = r.execute_command("srem", key, "one", "two", "one", "two")
+    if res != 1:
+        print(res)
+        raise Exception("srem fail")
 
 
 def suion():
@@ -228,22 +243,22 @@ def suionstore():
 
 
 def test_all():
-    # sadd()
+    sadd()
     sadd_int()
-    # scard()
-    # sdiff()
-    # sdiffstore()
-    # sinter()
-    # sinterstore()
-    # sismember()
-    # smismember()
-    # smembers()
-    # smove()
-    # srandmember()
-    # spop()
-    # srem()
-    # suion()
-    # suionstore()
+    scard()
+    sdiff()
+    sdiffstore()
+    sinter()
+    sinterstore()
+    sismember()
+    smismember()
+    smembers()
+    smove()
+    srandmember()
+    spop()
+    srem()
+    suion()
+    suionstore()
 
 
 def _main():
