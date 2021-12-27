@@ -222,7 +222,7 @@ static void read_from_rocksdb(const int cnt, const sds *keys, sds *vals)
 
     // for manual debug
     // serverLog(LL_WARNING, "read thread read rocksdb start (sleep for 10 seconds) ...");
-    // sleep(10);
+    // sleep(20);
     // serverLog(LL_WARNING, "read thread read rocksdb end!!!!!");
 
     rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
@@ -492,9 +492,12 @@ static void try_recover_field_in_hash(const int dbid, const sds recover_val,
     if (val != shared.hash_rock_val_for_field)
         goto reclaim;   // the field's value may be overwritten by other cliient
 
+    // NOTE: we need a copy of recover_val for the recover
+    //       because the caller will reclaim recover_val, check recover_data()
     sds copy_val = sdsdup(recover_val);
-    dictGetVal(de_hash) = copy_val;     // NOTE: we need a copy for the recover val
-    on_recover_field_of_hash(dbid, hash_key, o, hash_field);
+    dictGetVal(de_hash) = copy_val;
+
+    on_recover_field_of_hash(dbid, hash_key, hash_field);
 
 reclaim:
     sdsfree(hash_key);
@@ -852,10 +855,11 @@ static void check_ring_buf_first_and_recover_for_hash(const int dbid,
             dict *hash = o->ptr;
             dictEntry *de_hash = dictFind(hash, hash_field);
             serverAssert(de_hash);
-            if (dictGetVal(de_hash) == shared.hash_rock_val_for_field)      // NOTE: the same key could repeate for ring buf recovering
+            // NOTE: the same key could repeat for ring buf recovering
+            if (dictGetVal(de_hash) == shared.hash_rock_val_for_field)      
             {
                 dictGetVal(de_hash) = recover_val;     // revocer in redis db
-                on_recover_field_of_hash(dbid, hash_key, o, hash_field);
+                on_recover_field_of_hash(dbid, hash_key, hash_field);
                 listNodeValue(ln_vals) = NULL;      // avoid reclaim in the end of the fuction
             }
          }
@@ -863,7 +867,7 @@ static void check_ring_buf_first_and_recover_for_hash(const int dbid,
 
     // reclaim the resource of vals which are allocated 
     // in get_vals_from_write_ring_buf_first() 
-    // NOTE: the recover val's ownership has been transfered to the hash in redis db
+    // NOTE: the ONLY ONE recover val's ownership has been transfered to the hash in redis db
     listSetFreeMethod(vals, (void (*)(void*))sdsfree);
     listRelease(vals);   
 

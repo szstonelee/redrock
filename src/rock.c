@@ -213,124 +213,12 @@ void debug_rock(client *c)
 
     if (strcasecmp(flag, "evictkeys") == 0 && c->argc >= 3)
     {
-        sds keys[RING_BUFFER_LEN];
-        int dbids[RING_BUFFER_LEN];
-        int len = 0;
-        for (int i = 0; i < c->argc-2; ++i)
-        {
-            sds input_key = c->argv[i+2]->ptr;
-            dictEntry *de = dictFind(c->db->dict, input_key);
-            if (de)
-            {
-                if (!is_rock_value(dictGetVal(de)))
-                {
-                    serverLog(LL_NOTICE, "debug evictkeys, try key = %s", input_key);
-                    keys[len] = input_key;
-                    dbids[len] = c->db->id;
-                    ++len;
-                }
-            }
-        }
-        if (len)
-        {
-            int ecvict_num = try_evict_to_rocksdb_for_db(len, dbids, keys);
-            serverLog(LL_NOTICE, "debug evictkeys, ecvict_num = %d", ecvict_num);
-        }
     }
     else if (strcasecmp(flag, "recoverkeys") == 0 && c->argc >= 3)
     {
-        serverAssert(c->rock_key_num == 0);
-        list *rock_keys = listCreate();
-        for (int i = 0; i < c->argc-2; ++i)
-        {
-            sds input_key = c->argv[i+2]->ptr;
-            dictEntry *de = dictFind(c->db->dict, input_key);
-            if (de)
-            {
-                if (is_rock_value(dictGetVal(de)))
-                {
-                    serverLog(LL_WARNING, "debug_rock() found rock key = %s", (sds)dictGetKey(de));
-                    listAddNodeTail(rock_keys, dictGetKey(de));
-                }
-            }
-        }
-        if (listLength(rock_keys) != 0)
-        {
-            on_client_need_rock_keys_for_db(c, rock_keys);
-        }
-        listRelease(rock_keys);
-    }
-    else if (strcasecmp(flag, "testread") == 0)
-    {
-        /*
-        sds keys[2];
-        keys[0] = sdsnew("key1");
-        keys[1] = sdsnew("key2");
-        sds copy_keys[2];
-        copy_keys[0] = sdsdup(keys[0]);
-        copy_keys[1] = sdsdup(keys[1]);
-        robj* objs[2];
-        char* val1 = "val_for_key1";
-        char* val2 = "val_for_key2";       
-        objs[0] = createStringObject(val1, strlen(val1));
-        objs[1] = createStringObject(val2, strlen(val2));
-        int dbids[2];
-        dbids[0] = 65;      // like letter 'a'
-        dbids[1] = 66;      // like letter 'b'
-        write_batch_append_and_abandon(2, dbids, keys, objs);
-        sleep(1);       // waiting for save to RocksdB
-        debug_add_tasks(2, dbids, copy_keys);
-        on_delete_key(dbids[0], copy_keys[1]);
-        */
     }
     else if (strcasecmp(flag, "testwrite") == 0) 
     {
-        /*
-        int dbid = 1;
-
-        int val_len = random() % 1024;
-        sds val = sdsempty();
-        for (int i = 0; i < val_len; ++i)
-        {
-            val = sdscat(val, "v");
-        }
-
-        sds keys[RING_BUFFER_LEN];
-        robj* objs[RING_BUFFER_LEN];
-        int dbids[RING_BUFFER_LEN];
-        int cnt = 0;
-        while (cnt < 5000000)
-        {
-            int space = space_in_write_ring_buffer();
-            if (space == 0)
-            {
-                serverLog(LL_NOTICE, "space = 0, sleep for a while, cnt = %d", cnt);
-                usleep(10000);
-                continue;
-            }
-            
-            int random_pick = random() % RING_BUFFER_LEN;
-            if (random_pick == 0)
-                random_pick = 1;
-            
-            const int pick = random_pick < space ? random_pick : space;
-
-            for (int i = 0; i < pick; ++i)
-            {
-                sds key = debug_random_sds(128);
-                sds val = debug_random_sds(1024);
-
-                keys[i] = key;
-                robj* o = createStringObject(val, sdslen(val));
-                sdsfree(val);
-                objs[i] = o;
-                dbids[i] = dbid;
-            }         
-            write_batch_append_and_abandon(pick, dbids, keys, objs); 
-            cnt += pick;
-            serverLog(LL_NOTICE, "write_batch_append total = %d, cnt = %d", space, cnt);
-        }
-        */
     }
     else
     {
@@ -965,6 +853,7 @@ void rock_evict(client *c)
     sds can_not_evict_type = sdsnew("VALUE_TYPE_CAN_NOT_EVICT_LIKE_STREAM");
     sds can_evict = sdsnew("CAN_EVICT_AND_WRITTEN_TO_ROCKSDB");
     sds alreay_in_rock_hash = sdsnew("CAN_NOT_EVICT_BECAUSE_IT_IS_ROCK_HASH");
+    sds already_in_candidates_or_rock_value = sdsnew("CAN_NOT_EVICT_BECAUSE_IT_IS_IN_CANDIDATES_OR_ALREADY_ROCK_VALUE");
 
     const int key_num = c->argc - 1;
     addReplyArrayLen(c, key_num*2);
@@ -1011,10 +900,35 @@ void rock_evict(client *c)
                 }
                 else
                 {
-                    // can evcit this key
-                    while (!try_evict_one_key_to_rocksdb(db->id, key));     // loop until success
+                    // can try to evcit this key
+                    int loop = 1;
+                    while (loop)
+                    {
+                        const int ret =  try_evict_one_key_to_rocksdb(db->id, key);
+                        
+                        switch (ret)
+                        {
+                        case TRY_EVICT_ONE_KEY_RING_BUFFER_FULL:
+                            // NOTE: if RocksDB is busy, it may increase latency because 
+                            // here is main thread
+                            // For cron eviction we use time out
+                           break;      // loop continue
+                        case TRY_EVICT_ONE_KEY_SUCCESS:
+                            loop = 0;
+                            break;
+                        case TRY_EVICT_ONE_KEY_FAIL_FOR_IN_CANDIDATES_OR_ALREADY_ROCK_VALUE:
+                            r = createStringObject(already_in_candidates_or_rock_value, 
+                                                   sdslen(already_in_candidates_or_rock_value));
+                            loop = 0;
+                            break;
+                        default:
+                            serverPanic("try_evict_one_key_to_rocksdb() for rock_evict() return unknow!");
+                        }
 
-                    r = createStringObject(can_evict, sdslen(can_evict));
+                    }     
+                    
+                    if (r == NULL)
+                        r = createStringObject(can_evict, sdslen(can_evict));
                 }
             }
         }
@@ -1032,6 +946,7 @@ void rock_evict(client *c)
     sdsfree(shared_val);
     sdsfree(can_not_evict_type);
     sdsfree(alreay_in_rock_hash);
+    sdsfree(already_in_candidates_or_rock_value);
 }
 
 void rock_evict_hash(client *c)
@@ -1083,6 +998,8 @@ void rock_evict_hash(client *c)
     sds not_found = sdsnew("field not found");
     sds already_evict = sdsnew("field already evicted");
     sds can_evict = sdsnew("field successfully evicted");
+    sds already_in_candidates_or_already_rock_value = sdsnew("field can not evict because it is in candidates or already rock value");
+
     for (int i = 0; i < field_num; ++i)
     {
         sds field = c->argv[i+2]->ptr;
@@ -1104,10 +1021,33 @@ void rock_evict_hash(client *c)
             }
             else
             {
-                // can evcit this field
-                while (!try_evict_one_field_to_rocksdb(db->id, key, field));     // loop until success
+                // can try to evcit this field
+                int loop = 1;
+                while (loop)
+                {
+                    const int ret = try_evict_one_field_to_rocksdb(db->id, key, field);
+                    switch (ret)
+                    {
+                    case TRY_EVICT_ONE_KEY_RING_BUFFER_FULL:
+                        // NOTE: if RocksDB is busy, it may increase latency because 
+                        // here is main thread
+                        // For cron eviction we use time out
+                        break;      // loop continue
+                    case TRY_EVICT_ONE_KEY_SUCCESS:
+                        loop = 0;
+                        break;
+                    case TRY_EVICT_ONE_KEY_FAIL_FOR_IN_CANDIDATES_OR_ALREADY_ROCK_VALUE:
+                        r = createStringObject(already_in_candidates_or_already_rock_value, 
+                                               sdslen(already_in_candidates_or_already_rock_value));
+                        loop = 0;
+                        break;
+                    default:
+                        serverPanic("try_evict_one_key_to_rocksdb() for rock_evict_hash() return unknow!");
+                    }
+                }
                 
-                r = createStringObject(can_evict, sdslen(can_evict));
+                if (r == NULL)
+                    r = createStringObject(can_evict, sdslen(can_evict));
             }
         }
 
@@ -1120,4 +1060,5 @@ void rock_evict_hash(client *c)
     sdsfree(not_found);     
     sdsfree(already_evict);
     sdsfree(can_evict);
+    sdsfree(already_in_candidates_or_already_rock_value);
 }

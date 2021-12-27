@@ -247,7 +247,7 @@ void dbOverwrite(redisDb *db, robj *key, robj *val) {
 
     dictFreeVal(db->dict, &auxentry);
 
-    on_del_hash_from_db(db->id, key->ptr);
+    on_overwrite_key_from_db_for_rock_hash(db->id, key->ptr, val);
 }
 
 /* High level Set operation. This function can be used in order to set
@@ -318,6 +318,9 @@ robj *dbRandomKey(redisDb *db) {
 
 /* Delete a key, value, and associated expiration entry if any, from the DB */
 int dbSyncDelete(redisDb *db, robj *key) {
+    // NOTE: call before deleting the key from db
+    on_del_key_from_db_for_rock_hash(db->id, key->ptr);
+
     /* Deleting an entry from the expires dict will not free the sds of
      * the key, because it is shared with the main dictionary. */
     if (dictSize(db->expires) > 0) dictDelete(db->expires,key->ptr);
@@ -337,8 +340,6 @@ int dbSyncDelete(redisDb *db, robj *key) {
 /* This is a wrapper whose behavior depends on the Redis lazy free
  * configuration. Deletes the key synchronously or asynchronously. */
 int dbDelete(redisDb *db, robj *key) {
-    on_del_hash_from_db(db->id, key->ptr);
-
     return server.lazyfree_lazy_server_del ? dbAsyncDelete(db,key) :
                                              dbSyncDelete(db,key);
 }

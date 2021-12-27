@@ -213,6 +213,8 @@ static void write_batch_for_hash_and_abandon(const int len, const int *dbids, sd
  * because we need exclude those keys in read_rock_key_candidates. 
  * Check rock_read.c for read_rock_key_candidates for more reference. 
  * 
+ * and we need exclude those duplicated keys.
+ * 
  * try_evict_to_rocksdb_for_db() will set value to rock value for these matched keys.
  * Return the actual number of keys for eviction.
  * 
@@ -220,7 +222,8 @@ static void write_batch_for_hash_and_abandon(const int len, const int *dbids, sd
  *        to know the available space for ring buffer.
  *        The caller needs to guarantee check_len <= space.
  * 
- * NOTE2: The caller guarantee the vlaue can be evicted. (e.g. NOT stream value)
+ * NOTE2: The keys could be duplicated (from command ROCKEVICT),
+ *         we need to exclude the duplicated keys.
  * 
  * NOTE3: The keys must be not in rock hash.
  */
@@ -228,10 +231,10 @@ int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, const s
 {
     serverAssert(try_len > 0);
 
-    int evict_len = 0;
-
-    int evict_dbids[RING_BUFFER_LEN];
-    sds evict_keys[RING_BUFFER_LEN];
+    // first exclude those in candidates
+    int exclude_candidate_len = 0;
+    int exclude_candidate_dbids[RING_BUFFER_LEN];
+    sds exclude_candidate_keys[RING_BUFFER_LEN];    
     for (int i = 0; i < try_len; ++i)
     {
         const int dbid = try_dbids[i];
@@ -243,26 +246,45 @@ int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, const s
             continue;
 
         // NOTE: we must duplicate for write_batch_append_and_abandon()
-        evict_keys[evict_len] = sdsdup(try_key);  
-        evict_dbids[evict_len] = dbid;
-        ++evict_len;
+        exclude_candidate_keys[exclude_candidate_len] = sdsdup(try_key);  
+        exclude_candidate_dbids[exclude_candidate_len] = dbid;
+        ++exclude_candidate_len;
     }
 
+    if (exclude_candidate_len == 0)
+        return 0;
+
+    // second we need exclude those duplicated key+field
+    int evict_len = 0;
+    int evict_dbids[RING_BUFFER_LEN];
+    sds evict_keys[RING_BUFFER_LEN];
     robj* evict_vals[RING_BUFFER_LEN];
-    for (int i = 0; i < evict_len; ++i)
+    for (int i = 0; i < exclude_candidate_len; ++i)
     {
-        redisDb *db = server.db + evict_dbids[i];
-        dictEntry *de = dictFind(db->dict, evict_keys[i]);
-        serverAssert(de);
+        int dbid = exclude_candidate_dbids[i];
+        sds redis_key = exclude_candidate_keys[i];
 
-        // change the value to rock value in Redis DB
-        robj *v = dictGetVal(de);
-        serverAssert(is_evict_value(v));        
-        dictGetVal(de) = get_match_rock_value(v);
-        evict_vals[i] = v;    
+        redisDb *db = server.db + dbid;
+        dictEntry *de_db = dictFind(db->dict, redis_key);
+        serverAssert(de_db);
+
+        robj *v = dictGetVal(de_db);
+        if (is_evict_value(v))
+        {
+            dictGetVal(de_db) = get_match_rock_value(v);
+
+            evict_dbids[evict_len] = dbid;
+            evict_keys[evict_len] = redis_key;
+            evict_vals[evict_len] = v;
+            ++evict_len;
+        }
+        else
+        {
+            sdsfree(redis_key);
+        }
     }
 
-    if (evict_len)
+    if (evict_len)    
         write_batch_for_db_and_abandon(evict_len, evict_dbids, evict_keys, evict_vals);
 
     return evict_len;    
@@ -274,25 +296,29 @@ int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, const s
  * to determine which fields can be evicted to RocksDB 
  * because we need exclude those keys in read_rock_key_candidates. 
  * Check rock_read.c for read_rock_key_candidates for more reference. 
+ * 
+ * and we also need to exclude those duplicatedd try_key + try_field 
+ * because it can not set to rock value twice.
  *
  * try_evict_to_rocksdb_for_hash() will set value to rock value for these matched fields.
  * Return the actual number of fields for eviction.
  *
-  * NOTE1: The caller needs to use space_in_write_ring_buffer() first
+ * NOTE1: The caller needs to use space_in_write_ring_buffer() first
  *        to know the available space for ring buffer.
  *        The caller needs to guarantee check_len <= space.
  *
- * NOTE2: The caller guarantee the vlaue can be evicted, i.e., the value for the field is not rock value.
+ * NOTE2: The caller can not guarantee all the value can be evicted, 
+ *        because the try_keys + try_fiels could be duplicated
  */
 int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const sds *try_keys, const sds *try_fields)
 {
     serverAssert(try_len > 0);
 
-    int evict_len = 0;
-
-    int evict_dbids[RING_BUFFER_LEN];
-    sds evict_keys[RING_BUFFER_LEN];
-    sds evict_fields[RING_BUFFER_LEN];
+    // first exclude those in candidates
+    int exclude_candidate_len = 0;
+    int exclude_candidate_dbids[RING_BUFFER_LEN];
+    sds exclude_candidate_keys[RING_BUFFER_LEN];
+    sds exclude_candidate_fields[RING_BUFFER_LEN];
     for (int i = 0; i < try_len; ++i)
     {
         const int dbid = try_dbids[i];
@@ -305,42 +331,73 @@ int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const
             continue;
 
         // NOTE: we must duplicate for write_batch_append_and_abandon()
-        evict_keys[evict_len] = sdsdup(try_key);
-        evict_fields[evict_len] = sdsdup(try_field);  
-        evict_dbids[evict_len] = dbid;
-        ++evict_len; 
+        exclude_candidate_keys[exclude_candidate_len] = sdsdup(try_key);
+        exclude_candidate_fields[exclude_candidate_len] = sdsdup(try_field);  
+        exclude_candidate_dbids[exclude_candidate_len] = dbid;
+        ++exclude_candidate_len; 
     }
 
+    if (exclude_candidate_len == 0)
+        return 0;
+        
+    // second we need exclude those duplicated key+field
+    int evict_len = 0;
+    int evict_dbids[RING_BUFFER_LEN];
+    sds evict_keys[RING_BUFFER_LEN];
+    sds evict_fields[RING_BUFFER_LEN];
     sds evict_vals[RING_BUFFER_LEN];
-    for (int i = 0; i < evict_len; ++i)
+    for (int i = 0; i < exclude_candidate_len; ++i)
     {
-        redisDb *db = server.db + evict_dbids[i];
-        dictEntry *de_db = dictFind(db->dict, evict_keys[i]);
+        int dbid = exclude_candidate_dbids[i];
+        sds hash_key = exclude_candidate_keys[i];
+        sds hash_field = exclude_candidate_fields[i];
+
+        redisDb *db = server.db + dbid;
+        dictEntry *de_db = dictFind(db->dict, hash_key);
         serverAssert(de_db);
         robj *o = dictGetVal(de_db);
         serverAssert(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT);
         dict *hash = o->ptr;
-        dictEntry *de_hash = dictFind(hash, evict_fields[i]);
+        dictEntry *de_hash = dictFind(hash, hash_field);
         serverAssert(de_hash);
 
-        // change the value to rock value in Redis DB
         sds v = dictGetVal(de_hash);
-        serverAssert(is_evict_hash_value(v));        
-        dictGetVal(de_hash) = shared.hash_rock_val_for_field;
-        on_rockval_field_of_hash(evict_dbids[i], evict_keys[i], o, evict_fields[i]);
-        evict_vals[i] = v;    
+        if (v != shared.hash_rock_val_for_field)
+        {
+            dictGetVal(de_hash) = shared.hash_rock_val_for_field;
+            on_rockval_field_of_hash(dbid, hash_key, hash_field);
+
+            evict_dbids[evict_len] = dbid;
+            evict_keys[evict_len] = hash_key;
+            evict_fields[evict_len] = hash_field;
+            evict_vals[evict_len] = v;
+            ++evict_len;
+        }
+        else
+        {
+            sdsfree(hash_key);
+            sdsfree(hash_field);
+        }
     }
-   
+
     if (evict_len)
         write_batch_for_hash_and_abandon(evict_len, evict_dbids, evict_keys, evict_fields, evict_vals);
 
     return evict_len;
 }
 
-/* Called in main thread for command ROCKEVICT
- * If succesful, return 1.
- * Otherwise, return 0. The caller can try again because the key may be in candidates 
- *                      and it takes times for read thread to process (no recover but abandon).
+/* Called in main thread for command ROCKEVICT for db key.
+ *
+ * If succesful, return TRY_EVICT_ONE_KEY_SUCCESS.
+ * 
+ * If ring buffer is full right now, return TRY_EVICT_ONE_KEY_RING_BUFFER_FULL.
+ * The caller can try again because the write thread is working 
+ * and has not finished the wrintg jobs.
+ * 
+ * Otherwise return TRY_EVICT_ONE_KEY_FAIL_FOR_IN_CANDIDATES.
+ * The caller can not try again because main thread must return to event loop
+ * to let it get the read signal from read thread 
+ * which will deal with candidates by deleting task. 
  * 
  * The caller needs to guarantee the value in Redis exist and can be evicted to RocksDB.
  */
@@ -348,39 +405,36 @@ int try_evict_one_key_to_rocksdb(const int dbid, const sds key)
 {
     const int space = space_in_write_ring_buffer();
     if (space == 0)
-        return 0;
+        return TRY_EVICT_ONE_KEY_RING_BUFFER_FULL;
     
     if (try_evict_to_rocksdb_for_db(1, &dbid, &key) == 0)
     {
-        return 0;
+        return TRY_EVICT_ONE_KEY_FAIL_FOR_IN_CANDIDATES_OR_ALREADY_ROCK_VALUE;
     }
     else
     {
-        return 1;
+        return TRY_EVICT_ONE_KEY_SUCCESS;
     }
 }
 
-/* Called in main thread for command ROCKEVICTHASH
- * If succesful, return 1.
- * Otherwise, return 0. The caller can try again because the key may be in candidates 
- *                      and it takes times for read thread to process (no recover but abandon).
+/* Called in main thread for command ROCKEVICTHASH for rock hash.
  * 
- * The caller needs to guarantee the value in Redis exist and can be evicted to RocksDB.
+ * Check the above try_evict_one_key_to_rocksdb() help.
  */
 int try_evict_one_field_to_rocksdb(const int dbid, const sds key, const sds field)
 {
     const int space = space_in_write_ring_buffer();
     if (space == 0)
-        return 0;
+        return TRY_EVICT_ONE_KEY_RING_BUFFER_FULL;
 
 
     if (try_evict_to_rocksdb_for_hash(1, &dbid, &key, &field) == 0)
     {
-        return 0;
+        return TRY_EVICT_ONE_KEY_FAIL_FOR_IN_CANDIDATES_OR_ALREADY_ROCK_VALUE;
     }
     else
     {
-        return 1;
+        return TRY_EVICT_ONE_KEY_SUCCESS;
     }
 }
 

@@ -3,6 +3,8 @@
 #include "atomicvar.h"
 #include "cluster.h"
 
+#include "rock_hash.h"
+
 static redisAtomic size_t lazyfree_objects = 0;
 static redisAtomic size_t lazyfreed_objects = 0;
 
@@ -145,6 +147,9 @@ size_t lazyfreeGetFreeEffort(robj *key, robj *obj) {
  * will be reclaimed in a different bio.c thread. */
 #define LAZYFREE_THRESHOLD 64
 int dbAsyncDelete(redisDb *db, robj *key) {
+    // NOTE: call before deleting the key from db
+    on_del_key_from_db_for_rock_hash(db->id, key->ptr);
+
     /* Deleting an entry from the expires dict will not free the sds of
      * the key, because it is shared with the main dictionary. */
     if (dictSize(db->expires) > 0) dictDelete(db->expires,key->ptr);

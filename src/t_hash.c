@@ -203,6 +203,10 @@ int hashTypeExists(robj *o, sds field) {
 #define HASH_SET_TAKE_VALUE (1<<1)
 #define HASH_SET_COPY 0
 int hashTypeSet(const int dbid, const sds key, robj *o, sds field, sds value, int flags) {
+
+    sds field_for_rock_hash = field;        // because field may set to NULL in the following code
+    int is_field_value_rock_value = 0;
+
     int update = 0;
 
     if (o->encoding == OBJ_ENCODING_ZIPLIST) {
@@ -239,6 +243,11 @@ int hashTypeSet(const int dbid, const sds key, robj *o, sds field, sds value, in
     } else if (o->encoding == OBJ_ENCODING_HT) {
         dictEntry *de = dictFind(o->ptr,field);
         if (de) {
+            // before free the value, we need to check whether 
+            // it is a field value in RocksDB
+            if (dictGetVal(de) == shared.hash_rock_val_for_field)
+                is_field_value_rock_value = 1;
+
             sdsfree(dictGetVal(de));
             if (flags & HASH_SET_TAKE_VALUE) {
                 dictGetVal(de) = value;
@@ -269,11 +278,11 @@ int hashTypeSet(const int dbid, const sds key, robj *o, sds field, sds value, in
 
     if (update)
     {
-        on_visit_field_of_hash(dbid, key, o, field);
+        on_overwrite_field_for_rock_hash(dbid, key, field_for_rock_hash, is_field_value_rock_value);
     }
     else
     {
-        on_hash_key_add_field(dbid, key, o, field);
+        on_hash_key_add_field(dbid, key, field_for_rock_hash);
     }
 
     /* Free SDS strings we did not referenced elsewhere if the flags
@@ -376,6 +385,9 @@ int hashTypeDelete(const int dbid, const sds key, robj *o, sds field) {
             }
         }
     } else if (o->encoding == OBJ_ENCODING_HT) {
+        // NOTE: always before dictDelete() because the field may be freed there
+        on_hash_key_del_field(dbid, key, field);
+
         if (dictDelete((dict*)o->ptr, field) == C_OK) {
             deleted = 1;
 
@@ -386,9 +398,6 @@ int hashTypeDelete(const int dbid, const sds key, robj *o, sds field) {
     } else {
         serverPanic("Unknown hash encoding");
     }
-
-    if (deleted)
-        on_hash_key_del_field(dbid, key, o, field);
 
     return deleted;
 }
@@ -1217,10 +1226,20 @@ void hexistsCommand(client *c) {
     addReply(c, hashTypeExists(o,c->argv[2]->ptr) ? shared.cone : shared.czero);
 }
 
+/* NOTE: Because the Redis get the value from hash field to 
+ *       check whether the field exist,
+ *       we need to recover the fields if it is in RocksDB.
+ * check hashTypeGetFromHashTable() for more details
+ */
 list* hexists_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    list *keys = generic_get_one_key_for_rock(c, 1);
+
+    if (keys == NULL)
+    {
+        const sds key = c->argv[1]->ptr;
+        generic_get_one_field_for_rock(c, key, 2, hash_keys, hash_fields);
+    }
 
     return generic_get_one_key_for_rock(c, 1);
 }

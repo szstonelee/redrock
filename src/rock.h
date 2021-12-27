@@ -106,10 +106,12 @@ inline int is_evict_value(const robj *v)
     }
 }
 
+/*
 inline int is_evict_hash_value(const sds v)
 {
     return v != shared.hash_rock_val_for_field;
 }
+*/
 
 /* Check a client is in the state waiting for rock value.
  * Return 1 if the client is waiting some rock value.
