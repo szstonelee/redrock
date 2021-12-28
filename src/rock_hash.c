@@ -88,7 +88,8 @@ static void debug_check_lru(const char *from, dict *hash, dict *lrus, const sds 
             if (dictFind(lrus, field) == NULL)
             {
                 debug_print_lrus(lrus);
-                serverPanic("debug_check_lru, from = %s, val != shared.hash_rock_val_for_field, field = %s", from, field);
+                serverPanic("debug_check_lru, from = %s, val != shared.hash_rock_val_for_field, field = %s, will_delete_field = %s", 
+                             from, field, will_delete_field);
             }
         }
         else
@@ -234,17 +235,27 @@ void on_hash_key_del_field(const int dbid, const sds redis_key, const sds field)
     if (de_rock_hash)
     {
         dict *lrus = dictGetVal(de_rock_hash);
-        dictDelete(lrus, field);
+
+        int ret = dictDelete(lrus, field);
 
         #if defined RED_ROCK_DEBUG
-        debug_check_lru("on_hash_key_del_field", o->ptr, lrus, field);
+        if (ret == DICT_OK)
+        {
+            debug_check_lru("on_hash_key_del_field", o->ptr, lrus, field);
+        }
+        else
+        {
+            debug_check_lru("on_hash_key_del_field", o->ptr, lrus, NULL);
+        }
         #endif
     }
 }
 
-/* When a client visit a field of a hash. So we need to update the lru clock.
+/* When a client visit a field of a hash only for read, 
+ * (e.g., HEXISTS, HGET, HMGET, HSTRLEN but NOT HLEN and HRANDFIELD)
+ * we need to update the lru clock.
  */
-void on_visit_field_of_hash(const int dbid, const sds redis_key, const sds field)
+void on_visit_field_of_hash_for_readonly(const int dbid, const sds redis_key, const sds field)
 {
     redisDb *db = server.db + dbid;
     dictEntry *de_db = dictFind(db->dict, redis_key);
@@ -257,7 +268,7 @@ void on_visit_field_of_hash(const int dbid, const sds redis_key, const sds field
     {
         #if defined RED_ROCK_DEBUG
         if (dictFind(db->rock_hash, redis_key))
-            serverPanic("on_hash_key_del_field, %s encoding wrong!", redis_key);
+            serverPanic("on_visit_field_of_hash_for_readonly, %s encoding wrong!", redis_key);
         #endif
         return;
     }
@@ -280,6 +291,44 @@ void on_visit_field_of_hash(const int dbid, const sds redis_key, const sds field
         #if defined RED_ROCK_DEBUG
         debug_check_lru("on_visit_field_of_hash", o->ptr, lrus, NULL);
         #endif
+    }
+}
+
+/* When a client visit a field of a hash only for read, 
+ * (e.g., HGETALL, HKEYS, HVALS, HSCAN but NOT HLEN and HRANDFIELD)
+ * we need to update the lru clock.
+ */
+void on_visit_all_fields_of_hash_for_readonly(const int dbid, const sds redis_key)
+{
+    redisDb *db = server.db + dbid;
+    dictEntry *de_db = dictFind(db->dict, redis_key);
+    serverAssert(de_db);
+
+    robj *o = dictGetVal(de_db);
+    serverAssert(o->type == OBJ_HASH);
+
+    if (o->encoding != OBJ_ENCODING_HT)
+    {
+        #if defined RED_ROCK_DEBUG
+        if (dictFind(db->rock_hash, redis_key))
+            serverPanic("on_visit_all_fields_of_hash_for_readonly, %s encoding wrong!", redis_key);
+        #endif
+        return;
+    }
+
+    dictEntry *de_rock_hash = dictFind(db->rock_hash, redis_key);
+    if (de_rock_hash)
+    {
+        dict *lrus = dictGetVal(de_rock_hash);
+        uint64_t clock = LRU_CLOCK();
+
+        dictIterator *di_lrus = dictGetIterator(lrus);
+        dictEntry *de_lrus;
+        while ((de_lrus = dictNext(di_lrus)))
+        {
+            dictGetVal(de_lrus) = (void*)clock;
+        }
+        dictReleaseIterator(di_lrus);
     }
 }
 
@@ -315,7 +364,12 @@ void on_overwrite_field_for_rock_hash(const int dbid, const sds redis_key, const
         dictEntry *de_rock_hash = dictFind(db->rock_hash, redis_key);
         serverAssert(de_rock_hash);
         dict *lrus = dictGetVal(de_rock_hash);
-        serverAssert(dictAdd(lrus, field, (void*)clock) == DICT_OK);
+        // and we must use iternal_field
+        dict *hash = o->ptr;
+        dictEntry *de_hash = dictFind(hash, field);
+        serverAssert(de_hash);
+        sds internal_field = dictGetKey(de_hash);
+        serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);
     }
     else
     {

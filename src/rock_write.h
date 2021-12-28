@@ -31,6 +31,6 @@ list* get_vals_from_write_ring_buf_first_for_db(const int dbid, const list *redi
 list* get_vals_from_write_ring_buf_first_for_hash(const int dbid, const list *hash_keys, const list *fields);
 
 // for flushdb or flushall commands
-void on_empty_db_for_rock_write(const int dbnum);
+// void on_empty_db_for_rock_write(const int dbnum);
 
 #endif

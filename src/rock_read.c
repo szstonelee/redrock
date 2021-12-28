@@ -221,8 +221,8 @@ static void read_from_rocksdb(const int cnt, const sds *keys, sds *vals)
     }
 
     // for manual debug
-    // serverLog(LL_WARNING, "read thread read rocksdb start (sleep for 10 seconds) ...");
-    // sleep(20);
+    // serverLog(LL_WARNING, "read thread read rocksdb start (sleep for 30 seconds) ...");
+    // sleep(30);
     // serverLog(LL_WARNING, "read thread read rocksdb end!!!!!");
 
     rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
@@ -371,6 +371,9 @@ static void try_assign_tasks()
 {
     if (task_status == READ_START_TASK)
         return;   // read thread is working, can not assign task
+
+    if (read_key_tasks[0] != NULL)
+        return;     // main thread has not response for the signal of read thread
 
     sds tasks[READ_TOTAL_LEN];
     const int avail = get_keys_from_candidates_before_assignment(tasks);
@@ -734,10 +737,13 @@ static void go_on_need_rock_hashes_from_rocksdb(const uint64_t client_id, const 
  *
  * The caller guarantee not in lock mode.
  *
- * NOTE: the un-rocovered keys share the sds pointer 
- *       as the one from the input argument of redis_keys.
+ * NOTE1: the un-rocovered keys share the sds pointer 
+ *        as the one from the input argument of redis_keys.
  * 
- * NOTE: same key could repeat in redis_keys.
+ * NOTE2: same key could repeat in redis_keys.
+ * 
+ * NOET3: because the async mode, one command for one client could call here for serveral times,
+ *        so the keyspace could change.
  */
 static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list *redis_keys)
 {
@@ -773,11 +779,16 @@ static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list 
         }
         else
         {
-            // need to recover data which is duplicated from ring buffer
+            // need to recover data which is from ring buffer
             // NOTE: no need to deal with rock_key_num in client. The caller will take care
             dictEntry *de = dictFind(db->dict, redis_key);
-            serverAssert(de);
-            if (is_rock_value(dictGetVal(de)))      // NOTE: the same key could repeate for ring buf recovering
+            // the redis_key must be here because it is from
+            // the caller on_client_need_rock_keys_for_db() which guaratee this
+            serverAssert(de);  
+
+            if (is_rock_value(dictGetVal(de)))      
+                // NOTE: the same key could repeat in redis_keys
+                //       so the second duplicated key, we can not guaratee it is rock value
                 dictGetVal(de) = unmarshal_object(recover_val);     // revocer in redis db
         }
     }
@@ -797,10 +808,13 @@ static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list 
  *
  * The caller guarantee not in lock mode.
  *
- * NOTE: the left_keys and  left_fields share the sds pointer 
+ * NOTE1: the left_keys and  left_fields share the sds pointer 
  *       as hash_keys and hash_fields.
  * 
- * NOTE: same key and field could repeat in redis_keys.
+ * NOTE2: same key and field could repeat in redis_keys.
+ * 
+ * NOET3: because the async mode, one command for one client could call here for serveral times,
+ *        so the keyspace could change.
  */
 static void check_ring_buf_first_and_recover_for_hash(const int dbid,
                                                       const list *hash_keys, const list *hash_fields,
@@ -847,17 +861,21 @@ static void check_ring_buf_first_and_recover_for_hash(const int dbid,
          }
          else
          {
-            // need to recover data which is duplicated from ring buffer
+            // need to recover data which is from ring buffer
             // NOTE: no need to deal with rock_key_num in client. The caller will take care
             dictEntry *de_db = dictFind(db->dict, hash_key);
+            // the redis_key must be here because it is from
+            // the caller on_client_need_rock_keys_for_hash() which guaratee this
             serverAssert(de_db);
             robj *o = dictGetVal(de_db);
             dict *hash = o->ptr;
             dictEntry *de_hash = dictFind(hash, hash_field);
+            // same guarantee from the caller on_client_need_rock_keys_for_hash()
             serverAssert(de_hash);
-            // NOTE: the same key could repeat for ring buf recovering
+            
             if (dictGetVal(de_hash) == shared.hash_rock_val_for_field)      
             {
+                // NOTE: the same key&field could repeat in hash_keys and hash_fields
                 dictGetVal(de_hash) = recover_val;     // revocer in redis db
                 on_recover_field_of_hash(dbid, hash_key, hash_field);
                 listNodeValue(ln_vals) = NULL;      // avoid reclaim in the end of the fuction
@@ -945,6 +963,9 @@ static void debug_check_all_hash_fields_are_rock_value(const int dbid,
  * but for transaction it is complicated and we will mix with on_client_need_rock_fields_for_hashes().
  * 
  * The caller needs to reclaim the list after that (which is created by the caller)
+ * 
+ * NOTE: One client for one command could call this serveral times.
+ *       So checking needs consider async situation.
  */
 int on_client_need_rock_keys_for_db(client *c, const list *redis_keys)
 {
@@ -972,11 +993,11 @@ int on_client_need_rock_keys_for_db(client *c, const list *redis_keys)
     {
         // all found in ring buffer
         sync_mode_for_db = 1;
-        // keep c->rock_key_num == 0 in sync mode
+        // NOTE: keep c->rock_key_num == 0 in sync mode
     } 
     else 
     {
-        c->rock_key_num = listLength(left);
+        c->rock_key_num = listLength(left);     // set async mode
         go_on_need_rock_keys_from_rocksdb(client_id, dbid, left);
     }
 
@@ -1011,6 +1032,9 @@ int on_client_need_rock_keys_for_db(client *c, const list *redis_keys)
  * but for transaction, it is complicated and needs to mix with on_client_need_rock_keys_for_db().
  * 
  * The caller needs to reclaim the list after that (which is created by the caller)
+ * 
+ * NOTE: One client for one command could call this serveral times.
+ *       So checking needs consider async situation.
  */
 int on_client_need_rock_fields_for_hashes(client *c, const list *hash_keys, const list *hash_fields)
 {

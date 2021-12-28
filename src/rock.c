@@ -425,10 +425,6 @@ static list* get_keys_in_rock_for_command(const client *c, list **hash_keys, lis
     serverAssert(*hash_keys == NULL && *hash_fields == NULL);
 
     struct redisCommand *cmd = lookupCommand(c->argv[0]->ptr);
-    /*
-    if (cmd == NULL)
-        return NULL;
-    */
     serverAssert(cmd);
 
     if (c->flags & CLIENT_MULTI)
@@ -461,6 +457,13 @@ static list* get_keys_in_rock_for_command(const client *c, list **hash_keys, lis
  *
  * If return 1, indicating NOT going into call() because the client trap in rock state.
  * Otherwise, return 0, meaning the client is OK for call() for current command.
+ * 
+ * NOTE: This function could be called by one client serveral times in aysnc mode
+ *       for just processing ONE command 
+ *       (e.g., mget <key1> <key2>, time 1: key1 is rock value but key2 is not, 
+ *              after recover in async mode, <key2> became rock value)
+ *       In the meantime, the key space could change, so the every check needs to
+ *       consider this special situation.
  */
 int check_and_set_rock_status_in_processCommand(client *c)
 {
@@ -473,6 +476,10 @@ int check_and_set_rock_status_in_processCommand(client *c)
 
     if (redis_keys == shared.rock_cmd_fail)
     {
+        // The command specific checking (by copying the checking code from the specific command), 
+        // is not passed and ther is an error reply for the user.
+        // The caller does not need to call() (otherwise, there are double error reply)
+        // and just go on for the socket buffer
         if (hash_keys) listRelease(hash_keys);
         if (hash_fields) listRelease(hash_fields);
         return CHECK_ROCK_CMD_FAIL;

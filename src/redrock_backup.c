@@ -472,3 +472,58 @@ static void debug_print_lrus(const dict *lrus)
 
     dictReleaseIterator(di);
 }
+
+/* Called in main thread to set invalid flag for ring buffer.
+ * The caller guarantee in lock mode.
+ */
+static void invalid_ring_buf_for_dbid(const int dbid)
+{
+    int index = rbuf_s_index;
+    for (int i = 0; i < rbuf_len; ++i)
+    {
+        const sds rock_key = rbuf_keys[index];
+        const int dbid_in_key = (unsigned char)rock_key[1];
+        /*
+        if (dbid_in_key == dbid)
+            rbuf_invalids[index] = 1;
+        */
+
+        ++index;
+        if (index == RING_BUFFER_LEN)
+            index = 0;
+    }
+}
+
+/* Called in main thread for flushdb or flushall( dbnum == -1) command
+ * We need to set rbuf_invalids to true for these dbs,
+ * because ring buffer can not removed from the middle,
+ * but the rock read will lookup them from ring buufer by API 
+ * get_vals_from_write_ring_buf_first_for_db() and get_vals_from_write_ring_buf_first_for_hash()
+ */
+void on_empty_db_for_rock_write(const int dbnum)
+{
+    return;     // do nothing
+
+    int start = dbnum;
+    if (dbnum == -1)
+        start = 0;
+
+    int end = dbnum + 1;
+    if (dbnum == -1)
+        end = server.dbnum;
+
+    rock_w_lock();
+
+    if (rbuf_len == 0)
+    {
+        rock_w_unlock();
+        return;
+    }
+
+    for (int dbid = start; dbid < end; ++dbid)
+    {
+        invalid_ring_buf_for_dbid(dbid);
+    }
+
+    rock_w_unlock();
+}

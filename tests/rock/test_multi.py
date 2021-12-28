@@ -1,5 +1,5 @@
 import redis
-from conn import r, rock_evict
+from conn import r, rock_evict, rock_evict_hash
 
 
 key = "_test_rock_multi_"
@@ -203,6 +203,36 @@ def mix():
         raise Exception("multi: mix4")
 
 
+def mix_rock_hash():
+    k1 = key + "_k1"
+    k2 = key + "_k2"
+    k3 = key + "_k3"
+    r.execute_command("del", k1, k2, k3)
+    r.execute_command("set", k1, "abc")
+    r.execute_command("rpush", k2, 1)
+    r.execute_command("hset", k3, "f1", "v1", "f2", 2, "f3", "v3", "f4", "v4", "f5", "v5", "f6", "v6")
+    rock_evict(k1, k2)
+    rock_evict_hash(k3, "f1", "f2")
+    pipe = r.pipeline(transaction=True)
+    pipe.execute_command("append", k1, "1234")
+    pipe.execute_command("rpush", k2, 2)
+    pipe.execute_command("hincrby", k3, "f2", 10)
+    pipe.execute()
+    res = r.execute_command("get", k1)
+    if res != "abc1234":
+        print(res)
+        raise Exception("mix_rock_hash")
+    res = r.execute_command("llen", k2)
+    if res != 2:
+        print(res)
+        raise Exception("mix_rock_hash 2")
+    res = r.execute_command("hmget", k3, "f1", "f2", "f3")
+    if res != ["v1", "12", "v3"]:
+        print(res)
+        raise Exception("mix_rock_hash 3")
+
+
+
 
 def test_all():
     empty_tran()
@@ -217,10 +247,16 @@ def test_all():
     watch_fail()
     unwatch()
     mix()
+    mix_rock_hash()
 
 
 def _main():
-    test_all()
+    cnt = 0
+    while (1):
+        test_all()
+        cnt = cnt + 1
+        if cnt % 1000 == 0:
+            print(f"test multi OK for cnt = {cnt}")
 
 
 if __name__ == '__main__':

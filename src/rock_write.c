@@ -61,7 +61,7 @@ pthread_t rock_write_thread_id;
 
 static sds rbuf_keys[RING_BUFFER_LEN];
 static sds rbuf_vals[RING_BUFFER_LEN];
-static int rbuf_invalids[RING_BUFFER_LEN];      // indicating whether the db is just emptied
+// static int rbuf_invalids[RING_BUFFER_LEN];      // indicating whether the db is just emptied
 static int rbuf_s_index;     // start index in queue (include if rbuf_len != 0)
 static int rbuf_e_index;     // end index in queue (exclude if rbuf_len != 0)
 static int rbuf_len;         // used(available) length
@@ -74,7 +74,7 @@ static void init_write_ring_buffer()
     {
         rbuf_keys[i] = NULL;
         rbuf_vals[i] = NULL;
-        rbuf_invalids[i] = 0;
+        // rbuf_invalids[i] = 0;
     }
     rbuf_s_index = rbuf_e_index = 0;
     rbuf_len = 0;
@@ -105,7 +105,7 @@ static void batch_append_to_ringbuf(const int len, sds* keys, sds* vals)
 
         rbuf_keys[rbuf_e_index] = key;
         rbuf_vals[rbuf_e_index] = val;
-        rbuf_invalids[rbuf_e_index] = 0;        // must set 0 to overwirte possible 1 for the previous used index
+        // rbuf_invalids[rbuf_e_index] = 0;        // must set 0 to overwirte possible 1 for the previous used index
 
         ++rbuf_e_index;
         if (rbuf_e_index == RING_BUFFER_LEN) 
@@ -561,7 +561,8 @@ static int exist_in_ring_buf_for_db_and_return_index(const int dbid, const sds r
         if (rock_key_len == sdslen(rbuf_keys[index]) && sdscmp(rock_key, rbuf_keys[index]) == 0)
         {
             sdsfree(rock_key);
-            return rbuf_invalids[index] ? -1 : index;
+            // return rbuf_invalids[index] ? -1 : index;
+            return index;
         }
 
         --index;
@@ -602,7 +603,8 @@ static int exist_in_ring_buf_for_hash_and_return_index(const int dbid, const sds
         if (rock_key_len == sdslen(rbuf_keys[index]) && sdscmp(rock_key, rbuf_keys[index]) == 0)
         {
             sdsfree(rock_key);
-            return rbuf_invalids[index] ? -1 : index;
+            // return rbuf_invalids[index] ? -1 : index;
+            return index;
         }
 
         --index;
@@ -745,53 +747,3 @@ void init_and_start_rock_write_thread()
         serverPanic("Unable to create a rock write thread.");
 }
 
-/* Called in main thread to set invalid flag for ring buffer.
- * The caller guarantee in lock mode.
- */
-static void invalid_ring_buf_for_dbid(const int dbid)
-{
-    int index = rbuf_s_index;
-    for (int i = 0; i < rbuf_len; ++i)
-    {
-        const sds rock_key = rbuf_keys[index];
-        const int dbid_in_key = (unsigned char)rock_key[1];
-        if (dbid_in_key == dbid)
-            rbuf_invalids[index] = 1;
-
-        ++index;
-        if (index == RING_BUFFER_LEN)
-            index = 0;
-    }
-}
-
-/* Called in main thread for flushdb or flushall( dbnum == -1) command
- * We need to set rbuf_invalids to true for these dbs,
- * because ring buffer can not removed from the middle,
- * but the rock read will lookup them from ring buufer by API 
- * get_vals_from_write_ring_buf_first_for_db() and get_vals_from_write_ring_buf_first_for_hash()
- */
-void on_empty_db_for_rock_write(const int dbnum)
-{
-    int start = dbnum;
-    if (dbnum == -1)
-        start = 0;
-
-    int end = dbnum + 1;
-    if (dbnum == -1)
-        end = server.dbnum;
-
-    rock_w_lock();
-
-    if (rbuf_len == 0)
-    {
-        rock_w_unlock();
-        return;
-    }
-
-    for (int dbid = start; dbid < end; ++dbid)
-    {
-        invalid_ring_buf_for_dbid(dbid);
-    }
-
-    rock_w_unlock();
-}

@@ -32,6 +32,7 @@
 #include "rock_hash.h"
 
 #include <math.h>
+#include <ctype.h>
 
 /*-----------------------------------------------------------------------------
  * Hash type API
@@ -205,7 +206,7 @@ int hashTypeExists(robj *o, sds field) {
 int hashTypeSet(const int dbid, const sds key, robj *o, sds field, sds value, int flags) {
 
     sds field_for_rock_hash = field;        // because field may set to NULL in the following code
-    int is_field_value_rock_value = 0;
+    int is_field_rock_value_before = 0;
 
     int update = 0;
 
@@ -246,7 +247,7 @@ int hashTypeSet(const int dbid, const sds key, robj *o, sds field, sds value, in
             // before free the value, we need to check whether 
             // it is a field value in RocksDB
             if (dictGetVal(de) == shared.hash_rock_val_for_field)
-                is_field_value_rock_value = 1;
+                is_field_rock_value_before = 1;
 
             sdsfree(dictGetVal(de));
             if (flags & HASH_SET_TAKE_VALUE) {
@@ -278,7 +279,7 @@ int hashTypeSet(const int dbid, const sds key, robj *o, sds field, sds value, in
 
     if (update)
     {
-        on_overwrite_field_for_rock_hash(dbid, key, field_for_rock_hash, is_field_value_rock_value);
+        on_overwrite_field_for_rock_hash(dbid, key, field_for_rock_hash, is_field_rock_value_before);
     }
     else
     {
@@ -782,12 +783,20 @@ void hsetnxCommand(client *c) {
     }
 }
 
+/* NOTE: hsetnx check the field's value for exists, so we need to restore them 
+ *       from rock hash. check hashTypeGetFromHashTable() for more details
+ */
 list* hsetnx_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    list *keys = generic_get_one_key_for_rock(c, 1);
 
-    return generic_get_one_key_for_rock(c, 1);
+    if (keys == NULL)
+    {
+        const sds key = c->argv[1]->ptr;
+        generic_get_one_field_for_rock(c, key, 2, hash_keys, hash_fields);
+    }
+
+    return keys;
 }
 
 void hsetCommand(client *c) {
@@ -991,6 +1000,8 @@ void hgetCommand(client *c) {
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.null[c->resp])) == NULL ||
         checkType(c,o,OBJ_HASH)) return;
 
+    on_visit_field_of_hash_for_readonly(c->db->id, c->argv[1]->ptr, c->argv[2]->ptr);
+
     addHashFieldToReply(c, o, c->argv[2]->ptr);
 }
 
@@ -1019,7 +1030,10 @@ void hmgetCommand(client *c) {
     if (checkType(c,o,OBJ_HASH)) return;
 
     addReplyArrayLen(c, c->argc-2);
+
     for (i = 2; i < c->argc; i++) {
+        on_visit_field_of_hash_for_readonly(c->db->id, c->argv[1]->ptr, c->argv[i]->ptr);
+
         addHashFieldToReply(c, o, c->argv[i]->ptr);
     }
 }
@@ -1097,6 +1111,9 @@ void hstrlenCommand(client *c) {
 
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
         checkType(c,o,OBJ_HASH)) return;
+
+    on_visit_field_of_hash_for_readonly(c->db->id, c->argv[1]->ptr, c->argv[2]->ptr);
+
     addReplyLongLong(c,hashTypeGetValueLength(o,c->argv[2]->ptr));
 }
 
@@ -1170,6 +1187,8 @@ void genericHgetallCommand(client *c, int flags) {
     /* Make sure we returned the right number of elements. */
     if (flags & OBJ_HASH_KEY && flags & OBJ_HASH_VALUE) count /= 2;
     serverAssert(count == length);
+
+    on_visit_all_fields_of_hash_for_readonly(c->db->id, c->argv[1]->ptr);
 }
 
 void hkeysCommand(client *c) {
@@ -1223,6 +1242,8 @@ void hexistsCommand(client *c) {
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
         checkType(c,o,OBJ_HASH)) return;
 
+    on_visit_field_of_hash_for_readonly(c->db->id, c->argv[1]->ptr, c->argv[2]->ptr);
+
     addReply(c, hashTypeExists(o,c->argv[2]->ptr) ? shared.cone : shared.czero);
 }
 
@@ -1244,6 +1265,21 @@ list* hexists_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields
     return generic_get_one_key_for_rock(c, 1);
 }
 
+static int hsacn_command_check_and_reply(client *c)
+{
+    robj *o;
+    unsigned long cursor;
+
+    if (parseScanCursorOrReply(c,c->argv[2], &cursor) == C_ERR) 
+        return 1;
+
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL ||
+        checkType(c,o,OBJ_HASH)) 
+        return 1;
+
+    return 0;   
+}
+
 void hscanCommand(client *c) {
     robj *o;
     unsigned long cursor;
@@ -1256,10 +1292,19 @@ void hscanCommand(client *c) {
 
 list* hscan_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    if (hsacn_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
+
+    unsigned long cursor;
+    char *eptr;
+    cursor = strtoul(c->argv[2]->ptr, &eptr, 10);
+    serverAssert(!(isspace(((char*)c->argv[2]->ptr)[0]) || eptr[0] != '\0' || errno == ERANGE));    
+
     list *keys = generic_get_one_key_for_rock(c, 1);
 
-    if (keys == NULL)
+    if (keys == NULL && cursor == 0)
     {
+        // NOTE: scan only need the first time which is cursor == 0
         const sds key = c->argv[1]->ptr;
         generic_get_all_fields_for_rock(c, key, hash_keys, hash_fields);
     }

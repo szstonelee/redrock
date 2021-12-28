@@ -33,7 +33,7 @@
 
 #include "rock.h"
 #include "rock_hash.h"
-#include "rock_write.h"
+// #include "rock_write.h"
 
 #include <signal.h>
 #include <ctype.h>
@@ -456,7 +456,7 @@ long long emptyDb(int dbnum, int flags, void(callback)(void*)) {
 
     /* We need empty the relavant values for rock hash, rock write and rock read */
     on_empty_db_for_hash(dbnum);
-    on_empty_db_for_rock_write(dbnum);
+    // on_empty_db_for_rock_write(dbnum);
     // NOTE: We do not need deal with rock read
     // because all read task won't recover 
     // (including 1. key not eixist in new db.

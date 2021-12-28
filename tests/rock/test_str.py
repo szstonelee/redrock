@@ -275,7 +275,12 @@ def test_all():
 
 
 def _main():
-    test_all()
+    cnt = 0
+    while (1):
+        test_all()
+        cnt = cnt + 1
+        if cnt % 10 == 0:
+            print(f"test str OK cnt = {cnt}")
 
 
 if __name__ == '__main__':
