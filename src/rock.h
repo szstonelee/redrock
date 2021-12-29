@@ -26,15 +26,6 @@ void decode_rock_key_for_hash(const sds rock_key, int *dbid,
                               const char **key, size_t *key_sz,
                               const char **field, size_t *field_sz);
 
-/* From the rock key, check whether the rock key is for db or hash.
- * If for db, return 1.
- * Otherwise, return 0 indicating it is for a hash, i.e., the rock key has encoded with the field info.
- */
-inline int is_rock_key_for_db(const sds rock_key)
-{   
-    return rock_key[0] == ROCK_KEY_FOR_DB;
-}
-
 void init_client_id_table();
 client* lookup_client_from_id(const uint64_t client_id);
 void on_add_a_new_client(client* const c);

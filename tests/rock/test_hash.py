@@ -31,13 +31,13 @@ def hexists():
     rock_evict(key)
     res = r.hexists(key, "field1")
     if res != 1:
-        print(res)
-        raise Exception("hexists fail")
-    rock_evict(key)
-    res = r.hexists(key, "field2")
-    if res != 0:
-        print(res)
-        raise Exception("hexists fail2")
+         print(res)
+         raise Exception("hexists fail")
+    # rock_evict(key)
+    # res = r.hexists(key, "field2")
+    # if res != 0:
+    #     print(res)
+    #     raise Exception("hexists fail2")
 
 
 def hget():
@@ -215,26 +215,31 @@ def hvals():
     
 
 def test_all():
-    hdel()
+    #hdel()
     hexists()
-    hget()
-    hgetall()
-    hincrby()
-    hincrbyfloat()
-    hkeys()
-    hlen()
-    hmget()
-    hmset()
-    hset()
-    hset_for_ht_encoding()
-    hsetnx()
-    hrandfield()
-    hstrlen()
-    hvals()
+    # hget()
+    # hgetall()
+    # hincrby()
+    # hincrbyfloat()
+    # hkeys()
+    # hlen()
+    # hmget()
+    # hmset()
+    # hset()
+    # hset_for_ht_encoding()
+    # hsetnx()
+    # hrandfield()
+    # hstrlen()
+    # hvals()
 
 
 def _main():
-    test_all()
+    cnt = 0
+    while (1):
+        test_all()
+        cnt = cnt + 1
+        if cnt % 1000 == 0:
+            print(f"test str OK cnt = {cnt}")
 
 
 if __name__ == '__main__':

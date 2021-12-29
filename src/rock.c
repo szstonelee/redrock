@@ -287,9 +287,10 @@ sds encode_rock_key_for_hash(const int dbid, sds hash_key_to_rock_key, const sds
     return hash_key_to_rock_key;
 }
 
-/* Decode the input rock_key as a db key.
+/* Decode the input rock_key.
  * dbid, redis_key, key_sz are the pointer to the result,
- * No memory allocation and the caller needs to guarantee the safety of rock_key.
+ * No memory allocation and the caller needs to guarantee the safety of rock_key
+ * with the life time of redis_key and key_sz.
  */
 void decode_rock_key_for_db(const sds rock_key, int* dbid, const char** redis_key, size_t* key_sz)
 {
@@ -853,15 +854,15 @@ void rock_evict(client *c)
         return;
     }
 
-    sds already_rock_val = sdsnew("ALREADY_ROCK_VAL_MAYBE_EXPIRE");
-    sds not_found = sdsnew("NOT_FOUND");
-    sds expire_val = sdsnew("EXPIRE_VALUE");
-    sds shared_val = sdsnew("SHARED_VALUE_NO_NEED_TO_EVICT");
-    sds can_not_evict_type = sdsnew("VALUE_TYPE_CAN_NOT_EVICT_LIKE_STREAM");
-    sds can_evict = sdsnew("CAN_EVICT_AND_WRITTEN_TO_ROCKSDB");
-    sds alreay_in_rock_hash = sdsnew("CAN_NOT_EVICT_BECAUSE_IT_IS_ROCK_HASH");
-    sds already_in_candidates_or_rock_value = sdsnew("CAN_NOT_EVICT_BECAUSE_IT_IS_IN_CANDIDATES_OR_ALREADY_ROCK_VALUE");
+    const char *already_rock_val = "ALREADY_ROCK_VAL_MAYBE_EXPIRE";
+    const char *not_found = "NOT_FOUND";
+    const char *expire_val = "EXPIRE_VALUE";
+    const char *shared_val = "SHARED_VALUE_NO_NEED_TO_EVICT";
+    const char *can_not_evict_type = "VALUE_TYPE_CAN_NOT_EVICT_LIKE_STREAM";
+    const char *can_evict = "CAN_EVICT_AND_WRITTEN_TO_ROCKSDB";
+    const char *alreay_in_rock_hash = "CAN_NOT_EVICT_BECAUSE_IT_IS_ROCK_HASH";
 
+    serverAssert(c->argc > 1);
     const int key_num = c->argc - 1;
     addReplyArrayLen(c, key_num*2);
     
@@ -870,92 +871,81 @@ void rock_evict(client *c)
     {
         const sds key = c->argv[i+1]->ptr;
 
-        robj *o_key = createStringObject(key, sdslen(key));
-        addReplyBulk(c, o_key);
-    
-        robj *r = NULL;
-        
+        // Always reply key, then result
+        addReplyBulk(c, c->argv[1]);
+
+        robj *r = NULL;     // result
+
+        if (keyIsExpired(db, c->argv[1]))
+        {
+            r = createStringObject(expire_val, strlen(expire_val));
+            goto reply_result;
+        }
+           
         dictEntry *de = dictFind(db->dict, key);
         if (de == NULL)
         {
-            r = createStringObject(not_found, sdslen(not_found));
+            r = createStringObject(not_found, strlen(not_found));
+            goto reply_result;            
         }
-        else
+
+        const robj *val = dictGetVal(de);
+        if (is_rock_value(val))
         {
-            const robj *val = dictGetVal(de);
-            if (is_rock_value(val))
-            {
-                r = createStringObject(already_rock_val, sdslen(already_rock_val));
-            }
-            else if(is_shared_value(val))
-            {
-                r = createStringObject(shared_val, sdslen(shared_val));
-            }
-            else if (!is_evict_value(val))
-            {
-                r = createStringObject(can_not_evict_type, sdslen(can_not_evict_type));
-            }
-            else if (is_in_rock_hash(db->id, key))
-            {
-                r = createStringObject(alreay_in_rock_hash, sdslen(alreay_in_rock_hash));
-            }
-            else
-            {
-                if (keyIsExpired(db, o_key))
-                {
-                    r = createStringObject(expire_val, sdslen(expire_val));
-                }
-                else
-                {
-                    // can try to evcit this key
-                    int loop = 1;
-                    while (loop)
-                    {
-                        const int ret =  try_evict_one_key_to_rocksdb(db->id, key);
-                        
-                        switch (ret)
-                        {
-                        case TRY_EVICT_ONE_KEY_RING_BUFFER_FULL:
-                            // NOTE: if RocksDB is busy, it may increase latency because 
-                            // here is main thread
-                            // For cron eviction we use time out
-                           break;      // loop continue
-                        case TRY_EVICT_ONE_KEY_SUCCESS:
-                            loop = 0;
-                            break;
-                        case TRY_EVICT_ONE_KEY_FAIL_FOR_IN_CANDIDATES_OR_ALREADY_ROCK_VALUE:
-                            r = createStringObject(already_in_candidates_or_rock_value, 
-                                                   sdslen(already_in_candidates_or_rock_value));
-                            loop = 0;
-                            break;
-                        default:
-                            serverPanic("try_evict_one_key_to_rocksdb() for rock_evict() return unknow!");
-                        }
+            r = createStringObject(already_rock_val, strlen(already_rock_val));
+            goto reply_result;
+        }
 
-                    }     
-                    
-                    if (r == NULL)
-                        r = createStringObject(can_evict, sdslen(can_evict));
-                }
+        if(is_shared_value(val))
+        {
+            r = createStringObject(shared_val, strlen(shared_val));
+            goto reply_result;
+        }
+
+        if (!is_evict_value(val))
+        {
+            r = createStringObject(can_not_evict_type, strlen(can_not_evict_type));
+            goto reply_result;
+        }
+
+        if (is_in_rock_hash(db->id, key))
+        {
+            r = createStringObject(alreay_in_rock_hash, strlen(alreay_in_rock_hash));
+            goto reply_result;
+        }
+ 
+        // can try to evcit this key
+        while (r == NULL)
+        {
+            const int ret = try_evict_one_key_to_rocksdb_by_rockevict_command(db->id, key);
+                        
+            switch (ret)
+            {
+            case TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL:
+                // NOTE: if RocksDB is busy, it may increase latency because 
+                // here is main thread
+                // For cron eviction we use time out
+                break;      // loop continue
+                        
+            case TRY_EVICT_ONE_SUCCESS:
+                r = createStringObject(can_evict, strlen(can_evict));
+                break;
+
+            default:
+                serverPanic("try_evict_one_key_to_rocksdb() for rock_evict() return unknow!");
+                break;
             }
         }
 
+reply_result:
+        serverAssert(r != NULL);
         addReplyBulk(c, r);
-
-        decrRefCount(o_key);
         decrRefCount(r);
     }
-
-    sdsfree(already_rock_val);
-    sdsfree(not_found);
-    sdsfree(expire_val);
-    sdsfree(can_evict);
-    sdsfree(shared_val);
-    sdsfree(can_not_evict_type);
-    sdsfree(alreay_in_rock_hash);
-    sdsfree(already_in_candidates_or_rock_value);
 }
 
+/* rockevict <key> <field> <field> ...
+ */
 void rock_evict_hash(client *c)
 {
     if (c->flags & CLIENT_MULTI)
@@ -965,8 +955,20 @@ void rock_evict_hash(client *c)
     }
 
     redisDb *db = c->db;
-    int dbid = db->id;
-    sds key = c->argv[1]->ptr;
+    if (keyIsExpired(db, c->argv[1]))
+    {
+        addReplyError(c, "ROCKEVICTHASH can not evict an expired key");
+        return;
+    }
+    
+    if (keyIsExpired(db, c->argv[1]))
+    {
+        addReplyError(c, "key is expried");
+        return; 
+    }
+
+    const int dbid = db->id;
+    const sds key = c->argv[1]->ptr;
     dictEntry *de = dictFind(db->dict, key);
     if (de == NULL)
     {
@@ -974,98 +976,85 @@ void rock_evict_hash(client *c)
         return;
     }
 
-    if (keyIsExpired(db, c->argv[1]))
+    if (is_rock_value(dictGetVal(de)))
     {
-        addReplyError(c, "key is expried");
-        return; 
+        addReplyError(c, "the whole key is already rock value");
     }
 
     robj *o = dictGetVal(de);
     if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
     {
-        addReplyError(c,"not hash key or hash key not encoded as ht");
+        addReplyError(c, "not hash key or hash key not encoded as ht");
         return;
     }
 
     if (is_rock_value(o))
     {
-        addReplyError(c,"hask key's value alreay in RocksDB totally");
+        addReplyError(c, "hask key's value alreay in RocksDB totally");
         return;
     }
 
     if (!is_in_rock_hash(dbid, key))
     {
-        addReplyError(c,"hask key not in rock hash, try add more fields");
+        addReplyError(c, "hask key not in rock hash, try add more fields");
         return;
     }
 
+    const char *not_found = "field not found";
+    const char *already_evict = "field already evicted";
+    const char *can_evict = "field successfully evicted";
+
+    serverAssert(c->argc > 2);
     dict *hash = o->ptr;
     const int field_num = c->argc - 2;
     addReplyArrayLen(c, field_num*2);
-    sds not_found = sdsnew("field not found");
-    sds already_evict = sdsnew("field already evicted");
-    sds can_evict = sdsnew("field successfully evicted");
-    sds already_in_candidates_or_already_rock_value = sdsnew("field can not evict because it is in candidates or already rock value");
 
     for (int i = 0; i < field_num; ++i)
     {
-        sds field = c->argv[i+2]->ptr;
-        robj *o_field = createStringObject(field, sdslen(field));
-        addReplyBulk(c, o_field);
+        // alwyas reply field, then result
+        const sds field = c->argv[i+2]->ptr;
+        addReplyBulk(c, c->argv[i+2]);
 
-        robj *r = NULL;
+        robj *r = NULL;     // result
+
         dictEntry *de = dictFind(hash, field);
         if (de == NULL)
         {
-            r = createStringObject(not_found, sdslen(not_found));
+            r = createStringObject(not_found, strlen(not_found));
+            goto reply_result;
         }
-        else
+
+        sds val = dictGetVal(de);
+        if (val == shared.hash_rock_val_for_field)
         {
-            sds val = dictGetVal(de);
-            if (val == shared.hash_rock_val_for_field)
+            r = createStringObject(already_evict, strlen(already_evict));
+            goto reply_result;
+        }
+
+        // can try to evcit this field
+        while (r == NULL)
+        {
+            const int ret = try_evict_one_field_to_rocksdb_by_rockevithash_command(dbid, key, field);
+            switch (ret)
             {
-                r = createStringObject(already_evict, sdslen(already_evict));
-            }
-            else
-            {
-                // can try to evcit this field
-                int loop = 1;
-                while (loop)
-                {
-                    const int ret = try_evict_one_field_to_rocksdb(db->id, key, field);
-                    switch (ret)
-                    {
-                    case TRY_EVICT_ONE_KEY_RING_BUFFER_FULL:
-                        // NOTE: if RocksDB is busy, it may increase latency because 
-                        // here is main thread
-                        // For cron eviction we use time out
-                        break;      // loop continue
-                    case TRY_EVICT_ONE_KEY_SUCCESS:
-                        loop = 0;
-                        break;
-                    case TRY_EVICT_ONE_KEY_FAIL_FOR_IN_CANDIDATES_OR_ALREADY_ROCK_VALUE:
-                        r = createStringObject(already_in_candidates_or_already_rock_value, 
-                                               sdslen(already_in_candidates_or_already_rock_value));
-                        loop = 0;
-                        break;
-                    default:
-                        serverPanic("try_evict_one_key_to_rocksdb() for rock_evict_hash() return unknow!");
-                    }
-                }
-                
-                if (r == NULL)
-                    r = createStringObject(can_evict, sdslen(can_evict));
+            case TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL:
+                // NOTE: if RocksDB is busy, it may increase latency because 
+                // here is main thread
+                // For cron eviction we use time out
+                break;      // loop continue
+
+            case TRY_EVICT_ONE_SUCCESS:
+                r = createStringObject(can_evict, strlen(can_evict));
+                break;
+
+            default:
+                serverPanic("try_evict_one_key_to_rocksdb() for rock_evict_hash() return unknow!");
             }
         }
 
+reply_result:
+        serverAssert(r != NULL);
         addReplyBulk(c, r);
-
-        decrRefCount(o_field);
         decrRefCount(r);
-    }
-
-    sdsfree(not_found);     
-    sdsfree(already_evict);
-    sdsfree(can_evict);
-    sdsfree(already_in_candidates_or_already_rock_value);
+    }    
 }

@@ -1,5 +1,6 @@
 #include "rock_marshal.h"
 #include "server.h"
+#include "rock.h"
 
 // #include "assert.h"
 
@@ -617,14 +618,13 @@ static robj* unmarshal_zset_skiplist(const char *buf, const size_t sz)
 /* It is for memory optimization. 
  * We try our best to make enough room for a sds.
  * The frist byte is ROCK TYPE (see aboving).
- * The next 4-byte is for LRU/LFU information. 
- * in return sds and rock_type
+ * The next 4-byte is for LRU/LFU information in return sds 
+ * rock_type wil be set the coresponding type, ROCK_TYPE_XXX.
  */
 static sds create_sds_and_make_room(const robj* o, unsigned char *rock_type)
 {
     sds s = sdsempty();
-    s = sdsMakeRoomFor(s, MARSHAL_HEAD_SIZE);
-
+    
     *rock_type = ROCK_TYPE_INVALID;
     size_t obj_room = 0;
     switch (o->type) 
@@ -691,16 +691,18 @@ static sds create_sds_and_make_room(const robj* o, unsigned char *rock_type)
 
     default:
         serverPanic("create_sds_and_make_room(), unkkwon type = %d", o->type);
+        break;
     }
 
     if (*rock_type == ROCK_TYPE_INVALID)
         serverPanic("create_sds_and_make_room(), rock_type invalid o->type = %d, o->encoding = %d",
                     o->type, o->encoding);
 
+    s = sdsMakeRoomFor(s, MARSHAL_HEAD_SIZE);
     // set type and LRU/LFU conetnet
     s = sdscatlen(s, rock_type, 1);
-    uint32_t lru = o->lru;
-    s = sdscatlen(s, &lru, sizeof(lru));
+    uint32_t lru = o->lru;      // the redis object's lru only use 24 bit information
+    s = sdscatlen(s, &lru, sizeof(uint32_t));
     // make room for object
     s = sdsMakeRoomFor(s, obj_room);
 

@@ -16,15 +16,15 @@ void init_and_start_rock_write_thread();    // for server.c
 int space_in_write_ring_buffer();  
 
 // for server cron
-int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, const sds *try_keys); 
-int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const sds *try_keys, const sds *try_fields);
+int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, const sds *try_keys, const int from_cron); 
+int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const sds *try_keys, const sds *try_fields, const int from_cron);
 
-// for command ROCKEVICT
-#define TRY_EVICT_ONE_KEY_RING_BUFFER_FULL                              0
-#define TRY_EVICT_ONE_KEY_SUCCESS                                       1
-#define TRY_EVICT_ONE_KEY_FAIL_FOR_IN_CANDIDATES_OR_ALREADY_ROCK_VALUE  -1
-int try_evict_one_key_to_rocksdb(const int dbid, const sds key);
-int try_evict_one_field_to_rocksdb(const int dbid, const sds key, const sds field);
+// for command ROCKEVICT and ROCKEVICTHASH
+#define TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL     0
+#define TRY_EVICT_ONE_SUCCESS                       1
+// #define TRY_EVICT_ONE_FAIL_FOR_DUPICATE_KEY         -1
+int try_evict_one_key_to_rocksdb_by_rockevict_command(const int dbid, const sds key);
+int try_evict_one_field_to_rocksdb_by_rockevithash_command(const int dbid, const sds key, const sds field);
 
 // for rock_read.c
 list* get_vals_from_write_ring_buf_first_for_db(const int dbid, const list *redis_keys);

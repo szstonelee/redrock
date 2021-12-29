@@ -96,14 +96,19 @@ pthread_t rock_read_thread_id;
 static void key_in_rock_destructor(void *privdata, void *obj) 
 {
     UNUSED(privdata);
+
+    serverAssert(obj);
     sdsfree(obj);
 }
 
 static void val_as_list_destructor(void *privdata, void *obj) 
 {
     UNUSED(privdata);
-    if (obj)
-        listRelease(obj);
+    
+    serverAssert(obj);    
+    serverAssert(listLength((list*)obj) == 0);
+
+    listRelease(obj);
 }
 
 /* rock key hash table. The key is a rock key. The value is a list of client id */
@@ -275,13 +280,13 @@ static int do_tasks()
         read_return_vals[i] = vals[i];      // transfer the val ownership
     }
     serverAssert(task_status == READ_START_TASK);
+    // let pick_tasks() return 0 for the read thread
     task_status = READ_RETURN_TASK; 
     rock_r_unlock();
 
     // signal main thread to recover data
-    char temp_buf[1] = "a";
-    size_t n = write(rock_pipe_write, temp_buf, 1);
-    serverAssert(n == 1);
+    const char temp_buf[1] = "a";
+    serverAssert(write(rock_pipe_write, temp_buf, 1) == 1);
 
     return 1;
 }
@@ -432,14 +437,18 @@ static void check_client_resume_after_recover_data(const list *client_ids)
 }
 
 /* Called in main thread.
- * If the recover redis key has rock val, recover it.
- * Otherwise do nothing because the key may be deleted or regenerated
+ *
+ * If the recover redis key exist in redis db and has rock val, recover it.
+ * It means the recover_val is just for the key.
+ * 
+ * If not, the key may be deleted or regenerated for the async mode.
  */
 static void try_recover_val_object_in_redis_db(const int dbid, const sds recover_val,
                                                const char *redis_key, const size_t redis_key_len)
                                                
 {
     if (recover_val == NULL)
+        // deal with read thread not found error later here
         serverPanic("try_recover_val_object_in_redis_db() the recover_val is NULL(not found) for redis key = %s, dbid = %d", 
                     redis_key, dbid);
 
@@ -458,19 +467,27 @@ static void try_recover_val_object_in_redis_db(const int dbid, const sds recover
             dictGetVal(de) = unmarshal_object(recover_val);    
         }
     }
+
     sdsfree(key);
 }
 
 /* Called in main thread.
- * If the recover a hash field which has rock value, recover it.
- * Otherwise do nothing because the field may be deleted or regenerated
- * even the whole hash could be deleted because this is async mode.
+ * The caller guarantee in lcok mode.
+ *
+ * If the recover a hash field exist and has rock value, recover it.
+ * It means the recover_val is just for the hash key and field.
+ * 
+ * Otherwise do nothing becausee 
+ * 1. the key may be deleted or regenerated
+ * 2. the field may be deleted or regenerated
+ * for the async mode.
  */
 static void try_recover_field_in_hash(const int dbid, const sds recover_val,
                                       const char *input_hash_key, const size_t input_hash_key_len,
                                       const char *input_hash_field, const size_t input_hash_field_len)
 {
     if (recover_val == NULL)
+        // deal with read thread not found error later here
         serverPanic("try_recover_field_in_hash() the recover_val is NULL(not found) for hash key = %s, hash_field = %s, dbid = %d", 
                     input_hash_key, input_hash_field, dbid);
 
@@ -482,9 +499,12 @@ static void try_recover_field_in_hash(const int dbid, const sds recover_val,
     if (de_db == NULL)
         goto reclaim;   // the hash key may be deleted by other client
     
+    // TODO: we need add another candidate for rock hash to guarantee this!!!!
+    serverAssert(!is_rock_value(dictGetVal(de_db)));   
+
     robj *o = dictGetVal(de_db);
     if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
-        goto reclaim;   // the hash key may be overwritten by other client
+        goto reclaim;   // the hash key may be overwritten by other client     
     
     dict *hash = o->ptr;
     dictEntry *de_hash = dictFind(hash, hash_field);
@@ -499,7 +519,6 @@ static void try_recover_field_in_hash(const int dbid, const sds recover_val,
     //       because the caller will reclaim recover_val, check recover_data()
     sds copy_val = sdsdup(recover_val);
     dictGetVal(de_hash) = copy_val;
-
     on_recover_field_of_hash(dbid, hash_key, hash_field);
 
 reclaim:
@@ -509,29 +528,29 @@ reclaim:
 
 /* Called in main thread.
  * Join the clients for current task to waiting_clients
- * and release some resource for it.
+ * The caller guarantee in lock mode.
+ *
+ * NOTE: Do not release the list for the candidate 
+ *       because it will be freed whhen dictDelete() in the top caller.
  */
 static void join_waiting_clients(const sds task, list **waiting_clients)
 {
     dictEntry *de = dictFind(read_rock_key_candidates, task);
     serverAssert(de && dictGetKey(de) == task);
 
-    list *current = dictGetVal(de);
-    serverAssert(current && listLength(current) > 0);
-    listJoin(*waiting_clients, current);
-    listRelease(current);   // the current right now is empty
-
-    // avoid clear the list of client ids in read_rock_key_candidates when dictDelete
-    dictGetVal(de) = NULL;      
+    list *candidate_list = dictGetVal(de);
+    serverAssert(candidate_list && listLength(candidate_list) > 0);
+    listJoin(*waiting_clients, candidate_list);
 }
 
 /* Called in main thread to recover one key for redis db
  * The caller guarantee in lcok mode.
  *
- * It will try to recover the obj in DB if it can.
+ * It will try to recover the obj in DB if it can
+ * because the key could be deleted or regenerated in async mode.
  * 
- * The client list will append to waiting_clients 
- * and will be set NULL in read_rock_key_candidates
+ * The client list will join to waiting_clients 
+ * and thus will be set empty in read_rock_key_candidates
  */
 static void recover_data_for_db(const sds task,
                                 const sds recover_val,
@@ -565,11 +584,16 @@ static void recover_data_for_hash(const sds task,
 
 
 /* Called in main thread to recover the data from RocksDB.
- * For every finished task, we try to recover the val in Redis DB.
- * And we need join all waiting client ids for all finished tasks.
+ *
+ * For every finished task, we try to recover the val in Redis DB,
+ * because in async mode, the key could be deleted or regenerated.
+ * 
  * Then we set task array to NULL, delete the finished tasks in candidates,
  *      reclaim all resouce and try to assign new tasks.
- * For the joining waiting clients, check and resume them.
+ * 
+ * And we need join all waiting client ids for all finished tasks.
+ * For the joining waiting clients, check whether they are ready 
+ * for processing the command again because some values are restored
  */
 static void recover_data()
 {
@@ -582,9 +606,10 @@ static void recover_data()
     {
         const sds task = read_key_tasks[i];
         if (task == NULL)
-            break;
+            break;  // the end of task array
 
-        if (is_rock_key_for_db(task))
+        // join list will happen in recover_data_for_XX()
+        if (task[0] == ROCK_KEY_FOR_DB)
         {
             recover_data_for_db(task, read_return_vals[i], &waiting_clients);
         }
@@ -594,11 +619,12 @@ static void recover_data()
             recover_data_for_hash(task, read_return_vals[i], &waiting_clients);
         }
         
-        // must set NULL for next batch task assignment
-        read_key_tasks[i] = NULL;
+        // must set NULL for next batch task assignment, like try_assign_tasks() and read thread loop
+        read_key_tasks[i] = NULL;       // keys will be released by the following dictDelete()
         sdsfree(read_return_vals[i]);
         read_return_vals[i] = NULL;
-        dictDelete(read_rock_key_candidates, task);
+
+        serverAssert(dictDelete(read_rock_key_candidates, task) == DICT_OK);
     }
     try_assign_tasks();
     rock_r_unlock();
@@ -609,7 +635,8 @@ static void recover_data()
     listRelease(waiting_clients);
 }
 
-/* Main thread response the pipe signal which indicates the tasks are finished */
+/* Main thread response the pipe signal from read thread
+ * which indicates the tasks are finished */
 static void on_recover_data(struct aeEventLoop *eventLoop, int fd, void *clientData, int mask) 
 {
     UNUSED(mask);
@@ -619,8 +646,7 @@ static void on_recover_data(struct aeEventLoop *eventLoop, int fd, void *clientD
 
     // clear pipe signal
     char tmp_use_buf[1];
-    size_t n = read(rock_pipe_read, tmp_use_buf, 1);     
-    serverAssert(n == 1);
+    serverAssert(read(rock_pipe_read, tmp_use_buf, 1) == 1);     
 
     recover_data();
 }

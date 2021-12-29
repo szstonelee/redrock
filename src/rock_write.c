@@ -88,8 +88,6 @@ static void init_write_ring_buffer()
  */
 static void batch_append_to_ringbuf(const int len, sds* keys, sds* vals) 
 {
-    // serverAssert(len > 0 && len <= RING_BUFFER_LEN - rbuf_len); // the caller guarantee
-
     for (int i = 0; i < len; ++i) 
     {
         const sds key = keys[i];
@@ -98,6 +96,7 @@ static void batch_append_to_ringbuf(const int len, sds* keys, sds* vals)
 
         if (rbuf_keys[rbuf_e_index]) 
         {
+            // for the old and abandoned one, we releasse them
             sdsfree(rbuf_keys[rbuf_e_index]);
             serverAssert(rbuf_vals[rbuf_e_index]);
             sdsfree(rbuf_vals[rbuf_e_index]);
@@ -141,7 +140,7 @@ int space_in_write_ring_buffer()
  *        Maybe we could serialize out of lock mode.
  *        But the guarantee of data integrity is very important 
  *        and main thread can use more time (all operations are for memory),
- *        so all are done in lock mode.
+ *        so all could be done in lock mode (but here not).
  * 
  * NOTE3: We will release the objs.
  *        The keys will be encoded with dbid and be tansfered the ownership 
@@ -164,9 +163,6 @@ static void write_batch_for_db_and_abandon(const int len, const int *dbids, sds 
 
     rock_w_lock();
     serverAssert(rbuf_len + len <= RING_BUFFER_LEN);
-#ifdef RED_ROCK_DEBUG
-    serverAssert(debug_check_no_candidates(len, keys));
-#endif
     batch_append_to_ringbuf(len, keys, vals);
     rock_w_unlock();
 
@@ -179,7 +175,7 @@ static void write_batch_for_db_and_abandon(const int len, const int *dbids, sds 
 
 /* Called in main thread.
  * NOTE: The caller does not use keys, fields, vals anymore
- *       because keys will changed to rock_key and tranfer ownership to ring buffer,
+ *       because keys will be encoded to rock_key in place and tranfer ownership to ring buffer,
  *       vals will be transfered ownership to ring buffer.
  *       and fields will be reclaimed here.
  */
@@ -193,9 +189,6 @@ static void write_batch_for_hash_and_abandon(const int len, const int *dbids, sd
 
     rock_w_lock();
     serverAssert(rbuf_len + len <= RING_BUFFER_LEN);
-#ifdef RED_ROCK_DEBUG
-    serverAssert(debug_check_no_candidates(len, keys));
-#endif
     batch_append_to_ringbuf(len, keys, vals);
     rock_w_unlock();
 
@@ -206,238 +199,222 @@ static void write_batch_for_hash_and_abandon(const int len, const int *dbids, sd
     }
 }
 
-/* Called in main thread cron and command ROCKEVICT.
+/* Called in main thread by cron and command ROCKEVICT.
  *
- * When cron() select some keys (before setting rock value), it will call here
+ * When caller select some keys (before setting rock value), it will call here
  * to determine which keys can be evicted to RocksDB 
- * because we need exclude those keys in read_rock_key_candidates. 
- * Check rock_read.c for read_rock_key_candidates for more reference. 
  * 
- * and we need exclude those duplicated keys.
+ * and we need exclude those duplicated keys by the first key win with setting to rock value.
  * 
- * try_evict_to_rocksdb_for_db() will set value to rock value for these matched keys.
- * Return the actual number of keys for eviction.
+ * try_evict_to_rocksdb_for_db() will set the values to rock value for these matched keys.
+ * 
+ * Return the actual number of keys for eviction whkch are really setted to rock value.
  * 
  * NOTE1: The caller needs to use space_in_write_ring_buffer() first
  *        to know the available space for ring buffer.
- *        The caller needs to guarantee check_len <= space.
+ *        The caller needs to guarantee try_len <= space.
  * 
- * NOTE2: The keys could be duplicated (from command ROCKEVICT),
+ * NOTE2: The keys could be duplicated 
+ *         (only from command ROCKEVICT like rockevict key1 key1 but righ now does not use),
  *         we need to exclude the duplicated keys.
  * 
- * NOTE3: The keys must be not in rock hash.
+ * NOTE3: The keys must be not in rock hash 
+ *        which means it can not be setted to rock value as a whole key.
+ * 
+ * NOTE4: The keys which are selected must not be in candidates.
+ *        The caller needs exclude them from the try_keys and guarantee this.
+ * 
+ * NOTE5: The keys must be in redis db.
+ * 
+ * NOTE6: IF from_cron is true, it is called from server cron() job.
+ *        And cron() gurantee not use duplicated keys.
  */
-int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, const sds *try_keys)
+int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, 
+                                const sds *try_keys, const int from_cron)
 {
     serverAssert(try_len > 0);
 
-    // first exclude those in candidates
-    int exclude_candidate_len = 0;
-    int exclude_candidate_dbids[RING_BUFFER_LEN];
-    sds exclude_candidate_keys[RING_BUFFER_LEN];    
+    int evict_len = 0;
+    int evict_dbids[RING_BUFFER_LEN];
+    sds evict_keys[RING_BUFFER_LEN];
+    robj* evict_vals[RING_BUFFER_LEN];    
     for (int i = 0; i < try_len; ++i)
     {
         const int dbid = try_dbids[i];
         const sds try_key = try_keys[i];
 
+        // check NOTE 3
         serverAssert(!is_in_rock_hash(dbid, try_key));
 
-        if (already_in_candidates_for_db(dbid, try_key))     // the rock_read.c API
-            continue;
+        // the rock_read.c API. Keys in candidates means they are in async mode
+        // and can removed from candidates later by main thread.
+        // check NOTE 4.
+        serverAssert(!already_in_candidates_for_db(dbid, try_key));  
 
-        // NOTE: we must duplicate for write_batch_append_and_abandon()
-        exclude_candidate_keys[exclude_candidate_len] = sdsdup(try_key);  
-        exclude_candidate_dbids[exclude_candidate_len] = dbid;
-        ++exclude_candidate_len;
-    }
-
-    if (exclude_candidate_len == 0)
-        return 0;
-
-    // second we need exclude those duplicated key+field
-    int evict_len = 0;
-    int evict_dbids[RING_BUFFER_LEN];
-    sds evict_keys[RING_BUFFER_LEN];
-    robj* evict_vals[RING_BUFFER_LEN];
-    for (int i = 0; i < exclude_candidate_len; ++i)
-    {
-        int dbid = exclude_candidate_dbids[i];
-        sds redis_key = exclude_candidate_keys[i];
-
+        // check NOTE 5.
         redisDb *db = server.db + dbid;
-        dictEntry *de_db = dictFind(db->dict, redis_key);
+        dictEntry *de_db = dictFind(db->dict, try_key);
         serverAssert(de_db);
-
+       
         robj *v = dictGetVal(de_db);
         if (is_evict_value(v))
         {
+            // the first one wins the setting rock value
             dictGetVal(de_db) = get_match_rock_value(v);
 
             evict_dbids[evict_len] = dbid;
-            evict_keys[evict_len] = redis_key;
+            // NOTE: we must duplicate tyr_key for write_batch_append_and_abandon()
+            evict_keys[evict_len] = sdsdup(try_key);
             evict_vals[evict_len] = v;
+
             ++evict_len;
-        }
-        else
-        {
-            sdsfree(redis_key);
         }
     }
 
-    if (evict_len)    
-        write_batch_for_db_and_abandon(evict_len, evict_dbids, evict_keys, evict_vals);
+    serverAssert(evict_len > 0);
+    if (from_cron)
+        // cron can not use duplicated keys, check NOTE 6.
+        serverAssert(evict_len == try_len);     
+
+    write_batch_for_db_and_abandon(evict_len, evict_dbids, evict_keys, evict_vals);
 
     return evict_len;    
 }
 
-/* Called in main thread cron and command ROCKEVICTHASH
+/* Called in main thread by server cron and command ROCKEVICTHASH
  *
- * When cron() select some fields from some hashes (before setting rock value), it will call here
- * to determine which fields can be evicted to RocksDB 
- * because we need exclude those keys in read_rock_key_candidates. 
- * Check rock_read.c for read_rock_key_candidates for more reference. 
+ * When caller select some fields from some rock hashes, 
+ * it will call here to determine which fields can be evicted to RocksDB 
  * 
- * and we also need to exclude those duplicatedd try_key + try_field 
- * because it can not set to rock value twice.
+ * and we also need to exclude those duplicatedd try_key + try_field (only poassible for ROCKEVICTHASH)
+ * because it can not set to rock value twice
+ * and the first key+field win the setting value to rock value.
  *
  * try_evict_to_rocksdb_for_hash() will set value to rock value for these matched fields.
  * Return the actual number of fields for eviction.
  *
  * NOTE1: The caller needs to use space_in_write_ring_buffer() first
  *        to know the available space for ring buffer.
- *        The caller needs to guarantee check_len <= space.
+ *        The caller needs to guarantee try_len <= space.
  *
  * NOTE2: The caller can not guarantee all the value can be evicted, 
  *        because the try_keys + try_fiels could be duplicated
+ * 
+ * NOTE3: The keys must be in rock hash.
+ * 
+ * NOTE4: The key+field which are selected must not be in candidates.
+ *        The caller needs exclude them from the try_keys and guarantee this.
+ * 
+ * NOTE5: The key and filed must in redis db and has the correct type.
+ * 
+ * NOTE6: IF from_cron is true, it is called from server cron() job.
+ *        And cron() gurantee not use duplicated key+field.
  */
-int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const sds *try_keys, const sds *try_fields)
+int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, 
+                                  const sds *try_keys, const sds *try_fields,
+                                  const int from_cron)
 {
     serverAssert(try_len > 0);
 
-    // first exclude those in candidates
-    int exclude_candidate_len = 0;
-    int exclude_candidate_dbids[RING_BUFFER_LEN];
-    sds exclude_candidate_keys[RING_BUFFER_LEN];
-    sds exclude_candidate_fields[RING_BUFFER_LEN];
+    int evict_len = 0;
+    int evict_dbids[RING_BUFFER_LEN];
+    sds evict_keys[RING_BUFFER_LEN];
+    sds evict_fields[RING_BUFFER_LEN];
+    sds evict_vals[RING_BUFFER_LEN];
     for (int i = 0; i < try_len; ++i)
     {
         const int dbid = try_dbids[i];
         const sds try_key = try_keys[i];
         const sds try_field = try_fields[i];
 
+        // check NOTE 3
         serverAssert(is_in_rock_hash(dbid, try_key));
 
-        if (already_in_candidates_for_hash(dbid, try_key, try_field))     // the rock_read.c API
-            continue;
+        // // the rock_read.c API and check NOTE 4
+        serverAssert(!already_in_candidates_for_hash(dbid, try_key, try_field));
 
-        // NOTE: we must duplicate for write_batch_append_and_abandon()
-        exclude_candidate_keys[exclude_candidate_len] = sdsdup(try_key);
-        exclude_candidate_fields[exclude_candidate_len] = sdsdup(try_field);  
-        exclude_candidate_dbids[exclude_candidate_len] = dbid;
-        ++exclude_candidate_len; 
-    }
-
-    if (exclude_candidate_len == 0)
-        return 0;
-        
-    // second we need exclude those duplicated key+field
-    int evict_len = 0;
-    int evict_dbids[RING_BUFFER_LEN];
-    sds evict_keys[RING_BUFFER_LEN];
-    sds evict_fields[RING_BUFFER_LEN];
-    sds evict_vals[RING_BUFFER_LEN];
-    for (int i = 0; i < exclude_candidate_len; ++i)
-    {
-        int dbid = exclude_candidate_dbids[i];
-        sds hash_key = exclude_candidate_keys[i];
-        sds hash_field = exclude_candidate_fields[i];
-
+        // check NOTE 5
         redisDb *db = server.db + dbid;
-        dictEntry *de_db = dictFind(db->dict, hash_key);
+        dictEntry *de_db = dictFind(db->dict, try_key);
         serverAssert(de_db);
         robj *o = dictGetVal(de_db);
+        serverAssert(!is_rock_value(o));
         serverAssert(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT);
         dict *hash = o->ptr;
-        dictEntry *de_hash = dictFind(hash, hash_field);
+        dictEntry *de_hash = dictFind(hash, try_field);
         serverAssert(de_hash);
 
         sds v = dictGetVal(de_hash);
         if (v != shared.hash_rock_val_for_field)
         {
+            // the first one wins the setting rock value
             dictGetVal(de_hash) = shared.hash_rock_val_for_field;
-            on_rockval_field_of_hash(dbid, hash_key, hash_field);
+            on_rockval_field_of_hash(dbid, try_key, try_field);
 
             evict_dbids[evict_len] = dbid;
-            evict_keys[evict_len] = hash_key;
-            evict_fields[evict_len] = hash_field;
+            // NOTE: we must duplicate for write_batch_for_hash_and_abandon()
+            evict_keys[evict_len] = sdsdup(try_key);
+            evict_fields[evict_len] = sdsdup(try_field);
             evict_vals[evict_len] = v;
+
             ++evict_len;
-        }
-        else
-        {
-            sdsfree(hash_key);
-            sdsfree(hash_field);
         }
     }
 
-    if (evict_len)
-        write_batch_for_hash_and_abandon(evict_len, evict_dbids, evict_keys, evict_fields, evict_vals);
+    serverAssert(evict_len > 0);
+    if (from_cron)
+        // cron can not use duplicated key+field, check NOTE 6.
+        serverAssert(evict_len == try_len);     
+
+    write_batch_for_hash_and_abandon(evict_len, evict_dbids, evict_keys, evict_fields, evict_vals);
 
     return evict_len;
 }
 
 /* Called in main thread for command ROCKEVICT for db key.
  *
+ * The caller need to guarantee:
+ * 1. the key exists in DB and the type is OK
+ * 2. the key is not rock value
+ * 3. the key can not in candidates
+ * 4. the key can not in rock hash
+ *
  * If succesful, return TRY_EVICT_ONE_KEY_SUCCESS.
  * 
  * If ring buffer is full right now, return TRY_EVICT_ONE_KEY_RING_BUFFER_FULL.
- * The caller can try again because the write thread is working 
+ * The caller can try again because the write thread is busy working 
  * and has not finished the wrintg jobs.
  * 
- * Otherwise return TRY_EVICT_ONE_KEY_FAIL_FOR_IN_CANDIDATES.
+ * For the duplicated keys, the key other than the first one 
+ * will return TRY_EVICT_ONE_FAIL_FOR_DUPICATE_KEY. 
  * The caller can not try again because main thread must return to event loop
  * to let it get the read signal from read thread 
  * which will deal with candidates by deleting task. 
- * 
- * The caller needs to guarantee the value in Redis exist and can be evicted to RocksDB.
  */
-int try_evict_one_key_to_rocksdb(const int dbid, const sds key)
+int try_evict_one_key_to_rocksdb_by_rockevict_command(const int dbid, const sds key)
 {
     const int space = space_in_write_ring_buffer();
     if (space == 0)
-        return TRY_EVICT_ONE_KEY_RING_BUFFER_FULL;
+        return TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL;
     
-    if (try_evict_to_rocksdb_for_db(1, &dbid, &key) == 0)
-    {
-        return TRY_EVICT_ONE_KEY_FAIL_FOR_IN_CANDIDATES_OR_ALREADY_ROCK_VALUE;
-    }
-    else
-    {
-        return TRY_EVICT_ONE_KEY_SUCCESS;
-    }
+    serverAssert(try_evict_to_rocksdb_for_db(1, &dbid, &key, 0) == 1);
+    return TRY_EVICT_ONE_SUCCESS;
 }
 
 /* Called in main thread for command ROCKEVICTHASH for rock hash.
  * 
- * Check the above try_evict_one_key_to_rocksdb() help.
+ * Check the above try_evict_one_key_to_rocksdb_by_rockevict_command() more help
+ * because there are a lot of constraints.
  */
-int try_evict_one_field_to_rocksdb(const int dbid, const sds key, const sds field)
+int try_evict_one_field_to_rocksdb_by_rockevithash_command(const int dbid, const sds key, const sds field)
 {
     const int space = space_in_write_ring_buffer();
     if (space == 0)
-        return TRY_EVICT_ONE_KEY_RING_BUFFER_FULL;
+        return TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL;
 
-
-    if (try_evict_to_rocksdb_for_hash(1, &dbid, &key, &field) == 0)
-    {
-        return TRY_EVICT_ONE_KEY_FAIL_FOR_IN_CANDIDATES_OR_ALREADY_ROCK_VALUE;
-    }
-    else
-    {
-        return TRY_EVICT_ONE_KEY_SUCCESS;
-    }
+    serverAssert(try_evict_to_rocksdb_for_hash(1, &dbid, &key, &field, 0) == 1);
+    return TRY_EVICT_ONE_SUCCESS;
 }
-
 
 /* Called by write thread.
  * If nothing written to RocksDB, return 0. Otherwise, the number of key written to db.
