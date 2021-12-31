@@ -527,3 +527,86 @@ void on_empty_db_for_rock_write(const int dbnum)
 
     rock_w_unlock();
 }
+
+static void debug_mem()
+{
+    int cnt = 0;
+    // void *p = (void*)&server.hz;
+
+    while (1)
+    {
+        sds field = sdsnew("f1");
+        sds value = sdsnew("v1");
+
+        int update = 0;
+        robj *o = createHashObject();
+        unsigned char *zl, *fptr, *vptr;
+        zl = o->ptr;
+
+        fptr = ziplistIndex(zl, ZIPLIST_HEAD);
+        if (fptr != NULL) {
+            fptr = ziplistFind(zl, fptr, (unsigned char*)field, sdslen(field), 1);
+            if (fptr != NULL) {
+                /* Grab pointer to the value (fptr points to the field) */
+                vptr = ziplistNext(zl, fptr);
+                serverAssert(vptr != NULL);
+                update = 1;
+
+                /* Replace value */
+                zl = ziplistReplace(zl, vptr, (unsigned char*)value,
+                        sdslen(value));
+            }
+        }
+        if (!update) {
+            /* Push new field/value pair onto the tail of the ziplist */
+            zl = ziplistPush(zl, (unsigned char*)field, sdslen(field),
+                    ZIPLIST_TAIL);
+            zl = ziplistPush(zl, (unsigned char*)value, sdslen(value),
+                    ZIPLIST_TAIL);
+        }
+        o->ptr = zl;
+
+        sds v = marshal_object(o);
+        decrRefCount(o);
+        robj *r = unmarshal_object(v);
+        sdsfree(v);
+        decrRefCount(r);
+
+        sdsfree(field);
+        sdsfree(value);
+
+        ++cnt;
+        if (cnt == 10000000)
+        {
+            serverLog(LL_WARNING, "used mem = %lu", zmalloc_used_memory());
+            cnt = 0;
+        }
+    }
+}
+
+
+/* Called in main thread when evict some keys to RocksDB in rock_write.c.
+ * The caller guarantee not use read lock.
+ * If the rock_keys are not in candidatte, return 1 meaning check pass.
+ * Otherwise, return 0 meaning there is a bug,
+ * because we can not evict to RocksDB when the rock_key is in candidates.
+ * The logic must guaratee that the candidate must be processed then we can evict.
+ */
+int debug_check_no_candidates(const int len, const sds *rock_keys)
+{
+    int no_exist = 1;
+
+    rock_r_lock();
+    for (int i = 0; i < len; ++i)
+    {
+        if (dictFind(read_rock_key_candidates, rock_keys[i]))
+        {            
+            no_exist = 0;
+            break;
+        }
+    }
+    rock_r_unlock();
+
+    return no_exist;
+}
+

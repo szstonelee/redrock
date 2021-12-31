@@ -2017,12 +2017,18 @@ void commandProcessed(client *c) {
  * 2. calls commandProcessed() if the command was handled.
  *
  * The function returns C_ERR in case the client was freed as a side effect
- * of processing the command, otherwise C_OK is returned. */
-int processCommandAndResetClient(client *c) {
+ * of processing the command, otherwise C_OK is returned. 
+ * 
+ * NOTE: For rock, add a rock_async_re_entry, if true, it means it called by
+ *       the recovering of read thread (but called actually in main thread)
+ *       in an async mode and it is a re entry way(at least the second time).
+ * */
+int processCommandAndResetClient(client *c, const int rock_async_re_entry) {
     int deadclient = 0;
     client *old_client = server.current_client;
     server.current_client = c;
-    if (processCommand(c) == C_OK) {        // NOTE: processCommand() could return C_ROCK
+    // NOTE: processCommand() could return C_ROCK
+    if (processCommand(c, rock_async_re_entry) == C_OK) {        
         commandProcessed(c);
     }
     if (server.current_client == NULL) deadclient = 1;
@@ -2047,7 +2053,7 @@ int processCommandAndResetClient(client *c) {
 int processPendingCommandsAndResetClient(client *c) {
     if (c->flags & CLIENT_PENDING_COMMAND) {
         c->flags &= ~CLIENT_PENDING_COMMAND;
-        if (processCommandAndResetClient(c) == C_ERR) {
+        if (processCommandAndResetClient(c, 0) == C_ERR) {
             return C_ERR;
         }
     }
@@ -2125,8 +2131,11 @@ void processInputBuffer(client *c) {
                 c->flags |= CLIENT_PENDING_COMMAND;
                 break;
             }
-            /* We are finally ready to execute the command. */
-            if (processCommandAndResetClient(c) == C_ERR) {
+            // We are finally ready to execute the command.
+            // NOTE: The above coode (is_client_in_waiting_rock_value_state(c)
+            //       can guarantee the following call is the first time for the command
+            //       in sync way.s
+            if (processCommandAndResetClient(c, 0) == C_ERR) {
                 /* If the client is no longer valid, we avoid exiting this
                  * loop and trimming the client buffer later. So we return
                  * ASAP in that case. */

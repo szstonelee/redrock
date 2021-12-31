@@ -137,9 +137,12 @@ static sds read_return_vals[READ_TOTAL_LEN] __attribute__((aligned(64)));
  */
 static int rock_pipe_read = 0;
 static int rock_pipe_write = 0;
+
+// declaration for the following code for init_rock_pipe()
 static void on_recover_data(struct aeEventLoop *eventLoop, int fd, void *clientData, int mask);
 static void init_rock_pipe()
 {
+
     int pipefds[2];
 
     if (pipe(pipefds) == -1) 
@@ -387,52 +390,29 @@ static void try_assign_tasks()
     // else{}, need to keep task_status to READ_RETURN_TASK
 }
 
-/* Called by main thraed because c->rock_key_num changes to zero.
+/* Called by main thraed because c->rock_key_num changes to zero,
+ * i.e., not is_client_in_waiting_rock_value_state().
+ *
  * But because it is called by async mode (from RocksDB recovering), 
- * so we need check again (by calling processCommandAndResetClient())
+ * so we need check again (by calling processCommandAndResetClient() again)
  * because some other keys may be evicted to RocksDB during the async period.
+ * 
  * The caller guaratee not in lock mode.
  */
-int processCommandAndResetClient(client *c);        // networkng.c, no declaration in any header
 static void resume_command_for_client_in_async_mode(client *c)
 {
-    serverAssert(!is_client_in_waiting_rock_value_state(c));
+    int processCommandAndResetClient(client *c, const int rock_async_re_entry);        // networkng.c, no declaration in any header
 
-    processCommandAndResetClient(c);
+    const int ret = processCommandAndResetClient(c, 1);     // call again for asyc mode
 
-    if (c->querybuf && sdslen(c->querybuf) > 0) 
-        processInputBuffer(c);
-}
-
-/* Called in main thread.
- * The caller guaranteees not in lock mode. 
- * When some rock keys are recovered,
- * the clients (by joininng together) waiting for the rock keys will be checked 
- * to decide whether they will be resumed. 
- *
- * NOTE1: client may be invalid because the client id 
- *        won't be deleted in read_rock_key_candidates 
- *        while the client has closed a Redis connection.
- *
- * NOTE2: client id may be duplicated in client_ids 
- *        (for case of multi keys recovered).
- */
-static void check_client_resume_after_recover_data(const list *client_ids)
-{
-    listIter li;
-    listNode *ln;
-    listRewind((list*)client_ids, &li);
-    while ((ln = listNext(&li)))
+    if (ret != C_ERR)
     {
-        uint64_t client_id = (uint64_t)listNodeValue(ln);
-        client *c = lookup_client_from_id(client_id);
-        if (c)
-        {
-            serverAssert(c->rock_key_num > 0);
-            --c->rock_key_num;
-            if (c->rock_key_num == 0)
-                resume_command_for_client_in_async_mode(c);
-        }
+        // if the client is still valid after processCommandAndResetClient()
+        // try to read buffer 
+        // NOTE: if the client is still in waiting rock value state,
+        //       it will skip process socket buffer in processInputBuffer()
+        if (c->querybuf && sdslen(c->querybuf) > 0) 
+            processInputBuffer(c);
     }
 }
 
@@ -458,7 +438,7 @@ static void try_recover_val_object_in_redis_db(const int dbid, const sds recover
     dictEntry *de = dictFind(db->dict, key);
     if (de != NULL)
     {
-        robj *o = dictGetVal(de);
+        const robj *o = dictGetVal(de);
         if (is_rock_value(o))
         {
             #if defined RED_ROCK_DEBUG
@@ -517,7 +497,7 @@ static void try_recover_field_in_hash(const int dbid, const sds recover_val,
 
     // NOTE: we need a copy of recover_val for the recover
     //       because the caller will reclaim recover_val, check recover_data()
-    sds copy_val = sdsdup(recover_val);
+    const sds copy_val = sdsdup(recover_val);
     dictGetVal(de_hash) = copy_val;
     on_recover_field_of_hash(dbid, hash_key, hash_field);
 
@@ -582,6 +562,40 @@ static void recover_data_for_hash(const sds task,
     join_waiting_clients(task, waiting_clients);
 }
 
+/* Called in main thread.
+ *
+ * NNTE: The caller guaranteees not in lock mode. 
+ * 
+ * When some rock keys are recovered or the key is deleted or regenerated
+ * which means it guarantee no rock value for the keys,
+ * the clients (by joininng together) waiting associated with the rock keys 
+ * will be checked whether they will be resumed again. 
+ *
+ * NOTE1: client may be invalid because the client id 
+ *        won't be deleted in read_rock_key_candidates 
+ *        while the client has closed a Redis connection.
+ *
+ * NOTE2: client id may be duplicated in client_ids 
+ *        for case of multi keys recovered like get <key> <key> or transaction.
+ */
+static void check_client_resume_after_recover_data(const list *client_ids)
+{
+    listIter li;
+    listNode *ln;
+    listRewind((list*)client_ids, &li);
+    while ((ln = listNext(&li)))
+    {
+        uint64_t client_id = (uint64_t)listNodeValue(ln);
+        client *c = lookup_client_from_id(client_id);
+        if (c)
+        {
+            serverAssert(c->rock_key_num > 0);
+            --c->rock_key_num;
+            if (!is_client_in_waiting_rock_value_state(c))
+                resume_command_for_client_in_async_mode(c);
+        }
+    }
+}
 
 /* Called in main thread to recover the data from RocksDB.
  *
@@ -771,7 +785,7 @@ static void go_on_need_rock_hashes_from_rocksdb(const uint64_t client_id, const 
  * NOET3: because the async mode, one command for one client could call here for serveral times,
  *        so the keyspace could change.
  */
-static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list *redis_keys)
+list* check_ring_buf_first_and_recover_for_db(const int dbid, const list *redis_keys)
 {
     // Call the API for ring buf in rock_write.c
     list *vals = get_vals_from_write_ring_buf_first_for_db(dbid, redis_keys);
@@ -1106,31 +1120,6 @@ int on_client_need_rock_fields_for_hashes(client *c, const list *hash_keys, cons
     }
 
     return sync_mode_for_hash;
-}
-
-/* Called in main thread when evict some keys to RocksDB in rock_write.c.
- * The caller guarantee not use read lock.
- * If the rock_keys are not in candidatte, return 1 meaning check pass.
- * Otherwise, return 0 meaning there is a bug,
- * because we can not evict to RocksDB when the rock_key is in candidates.
- * The logic must guaratee that the candidate must be processed then we can evict.
- */
-int debug_check_no_candidates(const int len, const sds *rock_keys)
-{
-    int no_exist = 1;
-
-    rock_r_lock();
-    for (int i = 0; i < len; ++i)
-    {
-        if (dictFind(read_rock_key_candidates, rock_keys[i]))
-        {            
-            no_exist = 0;
-            break;
-        }
-    }
-    rock_r_unlock();
-
-    return no_exist;
 }
 
 /* API for rock_write.c for checking whether the key is in candidates

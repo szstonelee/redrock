@@ -2215,7 +2215,7 @@ int zslLexValueLteMax(sds value, zlexrangespec *spec);
 int getMaxmemoryState(size_t *total, size_t *logical, size_t *tofree, float *level);
 size_t freeMemoryGetNotCountedMemory();
 int overMaxmemoryAfterAlloc(size_t moremem);
-int processCommand(client *c);
+int processCommand(client *c, const int rock_async_re_entry);
 int processPendingCommandsAndResetClient(client *c);
 void setupSignalHandlers(void);
 void removeSignalHandlers(void);

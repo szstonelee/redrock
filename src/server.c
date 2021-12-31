@@ -3979,8 +3979,14 @@ static int cmdHasMovableKeys(struct redisCommand *cmd) {
  * 
  * NOTE: I add a new return value, i.e., C_ROCK, to make caller processCommandAndResetClient()
  *       skip commandProcessed(). See processCommandAndResetClient() for reference.
+ * 
+ * NOTE2: Add a new parameter of rock_async_re_entry. Check the caller 
+ *        processCommandAndResetClient() for more details.
  * */
-int processCommand(client *c) {
+int processCommand(client *c, const int rock_async_re_entry) {
+    if (rock_async_re_entry)
+        goto resume_in_aysnc_for_rock;
+
     if (!server.lua_timedout) {
         /* Both EXEC and EVAL call call() directly so there should be
          * no way in_exec or in_eval or propagate_in_transaction is 1.
@@ -4264,6 +4270,7 @@ int processCommand(client *c) {
         addReply(c,shared.queued);
     } else {
 
+resume_in_aysnc_for_rock: ;     // empty statemennt
         const int check_rock_res = check_and_set_rock_status_in_processCommand(c);
         switch (check_rock_res)
         {

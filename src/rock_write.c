@@ -379,17 +379,12 @@ int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids,
  * 3. the key can not in candidates
  * 4. the key can not in rock hash
  *
- * If succesful, return TRY_EVICT_ONE_KEY_SUCCESS.
+ * If succesful, return TRY_EVICT_ONE_SUCCESS.
  * 
- * If ring buffer is full right now, return TRY_EVICT_ONE_KEY_RING_BUFFER_FULL.
+ * If ring buffer is full right now, return TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL.
  * The caller can try again because the write thread is busy working 
  * and has not finished the wrintg jobs.
  * 
- * For the duplicated keys, the key other than the first one 
- * will return TRY_EVICT_ONE_FAIL_FOR_DUPICATE_KEY. 
- * The caller can not try again because main thread must return to event loop
- * to let it get the read signal from read thread 
- * which will deal with candidates by deleting task. 
  */
 int try_evict_one_key_to_rocksdb_by_rockevict_command(const int dbid, const sds key)
 {
