@@ -717,7 +717,8 @@ typedef struct redisDb {
     dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP)*/
     dict *ready_keys;           /* Blocked keys that received a PUSH */
     dict *watched_keys;         /* WATCHED keys for MULTI/EXEC CAS */
-    dict *rock_hash;            /* Keys of hash for RocksDB */ 
+    dict *rock_hash;            /* Rock hash for each field for RocksDB */ 
+    dict *rock_evict;           /* Rock evict for whole key for RocksDB */
     int id;                     /* Database ID */
     long long avg_ttl;          /* Average TTL, just for stats */
     unsigned long expires_cursor; /* Cursor of the active expire cycle. */

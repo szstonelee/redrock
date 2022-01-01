@@ -4,15 +4,18 @@
 
 /* For rockHashDictType, each db has just one instance.
  * When a hash with OBJ_ENCODING_HT reach a threeshold, i.e., server.hash_max_rock_entries,
- * The hash will add to the rockHashDictType,
- * key is db redis key, shared with db->dict, so do not need key destructor.
+ * The hash will add to the rockHashDictType.
+ * 
+ * The key is redis db key, shared with db->dict, so do not need key destructor.
+ * 
+ * The value is is pointer to a dict with valid lru (which has not been evicted to RocksDB)
+ * Check fieldLruDictType for more info.
+ * 
  * NOTE:
  *     After the key added to rockHashDictType, it will not
  *     be deleted from the rockHashDictType 
  *     (even the field number drop to the threshold or server.hash_max_rock_entries change) 
- *     until the key is deleted from redis db.
- * value is pointer to a dict with valid lru (which has not been evicted to RocksDB). 
- *     Check fieldLruDictType for more info.
+ *     until the key is deleted from redis db or totally overwritten (actually is deleted beforehand).
  */
 int dictExpandAllowed(size_t moreMem, double usedRatio);    // declaration in server.c
 void val_as_dict_destructor(void *privdata, void *obj)
@@ -37,9 +40,12 @@ dict* init_rock_hash_dict()
     return dictCreate(&rockHashDictType, NULL);
 }
 
-/* For dict with valid lru,
- * key is the fiied sds, shared with the corresponding hash's field.
- * value is the recent visited clock time saved as a format of pointer.
+/* For dict with valid lru.
+ *
+ * The key is the fiied sds of which does not have been evicted to RocksDB, 
+ * shared with the corresponding hash's field.
+ * 
+ * The value is the recent visited clock time.
  */
 dictType fieldLruDictType = {
     dictSdsHash,                /* hash function */
@@ -552,7 +558,7 @@ int is_in_rock_hash(const int dbid, const sds redis_key)
     return dictFind(db->rock_hash, redis_key) != NULL;
 }
 
-/* When redis server start and load RDB/AOF,
+/* When redis server start and finish loading RDB/AOF,
  * we need to add the matched hash to rock hash.
  */
 void init_rock_hash_before_enter_event_loop()

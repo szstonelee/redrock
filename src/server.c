@@ -40,6 +40,7 @@
 #include "rock_write.h"
 #include "rock_read.h"
 #include "rock_hash.h"
+#include "rock_evict.h"
 
 #include <time.h>
 #include <signal.h>
@@ -3264,6 +3265,7 @@ void initServer(void) {
         server.db[j].defrag_later = listCreate();
         listSetFreeMethod(server.db[j].defrag_later,(void (*)(void*))sdsfree);
         server.db[j].rock_hash = init_rock_hash_dict();
+        server.db[j].rock_evict = init_rock_evict_dict();
     }
     evictionPoolAlloc(); /* Initialize the LRU keys pool. */
     server.pubsub_channels = dictCreate(&keylistDictType,NULL);
@@ -6460,6 +6462,8 @@ int main(int argc, char **argv) {
     setOOMScoreAdj(-1);
 
     init_rock_hash_before_enter_event_loop();  
+    // NOTE: must follow init_rock_hash_before_enter_event_loop()
+    init_rock_evict_before_enter_event_loop();  
 
     aeMain(server.el);
     aeDeleteEventLoop(server.el);

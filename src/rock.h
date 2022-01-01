@@ -83,13 +83,28 @@ inline int is_shared_value(const robj *v)
 }
 
 
+/* Only OBJ_STRING, OBJ_LIST, OBJ_SET, OBJ_HASH, OBJ_ZSET is included
+ * and can be evicted to RocksDB.
+ * Check get_match_rock_value() in rock_marshal.c
+ * 
+ * NOTE: other condition not check like shared object or rock value.
+ */
+inline int is_rock_type(const robj *o)
+{
+    return o->type == OBJ_STRING || 
+        o->type == OBJ_LIST || 
+        o->type == OBJ_SET ||
+        o->type == OBJ_HASH ||
+        o->type == OBJ_ZSET;
+}
+
 /* Stream and Module type is not supported for eviction to RocksDB.
  * return 1 if the value of v is not supported.
  * otherwise return 0. 
  */
 inline int is_not_supported_evict_type(const robj *v)
 {
-    return v->type == OBJ_STREAM || v->type == OBJ_MODULE;
+    return !is_rock_type(v);
 }
 
 /*
