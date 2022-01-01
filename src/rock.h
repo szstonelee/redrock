@@ -36,6 +36,20 @@ void rock_evict_hash(client *c);
 
 void debug_rock(client *c);
 
+#define CHECK_EVICT_OK                                          0
+#define CHECK_EVICT_NOT_FOUND                                   1
+#define CHECK_EVICT_EXPIRED                                     2
+#define CHECK_EVICT_ALREADY_ROCK_VALUE                          3
+#define CHECK_EVICT_SHARED_VALUE                                4
+#define CHECK_EVICT_NOT_SUPPORTED_TYPE                          5
+#define CHECK_EVICT_IN_CANDIDAES                                6
+#define CHECK_EVICT_ALREADY_IN_ROCK_HASH_FOR_DB_KEY             7
+#define CHECK_EVICT_TYPE_OR_ENCODING_WRONG_FOR_FIELD            8
+#define CHECK_EVICT_NOT_IN_ROCK_HASH_FOR_FIELD                  9       
+
+int check_valid_evict_of_key_for_db(const int dbid, const sds redis_key);
+int check_valid_evict_of_key_for_hash(const int dbid, const sds hash_key, const sds hash_field);
+
 // list* get_keys_in_rock_for_command(const client *c);
 
 // int process_cmd_in_processInputBuffer(client *c);
@@ -68,33 +82,14 @@ inline int is_shared_value(const robj *v)
     return v->refcount == OBJ_SHARED_REFCOUNT;
 }
 
-/* Check whether the value can be evicted. 
- * Return 1 if can, otherwise, return 0.
- *
- * We exclude such cases:
- * 1. already rock value
- * 2. already shared value
- * 3. value type not suppoorted, right now, it is OBJ_STREAM  
+
+/* Stream and Module type is not supported for eviction to RocksDB.
+ * return 1 if the value of v is not supported.
+ * otherwise return 0. 
  */
-inline int is_evict_value(const robj *v)
+inline int is_not_supported_evict_type(const robj *v)
 {
-    if (is_rock_value(v))
-    {
-        return 0;
-    }
-    else if (is_shared_value(v))
-    {
-        return 0;
-    }
-    else if (v->type == OBJ_STREAM)
-    {
-        return 0;
-    }
-    else
-    {
-        serverAssert(v->type != OBJ_MODULE);
-        return 1;
-    }
+    return v->type == OBJ_STREAM || v->type == OBJ_MODULE;
 }
 
 /*

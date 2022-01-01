@@ -479,12 +479,14 @@ static void try_recover_field_in_hash(const int dbid, const sds recover_val,
     if (de_db == NULL)
         goto reclaim;   // the hash key may be deleted by other client
     
-    // TODO: we need add another candidate for rock hash to guarantee this!!!!
-    serverAssert(!is_rock_value(dictGetVal(de_db)));   
-
     robj *o = dictGetVal(de_db);
     if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
         goto reclaim;   // the hash key may be overwritten by other client     
+
+    if (is_rock_value(o))
+        // the hash key could be deleted, then regenerated, 
+        // then as a whole key to be evicted to RocksDB
+        goto reclaim;    
     
     dict *hash = o->ptr;
     dictEntry *de_hash = dictFind(hash, hash_field);
@@ -785,7 +787,7 @@ static void go_on_need_rock_hashes_from_rocksdb(const uint64_t client_id, const 
  * NOET3: because the async mode, one command for one client could call here for serveral times,
  *        so the keyspace could change.
  */
-list* check_ring_buf_first_and_recover_for_db(const int dbid, const list *redis_keys)
+static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list *redis_keys)
 {
     // Call the API for ring buf in rock_write.c
     list *vals = get_vals_from_write_ring_buf_first_for_db(dbid, redis_keys);

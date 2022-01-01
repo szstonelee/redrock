@@ -257,7 +257,7 @@ int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids,
         serverAssert(de_db);
        
         robj *v = dictGetVal(de_db);
-        if (is_evict_value(v))
+        if (!is_rock_value(v))
         {
             // the first one wins the setting rock value
             dictGetVal(de_db) = get_match_rock_value(v);

@@ -1262,7 +1262,7 @@ list* hexists_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields
         generic_get_one_field_for_rock(c, key, 2, hash_keys, hash_fields);
     }
 
-    return generic_get_one_key_for_rock(c, 1);
+    return keys;
 }
 
 static int hsacn_command_check_and_reply(client *c)

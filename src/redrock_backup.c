@@ -610,3 +610,180 @@ int debug_check_no_candidates(const int len, const sds *rock_keys)
     return no_exist;
 }
 
+/* For debug command, i.e. debugrock ... */
+void debug_rock(client *c)
+{
+    sds flag = c->argv[1]->ptr;
+
+    if (strcasecmp(flag, "mem") ==  0)
+    {
+        // debug_mem();
+        debug_vc();
+    }
+    else if (strcasecmp(flag, "evictkeys") == 0 && c->argc >= 3)
+    {
+    }
+    else if (strcasecmp(flag, "recoverkeys") == 0 && c->argc >= 3)
+    {
+    }
+    else if (strcasecmp(flag, "testwrite") == 0) 
+    {
+    }
+    else
+    {
+        addReplyError(c, "wrong flag for debugrock!");
+        return;
+    }
+
+    addReplyBulk(c,c->argv[0]);
+}
+
+static void debug_vc()
+{
+    client *vc = createClient(NULL);
+    on_add_a_new_client(vc);
+
+    const char *key_name = "abc";
+    const char *field1_name = "f1";
+    const char *field2_name = "f2";
+    const char *val1_name = "val1";
+    const char *val2_name = "val2";
+    const int dbid = 0;
+    redisDb *db = server.db + dbid;
+    
+    list *redis_keys = listCreate();
+    sds need_key = sdsnew(key_name);
+    // sds not_exist_kkey = sdsnew("not_exist_key");
+    serverAssert(listAddNodeTail(redis_keys, need_key) != NULL);
+    // serverAssert(listAddNodeTail(redis_keys, not_exist_kkey) != NULL);
+
+    int cnt = 0;
+    int sync_cnt = 0;
+    while (1)
+    {
+        robj *key = createStringObject(key_name, strlen(key_name));
+        robj *val1 = createStringObject(val1_name, strlen(val1_name));
+        robj *val2 = createStringObject(val2_name, strlen(val2_name));
+        sds field1 = sdsnew(field1_name);
+        sds field2 = sdsnew(field2_name);
+
+        robj *o = hashTypeLookupWriteOrCreate(vc, key);
+        serverAssert(o != NULL);
+        serverAssert(hashTypeSet(dbid, key->ptr, o, field1, val1->ptr, HASH_SET_COPY) == 0);
+        serverAssert(hashTypeSet(dbid, key->ptr, o, field2, val2->ptr, HASH_SET_COPY) == 0);        
+
+        while (1)
+        {
+            int ret = try_evict_one_key_to_rocksdb_by_rockevict_command(0, key->ptr);
+            if (ret == TRY_EVICT_ONE_SUCCESS)
+                break;
+            serverAssert(ret == TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL);
+        }
+
+        usleep(1);
+        list *left = check_ring_buf_first_and_recover_for_db(dbid, redis_keys);
+        if (left && listLength(left) == 0)
+            ++sync_cnt;
+        if (left)
+            listRelease(left);    
+       
+#if 0
+        list *vals = get_vals_from_write_ring_buf_first_for_db(dbid, redis_keys);
+        if (vals)
+        {
+            serverAssert(listLength(vals) == listLength(redis_keys));
+
+            list *left = listCreate();
+  
+            listIter li_vals;
+            listNode *ln_vals;
+            listIter li_keys;
+            listNode *ln_keys;
+            listRewind(vals, &li_vals);
+            listRewind((list*)redis_keys, &li_keys);
+
+            while ((ln_vals = listNext(&li_vals)))
+            {
+                ln_keys = listNext(&li_keys);
+
+                const sds redis_key = listNodeValue(ln_keys);
+
+                const sds recover_val = listNodeValue(ln_vals);
+                if (recover_val == NULL)
+                {
+                    // not found in ring buffer
+                    listAddNodeTail(left, redis_key);
+                }
+                else
+                {
+                    // need to recover data which is from ring buffer
+                    // NOTE: no need to deal with rock_key_num in client. The caller will take care
+                    dictEntry *de = dictFind(db->dict, redis_key);
+                    // the redis_key must be here because it is from
+                    // the caller on_client_need_rock_keys_for_db() which guaratee this
+                    serverAssert(de);  
+
+                    if (is_rock_value(dictGetVal(de)))      
+                        // NOTE: the same key could repeat in redis_keys
+                        //       so the second duplicated key, we can not guaratee it is rock value
+                        dictGetVal(de) = unmarshal_object(recover_val);     // revocer in redis db
+                }
+            }
+            
+            listSetFreeMethod(vals, (void (*)(void*))sdsfree);
+            listRelease(vals);
+
+            listRelease(left);
+        }
+#endif
+
+        serverAssert(dbDelete(db, key) == 1);
+
+        decrRefCount(key);
+        decrRefCount(val1);
+        decrRefCount(val2);        
+        sdsfree(field1);
+        sdsfree(field2);       
+
+        ++cnt;
+        if (cnt == 10000)
+        {
+            serverLog(LL_WARNING, "used mem = %lu, sync_cnt = %d", zmalloc_used_memory(), sync_cnt);
+            cnt = 0;
+            sync_cnt = 0;
+        } 
+    }
+}
+
+/* Check whether the value can be evicted. 
+ * Return 1 if can, otherwise, return 0.
+ *
+ * We exclude such cases:
+ * 1. already rock value
+ * 2. already shared value
+ * 3. value type not suppoorted, right now, it is OBJ_STREAM  
+ */
+inline int is_evict_value(const robj *v)
+{
+    if (is_rock_value(v))
+    {
+        return 0;
+    }
+    else if (is_shared_value(v))
+    {
+        return 0;
+    }
+    else if (v->type == OBJ_STREAM)
+    {
+        return 0;
+    }
+    else
+    {
+        serverAssert(v->type != OBJ_MODULE);
+        return 1;
+    }
+}
+
+
+
+

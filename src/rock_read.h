@@ -19,7 +19,4 @@ int on_client_need_rock_fields_for_hashes(client *c, const list *hash_keys, cons
 int already_in_candidates_for_db(const int dbid, const sds redis_key);
 int already_in_candidates_for_hash(const int dbid, const sds redis_key, const sds field);
 
-// for debug to declaration
-list* check_ring_buf_first_and_recover_for_db(const int dbid, const list *redis_keys);
-
 #endif

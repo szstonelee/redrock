@@ -29,15 +29,15 @@ def hexists():
     r.execute_command("del", key)
     r.hset(key, "field1", "foo")
     rock_evict(key)
-    #res = r.hexists(key, "field1")
-    #if res != 1:
-    #     print(res)
-    #     raise Exception("hexists fail")
-    # rock_evict(key)
-    # res = r.hexists(key, "field2")
-    # if res != 0:
-    #     print(res)
-    #     raise Exception("hexists fail2")
+    res = r.hexists(key, "field1")
+    if res != 1:
+         print(res)
+         raise Exception("hexists fail")
+    rock_evict(key)
+    res = r.hexists(key, "field2")
+    if res != 0:
+         print(res)
+         raise Exception("hexists fail2")
 
 
 def hget():
@@ -98,11 +98,11 @@ def hkeys():
 def hlen():
     r.execute_command("del", key)
     r.execute_command("hset", key, "field1", "foo", "field2", "bar")
-    #rock_evict(key)
-    #res = r.hlen(key)
-    #if res != 2:
-    #    print(res)
-    #    raise Exception("hlen fail")
+    rock_evict(key)
+    res = r.hlen(key)
+    if res != 2:
+        print(res)
+        raise Exception("hlen fail")
 
 
 def hmget():
@@ -215,22 +215,22 @@ def hvals():
     
 
 def test_all():
-    #hdel()
-    #hexists()
-    # hget()
-    # hgetall()
-    # hincrby()
-    # hincrbyfloat()
-    # hkeys()
+    hdel()
+    hexists()
+    hget()
+    hgetall()
+    hincrby()
+    hincrbyfloat()
+    hkeys()
     hlen()
-    # hmget()
-    # hmset()
-    # hset()
-    # hset_for_ht_encoding()
-    # hsetnx()
-    # hrandfield()
-    # hstrlen()
-    # hvals()
+    hmget()
+    hmset()
+    hset()
+    hset_for_ht_encoding()
+    hsetnx()
+    hrandfield()
+    hstrlen()
+    hvals()
 
 
 def _main():

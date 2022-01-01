@@ -12,10 +12,20 @@ def hlen(key):
         raise Exception("hlen fail")
 
 
+def hexists(key):
+    r.execute_command("del", key)
+    r.hset(key, "field1", "foo")
+    rock_evict(key)
+    res = r.hexists(key, "field1")
+    if res != 1:
+         print(res)
+         raise Exception("hexists fail")
+
+
 def _main(key):
     cnt = 0
     while (1):
-        hlen(key)
+        hexists(key)
         cnt = cnt + 1
         if cnt % 1000 == 0:
             print(f"test str OK cnt = {cnt}")
