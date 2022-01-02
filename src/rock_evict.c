@@ -39,9 +39,6 @@ dict* init_rock_evict_dict()
     return dictCreate(&rockEvictDictType, NULL);
 }
 
-
-
-
 /* When redis server start and finish loading RDB/AOF,
  * we need to add the matched key to rock evict.
  * 
@@ -77,43 +74,178 @@ void init_rock_evict_before_enter_event_loop()
     }
 }
 
-void on_db_add_key_for_rock_evict(const int dbid, const sds key)
+/* When a key has been added to a redis db, we need 
+ * check whether it is OK for add to rock evict and add it.
+ * NOTE: for rock evcit dictionary, the key is the internal key in redis db->dict
+ */
+void on_db_add_key_for_rock_evict(const int dbid, const sds internal_key)
 {
-    UNUSED(dbid);
-    UNUSED(key);
+    redisDb *db = server.db + dbid;
+
+    dictEntry *de = dictFind(db->dict, internal_key);
+    serverAssert(de);
+
+    robj *o = dictGetVal(de);
+
+    #if defined RED_ROCK_DEBUG
+    serverAssert(dictGetKey(de) == internal_key);
+    serverAssert(!is_in_rock_hash(dbid, internal_key));
+    serverAssert(!is_rock_value(o));
+    #endif
+
+    if (!is_rock_type(o))
+        return;
+
+    if (is_shared_value(o))
+        return;
+
+    serverAssert(dictAdd(db->rock_evict, internal_key, NULL) == DICT_OK);
 }
 
+/* Before a key deleted from a redis db, 
+ * We need to delete it from rock evict if it exists.
+ */
 void on_db_del_key_for_rock_evict(const int dbid, const sds key)
 {
-    UNUSED(dbid);
-    UNUSED(key);
+    redisDb *db = server.db + dbid;
+
+    dictEntry *de = dictFind(db->dict, key);
+    if (de == NULL)
+        return;     // not found in redis db
+
+#if defined RED_ROCK_DEBUG
+    robj *o = dictGetVal(de);
+
+    if (is_rock_value(o))
+    {
+        serverAssert(dictFind(db->rock_evict, key) == NULL);
+        return;
+    }
+
+    if (!is_rock_type(o))
+    {
+        serverAssert(dictFind(db->rock_evict, key) == NULL);
+        return;
+    }
+
+    if (is_shared_value(o))
+    {
+        serverAssert(dictFind(db->rock_evict, key) == NULL);
+        return;
+    }
+
+    if (is_in_rock_hash(dbid, key))
+    {
+        serverAssert(dictFind(db->rock_evict, key) == NULL);
+        return;
+    }
+#endif
+
+    int ret  = dictDelete(db->rock_evict, key);
+
+#if defined RED_ROCK_DEBUG
+    serverAssert(ret == DICT_OK);
+#endif
 }
 
-void on_db_overwrite_key_for_rock_evict(const int dbid, const sds key)
+/* After a key is overwritten in redis db, it will call here.
+ * The new_o is the replaced object for the redis_key in db.
+ */
+void on_db_overwrite_key_for_rock_evict(const int dbid, const sds key, const robj *new_o)
 {
-    UNUSED(dbid);
-    UNUSED(key);
+    redisDb *db = server.db + dbid;
+    // NOTE: could exist in rock evict or not
+    dictDelete(db->rock_evict, key);       
+
+    dictEntry *de = dictFind(db->dict, key);
+    serverAssert(de);
+
+    #if defined RED_ROCK_DEBUG
+    serverAssert(!is_rock_value(new_o));
+    #endif
+
+    if (!is_rock_type(new_o))
+        return;
+
+    if (is_shared_value(new_o))
+        return;
+
+    // NOTE: because on_overwrite_key_from_db_for_rock_hash()
+    //       call before on_db_overwrite_key_for_rock_evict()
+    if (is_in_rock_hash(dbid, key))
+        return;
+
+    sds internal_key = dictGetKey(de);
+    serverAssert(dictAdd(db->rock_evict, internal_key, NULL) == DICT_OK);
 }
 
+/* After a key of hash added to rock hash,
+ * we need delete it from rock_evcit.
+ */
+void on_transfer_to_rock_hash(const int dbid, const sds internal_key)
+{
+    redisDb *db = server.db + dbid;
+
+    serverAssert(dictDelete(db->rock_evict, internal_key) == DICT_OK);
+}
+
+/* Because we use LRU directly from the object value in redis db,
+ * so we need not to update anything relating to lru.
+ */
 void on_db_visit_key_for_rock_evict(const int dbid, const sds key)
 {
     UNUSED(dbid);
     UNUSED(key);
 }
 
-void on_rockval_key_for_rock_evict(const int dbid, const sds key)
+/* When rock_write.c already set one whole keys's value to rock value,
+ * it needs delete the key from rock evict.
+ */
+void on_rockval_key_for_rock_evict(const int dbid, const sds internal_key)
 {
-    UNUSED(dbid);
-    UNUSED(key);
+    redisDb *db = server.db + dbid;
+
+    serverAssert(dictDelete(db->rock_evict, internal_key) == DICT_OK);
 }
 
-void on_recover_key_for_rock_evict(const int dbid, const sds key)
+/* When rock_read.c already recover a whole key from RocksDB or ring buffer, 
+ * it needs to add itself to rock hash
+ * 
+ * NOTE: We must add the internal key of redis db.
+ */
+void on_recover_key_for_rock_evict(const int dbid, const sds internal_key)
 {
-    UNUSED(dbid);
-    UNUSED(key);
+    redisDb *db = server.db + dbid;
+
+#if defined RED_ROCK_DEBUG
+    dictEntry *de = dictFind(db->dict, internal_key);
+    serverAssert(de);
+    serverAssert(dictGetKey(de) == internal_key);
+#endif
+
+    serverAssert(dictAdd(db->rock_evict, internal_key, NULL) == DICT_OK);
 }
 
+/* When flushdb or flushalldb, it will empty the db(s).
+ * and we need reclaim the rock evict in the db.
+ * if dbnum == -1, it means all db
+ */
 void on_empty_db_for_rock_evict(const int dbnum)
 {
-    UNUSED(dbnum);
+    serverAssert(dbnum == -1 || (dbnum >= 0 && dbnum < server.dbnum));
+
+    int start = dbnum;
+    if (dbnum == -1)
+        start = 0;
+
+    int end = dbnum + 1;
+    if (dbnum == -1)
+        end = server.dbnum;
+
+    for (int dbid = start; dbid < end; ++dbid)
+    {
+        redisDb *db = server.db + dbid;
+        dict *rock_evict = db->rock_evict;
+        dictEmpty(rock_evict, NULL);
+    }
 }

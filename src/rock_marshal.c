@@ -20,7 +20,9 @@
 #define ROCK_TYPE_INVALID           127
 
 // 1 byte for rock_type and 4 byte for LRU/LFU
-#define MARSHAL_HEAD_SIZE (1 + sizeof(uint32_t))   
+// #define MARSHAL_HEAD_SIZE (1 + sizeof(uint32_t))  
+// Now we do not need to marshal LRU/LFU info
+#define MARSHAL_HEAD_SIZE 1 
 
 
 /* From the input o, determine which shared object is right 
@@ -701,8 +703,13 @@ static sds create_sds_and_make_room(const robj* o, unsigned char *rock_type)
     s = sdsMakeRoomFor(s, MARSHAL_HEAD_SIZE);
     // set type and LRU/LFU conetnet
     s = sdscatlen(s, rock_type, 1);
-    uint32_t lru = o->lru;      // the redis object's lru only use 24 bit information
-    s = sdscatlen(s, &lru, sizeof(uint32_t));
+    // NOTE: We do not need to save LRU info in RocksDB
+    //       When object is restored from DB, the default time in createObject()
+    //       is OK because for LRU, it is the current time, 
+    //       for LFU, it is default counter 5 (LFU_INIT_VAL) 
+    //       Check createObject() in object.c for help
+    // uint32_t lru = o->lru;      // the redis object's lru only use 24 bit information
+    // s = sdscatlen(s, &lru, sizeof(uint32_t));
     // make room for object
     s = sdsMakeRoomFor(s, obj_room);
 
@@ -814,9 +821,9 @@ robj* unmarshal_object(const sds v)
         serverPanic("unmarshal_object(), unknown rock_type = %d", (int)rock_type);
     }
 
-    // set LRU/LFU
-    const uint32_t lru = *((uint32_t*)(v+1));
-    o->lru = lru;    
+    // NOT: do not need LRU/LFU, because the createObject() default LRU/LFU is OK
+    // const uint32_t lru = *((uint32_t*)(v+1));
+    // o->lru = lru;    
 
     return o;
 }

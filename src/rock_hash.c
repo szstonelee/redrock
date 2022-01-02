@@ -1,5 +1,6 @@
 #include "rock_hash.h"
 #include "rock.h"
+#include "rock_evict.h"
 
 
 /* For rockHashDictType, each db has just one instance.
@@ -123,6 +124,63 @@ static void debug_check_lru(const char *from, dict *hash, dict *lrus, const sds 
     
 }
 
+/* Calculate the first lru info for rock hash.
+ * Referecne object.c createObject()
+ * For LFU, use default counter LFU_INIT_VAL which is 5.
+ * For LRU, use current time LRU_CLOCK
+ */
+static unsigned int get_init_lru_for_rock_hash()
+{
+    if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU)
+    {
+        return (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;;
+    }
+    else
+    {
+        return LRU_CLOCK();
+    }
+}
+
+/* Check LFUDecrAndReturn() in evict.c for help */
+static unsigned long lfu_decr_and_return(const unsigned int lru)
+{
+    unsigned long LFUTimeElapsed(unsigned long ldt);        // declaration from evict.c
+
+    unsigned long ldt = lru >> 8;
+    unsigned long counter = lru & 255;
+    unsigned long num_periods = server.lfu_decay_time ? LFUTimeElapsed(ldt) / server.lfu_decay_time : 0;
+    if (num_periods)
+        counter = (num_periods > counter) ? 0 : counter - num_periods;    
+    
+    return counter;
+}
+
+/* Check updateLFU() in db.c for help */
+static unsigned int get_update_lfu(const unsigned int old_lru)
+{
+    unsigned long counter = lfu_decr_and_return(old_lru);
+    counter = LFULogIncr(counter);
+    return (LFUGetTimeInMinutes()<<8) | counter;
+}
+
+/* From current lru and LRU/LFU config,
+ * Calculate the new lru
+ * For LRU algorithm, it is a simple LRU_CLOCK();
+ * For LFU algorithm, it is complex, please check db.c lookupKey(), updateLFU()
+ *     evict.c LFUDecrAndReturn(), LFULogIncr() for more details
+ */
+static unsigned int get_update_lru_for_rock_hash(const unsigned int old_lru)
+{
+    if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU)
+    {
+        return get_update_lfu(old_lru);
+    }
+    else
+    {
+        return LRU_CLOCK();
+    }
+}
+
 /* Add a hash in redis db to rock hash by allocating the lrus for all fields in the hash.
  *
  * The caller guarantee that: 
@@ -146,7 +204,7 @@ static void add_whole_redis_hash_to_rock_hash(const int dbid, const sds redis_ke
 
     dict *lrus = dictCreate(&fieldLruDictType, NULL);
 
-    const uint64_t clock = LRU_CLOCK();
+    const uint64_t clock = get_init_lru_for_rock_hash();
     dictIterator *di_hash = dictGetIterator((dict*)hash);
     dictEntry *de_hash;
     while ((de_hash = dictNext(di_hash)))
@@ -195,7 +253,7 @@ void on_hash_key_add_field(const int dbid, const sds redis_key, const sds field)
         serverAssert(de_hash);
         const sds internal_field = dictGetKey(de_hash);
 
-        const uint64_t clock = LRU_CLOCK();
+        const uint64_t clock = get_init_lru_for_rock_hash();
         dict *lrus = dictGetVal(de_rock_hash);
 
         serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);
@@ -211,6 +269,7 @@ void on_hash_key_add_field(const int dbid, const sds redis_key, const sds field)
         // create a dict of lrus, add all fields to the lrus
         // then add redis_key and lrus to rock_hash 
         add_whole_redis_hash_to_rock_hash(dbid, internal_redis_key);
+        on_transfer_to_rock_hash(dbid, internal_redis_key);
     }
 }
 
@@ -260,6 +319,8 @@ void on_hash_key_del_field(const int dbid, const sds redis_key, const sds field)
 /* When a client visit a field of a hash only for read, 
  * (e.g., HEXISTS, HGET, HMGET, HSTRLEN but NOT HLEN and HRANDFIELD)
  * we need to update the lru clock.
+ * How to update the lru clock for rock hash, please reference 
+ * db.c lookupKey(). We use similiar ways for LRU/LFU algorithm.
  */
 void on_visit_field_of_hash_for_readonly(const int dbid, const sds redis_key, const sds field)
 {
@@ -291,8 +352,9 @@ void on_visit_field_of_hash_for_readonly(const int dbid, const sds redis_key, co
             if (dictFind(hash, field) == NULL)
                 serverPanic("on_visit_field_of_hash() field in lrus but not in hash, field = %s", field);
             #endif
-            uint64_t clock = LRU_CLOCK();
-            dictGetVal(de_lru) = (void*)clock;
+            const uint64_t old_lru = (uint64_t)dictGetVal(de_lru);
+            const uint64_t new_lru = get_update_lru_for_rock_hash(old_lru);
+            dictGetVal(de_lru) = (void*)new_lru;
         }
         #if defined RED_ROCK_DEBUG
         debug_check_lru("on_visit_field_of_hash", o->ptr, lrus, NULL);
@@ -326,13 +388,15 @@ void on_visit_all_fields_of_hash_for_readonly(const int dbid, const sds redis_ke
     if (de_rock_hash)
     {
         dict *lrus = dictGetVal(de_rock_hash);
-        uint64_t clock = LRU_CLOCK();
+        // uint64_t clock = LRU_CLOCK();
 
         dictIterator *di_lrus = dictGetIterator(lrus);
         dictEntry *de_lrus;
         while ((de_lrus = dictNext(di_lrus)))
         {
-            dictGetVal(de_lrus) = (void*)clock;
+            const uint64_t old_lru = (uint64_t)dictGetVal(de_lrus);
+            const uint64_t new_lru = get_update_lru_for_rock_hash(old_lru);
+            dictGetVal(de_lrus) = (void*)new_lru;
         }
         dictReleaseIterator(di_lrus);
     }
@@ -363,7 +427,7 @@ void on_overwrite_field_for_rock_hash(const int dbid, const sds redis_key, const
         return;
     }
 
-    uint64_t clock = LRU_CLOCK();
+    uint64_t clock = get_init_lru_for_rock_hash();
     if (is_field_rock_value_before)
     {
         // it must have a redis_key in rock hash
@@ -390,7 +454,8 @@ void on_overwrite_field_for_rock_hash(const int dbid, const sds redis_key, const
     }
 }
 
-/* When rock_read.c already recover a field from RocksDB, it needs to add itself to rock hash
+/* When rock_read.c already recover a field from RocksDB or ring buffer,
+ * it needs to add itself to rock hash
  *
  * NOTE: When add to lrus, we need the interal field from db's hash becuase they share
  */
@@ -413,7 +478,7 @@ void on_recover_field_of_hash(const int dbid, const sds redis_key, const sds fie
     serverAssert(de_rock_hash);
     dict *lrus = dictGetVal(de_rock_hash);
 
-    uint64_t clock = LRU_CLOCK();
+    uint64_t clock = get_init_lru_for_rock_hash();
     // internal_field must not exist in lrus becuase of on_rockval_field_of_hash()
     serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);   
 
@@ -503,7 +568,8 @@ void on_del_key_from_db_for_rock_hash(const int dbid, const sds redis_key)
 void on_overwrite_key_from_db_for_rock_hash(const int dbid, const sds redis_key, const robj *new_o)
 {
     redisDb *db = server.db + dbid;
-    dictDelete(db->rock_hash, redis_key);
+    // NOTE: could exist in rock hash or not
+    dictDelete(db->rock_hash, redis_key);       
 
     if (server.hash_max_rock_entries == 0)
         return;

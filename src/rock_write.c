@@ -3,6 +3,7 @@
 #include "rock_marshal.h"
 #include "rock_read.h"
 #include "rock_hash.h"
+#include "rock_evict.h"
 
 // #include <stddef.h>
 // #include <assert.h>
@@ -261,6 +262,7 @@ int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids,
         {
             // the first one wins the setting rock value
             dictGetVal(de_db) = get_match_rock_value(v);
+            on_rockval_key_for_rock_evict(dbid, dictGetKey(de_db));
 
             evict_dbids[evict_len] = dbid;
             // NOTE: we must duplicate tyr_key for write_batch_append_and_abandon()

@@ -34,6 +34,7 @@
 #include "rock.h"
 #include "rock_hash.h"
 // #include "rock_write.h"
+#include "rock_evict.h"
 
 #include <signal.h>
 #include <ctype.h>
@@ -77,6 +78,7 @@ robj *lookupKey(redisDb *db, robj *key, int flags) {
             } else {
                 val->lru = LRU_CLOCK();
             }
+            on_db_visit_key_for_rock_evict(db->id, key->ptr);
         }
         return val;
     } else {
@@ -200,6 +202,8 @@ void dbAdd(redisDb *db, robj *key, robj *val) {
     serverAssertWithInfo(NULL,key,retval == DICT_OK);
     signalKeyAsReady(db, key, val->type);
     if (server.cluster_enabled) slotToKeyAdd(key->ptr);
+
+    on_db_add_key_for_rock_evict(db->id, copy);
 }
 
 /* This is a special version of dbAdd() that is used only when loading
@@ -248,6 +252,8 @@ void dbOverwrite(redisDb *db, robj *key, robj *val) {
     dictFreeVal(db->dict, &auxentry);
 
     on_overwrite_key_from_db_for_rock_hash(db->id, key->ptr, val);
+    // NOTE: must follow the rock hash
+    on_db_overwrite_key_for_rock_evict(db->id, key->ptr, val);
 }
 
 /* High level Set operation. This function can be used in order to set
@@ -320,6 +326,7 @@ robj *dbRandomKey(redisDb *db) {
 int dbSyncDelete(redisDb *db, robj *key) {
     // NOTE: call before deleting the key from db
     on_del_key_from_db_for_rock_hash(db->id, key->ptr);
+    on_db_del_key_for_rock_evict(db->id, key->ptr);
 
     /* Deleting an entry from the expires dict will not free the sds of
      * the key, because it is shared with the main dictionary. */
@@ -456,6 +463,7 @@ long long emptyDb(int dbnum, int flags, void(callback)(void*)) {
 
     /* We need empty the relavant values for rock hash, rock write and rock read */
     on_empty_db_for_hash(dbnum);
+    on_empty_db_for_rock_evict(dbnum);
     // on_empty_db_for_rock_write(dbnum);
     // NOTE: We do not need deal with rock read
     // because all read task won't recover 
