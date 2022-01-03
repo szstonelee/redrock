@@ -15,5 +15,6 @@ void on_rockval_key_for_rock_evict(const int dbid, const sds internal_key);
 void on_recover_key_for_rock_evict(const int dbid, const sds internal_key);
 void on_empty_db_for_rock_evict(const int dbnum);
 
+void evict_pool_init();
 
 #endif

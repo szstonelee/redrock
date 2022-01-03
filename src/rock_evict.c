@@ -249,3 +249,73 @@ void on_empty_db_for_rock_evict(const int dbnum)
         dictEmpty(rock_evict, NULL);
     }
 }
+
+/*                                              */
+/* The following is for eviction pool operation */
+/*                                              */
+
+#define EVPOOL_SIZE 16
+#define EVPOOL_CACHED_SDS_SIZE 255
+
+struct evictKeyPoolEntry 
+{
+    unsigned long long idle;    /* Object idle time (inverse frequency for LFU) */
+    sds key;                    /* Key name. */
+    sds cached;                 /* Cached SDS object for key name. */
+    int dbid;                   /* Key DB number. */
+};
+
+struct evictHashPoolEntry 
+{
+    unsigned long long idle;
+    sds field;
+    sds cached_field;     /* Cached SDS object for field. */
+    sds key;
+    sds cached_key;       /* Cached SDS object for key. */
+    int dbid;
+};
+
+/* The two gloabl pool */
+static struct evictKeyPoolEntry *evict_key_pool = NULL;
+static struct evictHashPoolEntry *evict_hash_pool = NULL;
+
+/* Create a new eviction pool for string or ziplist */
+static void evict_key_pool_alloc(void) 
+{
+    struct evictKeyPoolEntry *ep;
+
+    ep = zmalloc(sizeof(*ep)*EVPOOL_SIZE);
+    for (int i = 0; i < EVPOOL_SIZE; ++i) 
+    {
+        ep[i].idle = 0;
+        ep[i].key = NULL;
+        ep[i].cached = sdsnewlen(NULL,EVPOOL_CACHED_SDS_SIZE);
+        ep[i].dbid = 0;
+    }
+    evict_key_pool = ep;
+}
+
+/* Create a new eviction pool for pure hash. */
+static void evict_hash_pool_alloc(void) {
+    struct evictHashPoolEntry *ep;
+
+    ep = zmalloc(sizeof(*ep)*EVPOOL_SIZE);
+    for (int i = 0; i < EVPOOL_SIZE; ++i) 
+    {
+        ep[i].idle = 0;
+        ep[i].key = NULL;
+        ep[i].field = NULL;
+        ep[i].cached_field = sdsnewlen(NULL,EVPOOL_CACHED_SDS_SIZE);
+        ep[i].cached_key = sdsnewlen(NULL,EVPOOL_CACHED_SDS_SIZE);
+        ep[i].dbid = 0;
+    }
+    evict_hash_pool = ep;
+}
+
+/* Call when server start to init the eviction pool 
+ */
+void evict_pool_init()
+{
+    evict_key_pool_alloc();
+    evict_hash_pool_alloc();
+}

@@ -15,7 +15,7 @@ def _main():
         #test_multi.test_all()
         cnt = cnt + 1
         if cnt % 100 == 0:
-            print(f"test loop for set, list, hash, zset, bitmap, geo, hll OK cnt = {cnt}")
+            print(f"test loop for set, list, hash, zset, bitmap, geo, hyperloglog OK cnt = {cnt}")
 
 
 if __name__ == '__main__':

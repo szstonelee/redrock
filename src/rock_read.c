@@ -5,6 +5,7 @@
 #include "rock_marshal.h"
 #include "rock_write.h"
 #include "rock_hash.h"
+#include "rock_evict.h"
 
 /* Write Spin Lock for Apple OS and Linux */
 #if defined(__APPLE__)
@@ -443,9 +444,10 @@ static void try_recover_val_object_in_redis_db(const int dbid, const sds recover
         {
             #if defined RED_ROCK_DEBUG
             serverAssert(debug_check_type(recover_val, o));
-            #endif      
+            #endif
+            const sds internal_key = dictGetKey(de);      
             dictGetVal(de) = unmarshal_object(recover_val);    
-            on_recover_key_for_rock_evict(dbid, dictGetKey(de));
+            on_recover_key_for_rock_evict(dbid, internal_key);
         }
     }
 
@@ -829,11 +831,14 @@ static list* check_ring_buf_first_and_recover_for_db(const int dbid, const list 
             // the caller on_client_need_rock_keys_for_db() which guaratee this
             serverAssert(de);  
 
-            if (is_rock_value(dictGetVal(de)))      
+            if (is_rock_value(dictGetVal(de)))
+            {
+                const sds internal_key = dictGetKey(de);      
                 // NOTE: the same key could repeat in redis_keys
                 //       so the second duplicated key, we can not guaratee it is rock value
                 dictGetVal(de) = unmarshal_object(recover_val);     // revocer in redis db
-                on_recover_key_for_rock_evict(dbid, dictGetKey(de));
+                on_recover_key_for_rock_evict(dbid, internal_key);
+            }
         }
     }
 

@@ -3157,6 +3157,8 @@ static void init_redrock()
       
     init_and_start_rock_write_thread();  // init rock write
     init_and_start_rock_read_thread();   // init rock read
+
+    evict_pool_init();      // init evcition pool
 }
 
 void initServer(void) {
