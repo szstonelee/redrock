@@ -1,6 +1,7 @@
 #include "rock_evict.h"
 #include "rock.h"
 #include "rock_hash.h"
+#include "rock_write.h"
 
 /* For rockEvictDictType, each db has just one instance.
  * For each key which can be evicted to RocksDB, it store a key and value.
@@ -279,12 +280,10 @@ struct evictHashPoolEntry
 static struct evictKeyPoolEntry *evict_key_pool = NULL;
 static struct evictHashPoolEntry *evict_hash_pool = NULL;
 
-/* Create a new eviction pool for string or ziplist */
+/* Create a new eviction pool for db key of rock evict */
 static void evict_key_pool_alloc(void) 
 {
-    struct evictKeyPoolEntry *ep;
-
-    ep = zmalloc(sizeof(*ep)*EVPOOL_SIZE);
+    struct evictKeyPoolEntry *ep = zmalloc(sizeof(struct evictKeyPoolEntry) * EVPOOL_SIZE);
     for (int i = 0; i < EVPOOL_SIZE; ++i) 
     {
         ep[i].idle = 0;
@@ -292,14 +291,13 @@ static void evict_key_pool_alloc(void)
         ep[i].cached = sdsnewlen(NULL,EVPOOL_CACHED_SDS_SIZE);
         ep[i].dbid = 0;
     }
+
     evict_key_pool = ep;
 }
 
-/* Create a new eviction pool for pure hash. */
+/* Create a new eviction pool for rock hash. */
 static void evict_hash_pool_alloc(void) {
-    struct evictHashPoolEntry *ep;
-
-    ep = zmalloc(sizeof(*ep)*EVPOOL_SIZE);
+    struct evictHashPoolEntry *ep = zmalloc(sizeof(struct evictHashPoolEntry) * EVPOOL_SIZE);
     for (int i = 0; i < EVPOOL_SIZE; ++i) 
     {
         ep[i].idle = 0;
@@ -309,6 +307,7 @@ static void evict_hash_pool_alloc(void) {
         ep[i].cached_key = sdsnewlen(NULL,EVPOOL_CACHED_SDS_SIZE);
         ep[i].dbid = 0;
     }
+
     evict_hash_pool = ep;
 }
 
@@ -318,4 +317,229 @@ void evict_pool_init()
 {
     evict_key_pool_alloc();
     evict_hash_pool_alloc();
+}
+
+/* Check evcit.c evictionPoolPopulate() for more details.
+ * We use the similiar algorithm for eviction so it needs to populate
+ * the eviction pool and use some tricks for optimization of cached sds.
+ * 
+ * Return the number of populated key.
+ */
+static size_t evict_key_pool_populate(const int dbid)
+{
+    // first, sample some keys from rock_evict
+    redisDb *db = server.db + dbid;
+    if (dictSize(db->rock_evict) == 0)
+        return 0;
+
+    dictEntry* sample_des[EVPOOL_SIZE];
+    const unsigned int count = dictGetSomeKeys(db->rock_evict, sample_des, EVPOOL_SIZE);
+    if (count == 0)
+        return 0;
+
+    size_t insert_cnt = 0;
+    struct evictKeyPoolEntry *pool = evict_key_pool;
+
+    for (int j = 0; j < (int)count; j++) {
+        dictEntry *de = sample_des[j];
+        const sds key = dictGetKey(de);
+
+        dictEntry *de_db = dictFind(db->dict, key);
+        serverAssert(de_db);
+        robj *o = dictGetVal(de_db);
+        
+        unsigned long long idle = 
+            server.maxmemory_policy & MAXMEMORY_FLAG_LFU ? 255 - (o->lru & 255) : estimateObjectIdleTime(o);
+
+        /* Insert the element inside the pool.
+         * First, find the first empty bucket or the first populated
+         * bucket that has an idle time smaller than our idle time. */
+        int k = 0;
+        while (k < EVPOOL_SIZE &&
+               pool[k].key &&
+               pool[k].idle < idle) k++;
+        if (k == 0 && pool[EVPOOL_SIZE-1].key != NULL) {
+            /* Can't insert if the element is < the worst element we have
+             * and there are no empty buckets. */
+            continue;
+        } else if (k < EVPOOL_SIZE && pool[k].key == NULL) {
+            /* Inserting into empty position. No setup needed before insert. */
+        } else {
+            /* Inserting in the middle. Now k points to the first element
+             * greater than the element to insert.  */
+            if (pool[EVPOOL_SIZE-1].key == NULL) {
+                /* Free space on the right? Insert at k shifting
+                 * all the elements from k to end to the right. */
+
+                /* Save SDS before overwriting. */
+                sds cached = pool[EVPOOL_SIZE-1].cached;
+                memmove(pool+k+1,pool+k,
+                    sizeof(pool[0])*(EVPOOL_SIZE-k-1));
+                pool[k].cached = cached;
+            } else {
+                /* No free space on right? Insert at k-1 */
+                k--;
+                /* Shift all elements on the left of k (included) to the
+                 * left, so we discard the element with smaller idle time. */
+                sds cached = pool[0].cached; /* Save SDS before overwriting. */
+                if (pool[0].key != pool[0].cached) sdsfree(pool[0].key);
+                memmove(pool,pool+1,sizeof(pool[0])*k);
+                pool[k].cached = cached;
+            }
+            ++insert_cnt;
+        }
+
+        /* Try to reuse the cached SDS string allocated in the pool entry,
+         * because allocating and deallocating this object is costly
+         * (according to the profiler, not my fantasy. Remember:
+         * premature optimization bla bla bla. */
+        int klen = sdslen(key);
+        if (klen > EVPOOL_CACHED_SDS_SIZE) {
+            pool[k].key = sdsdup(key);
+        } else {
+            memcpy(pool[k].cached,key,klen+1);
+            sdssetlen(pool[k].cached,klen);
+            pool[k].key = pool[k].cached;
+        }
+        pool[k].idle = idle;
+        pool[k].dbid = dbid;
+    }
+
+    return insert_cnt;
+}
+
+/* From the key pool, find the right key to be evicted.
+ * Because the pool has previous values, so we need to take care of it.
+ * And we also clear the pool for scanning keys.
+ * 
+ * NOTE: It needs to call evict_key_pool_populate() before this call.
+ */
+static void pick_best_key_from_key_pool(int *best_dbid, sds *best_key)
+{
+    serverAssert(*best_dbid == 0 && *best_key == NULL);
+
+    struct evictKeyPoolEntry *pool = evict_key_pool;
+
+    /* Go backward from best to worst element to evict. */
+    for (int k = EVPOOL_SIZE-1; k >= 0; k--) {
+        if (pool[k].key == NULL) continue;
+
+        const int dbid = pool[k].dbid;
+
+        dict *d = server.db[pool[k].dbid].dict;
+        dictEntry *de = dictFind(d, pool[k].key);
+
+        /* Remove the entry from the pool. */
+        if (pool[k].key != pool[k].cached)
+            sdsfree(pool[k].key);
+
+        pool[k].key = NULL;
+        pool[k].idle = 0;
+
+        /* Check ghost key.
+         * What is the situation for ghost key?
+         * The pool's element has previous value which could be changed.
+         *      e.g. DEL and change anotther type 
+         *           or even be evicted to RocksDB by command rockevict
+         *           or even changed to rock hash
+         */
+        if (de) {
+            robj *o = dictGetVal(de);
+            sds internal_key = dictGetKey(de);
+
+            // NOTE: is_shared_value() guarantee !is_rock_value()
+            if (!is_shared_value(o) &&
+                is_rock_type(o) &&
+                !is_in_rock_hash(dbid, internal_key))
+            {
+                // We found the best key
+                *best_dbid = dbid;
+                *best_key = internal_key;
+                return;
+            }
+        }
+    }
+
+    // We can not find the best key from the pool
+}
+
+/* Perform one key eviction.
+ * The return value is the memory size for eviction (NOTE: not actually released because the async mode)
+ * If memory size is zero, it means failure for such cases:
+ * 1. key pool populate fail (but could be temporary)
+ * 2. can not find the best key in th pool for eviction. (it also could be temporary)
+ */
+static size_t perform_one_key_eviction()
+{
+    static int key_loop_dbid = 0;   // loop for each db
+
+    const int dbnum = server.dbnum;
+    int all_db_not_available = 1;
+    for (int i = 0; i < dbnum; ++i)
+    {
+        const int ret = evict_key_pool_populate(key_loop_dbid);
+        if (ret != 0)
+        {
+            all_db_not_available = 0;
+            break;
+        }
+        
+        ++key_loop_dbid;
+        if (key_loop_dbid == dbnum)
+            key_loop_dbid = 0;
+    }
+
+    if (all_db_not_available)
+        return 0;
+
+    int best_dbid = 0;
+    sds best_key = NULL;
+    pick_best_key_from_key_pool(&best_dbid, &best_key);
+    if (best_key == NULL)
+        return 0;
+
+    // We can evict the key
+    size_t mem = 0;
+    int not_write_success = 1;
+    while (not_write_success)
+    {
+        const int ret = try_evict_one_key_to_rocksdb(best_dbid, best_key, &mem);
+        switch (ret)
+        {
+        case TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL:
+            break;      // try again until success
+        case TRY_EVICT_ONE_SUCCESS:
+            not_write_success = 0;
+            break;
+        default:
+            serverPanic("perform_one_key_eviction()");
+        }
+    }
+    
+    return mem;
+}
+
+void perform_key_eviction(const size_t want_to_free)
+{
+    int finish = 0;
+    size_t free_total = 0;
+    monotime evictionTimer;
+    elapsedStart(&evictionTimer);
+
+    while (!finish)
+    {
+        size_t will_free_mem = perform_one_key_eviction();
+
+        free_total += will_free_mem;
+
+        if (free_total >= want_to_free)
+        {
+            finish = 1;
+        }
+        else
+        {
+            if (elapsedMs(evictionTimer) >= 10)
+                finish = 1;            
+        }
+    }
 }

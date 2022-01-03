@@ -1033,7 +1033,7 @@ void rock_evict(client *c)
         // can try to evcit this key
         while (r == NULL)
         {
-            const int ret = try_evict_one_key_to_rocksdb_by_rockevict_command(dbid, key);
+            const int ret = try_evict_one_key_to_rocksdb(dbid, key, NULL);
                         
             switch (ret)
             {
@@ -1137,7 +1137,7 @@ void rock_evict_hash(client *c)
         while (r == NULL)
         {
             const int ret = 
-                try_evict_one_field_to_rocksdb_by_rockevithash_command(dbid, hash_key, hash_field);
+                try_evict_one_field_to_rocksdb(dbid, hash_key, hash_field, NULL);
             switch (ret)
             {
             case TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL:

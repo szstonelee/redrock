@@ -120,7 +120,7 @@ static void batch_append_to_ringbuf(const int len, sds* keys, sds* vals)
  * NOTE: We need to use lock to guarantee the data race 
  *       (Write thread maybe decrease rbuf_len)
  */
-int space_in_write_ring_buffer()
+static int space_in_write_ring_buffer()
 {
     rock_w_lock();
     const int space = RING_BUFFER_LEN - rbuf_len;
@@ -200,6 +200,101 @@ static void write_batch_for_hash_and_abandon(const int len, const int *dbids, sd
     }
 }
 
+static size_t estimate_mem_for_object(const robj *o)
+{
+    serverAssert(o);
+    serverAssert(!is_rock_value(o));
+
+    size_t mem = sizeof(*o);    // the struct of robj
+
+    switch(o->type)
+    {
+    case OBJ_STRING:
+        if (o->encoding == OBJ_ENCODING_INT)
+        {
+            return mem;
+        }
+        else if (o->encoding == OBJ_ENCODING_RAW || o->encoding == OBJ_ENCODING_EMBSTR)
+        {
+            mem += sdsAllocSize(o->ptr);
+            return mem;
+        }
+        break;
+
+    case OBJ_LIST:
+        if (o->encoding == OBJ_ENCODING_QUICKLIST)
+        {
+            quicklist *l = o->ptr;
+            mem += sizeof(*l);
+            // TODO: use sample ways
+            return mem;
+        }
+        
+        break;
+
+    case OBJ_SET:
+        if (o->encoding == OBJ_ENCODING_INTSET)
+        {
+            intset *is = o->ptr;
+            mem += sizeof(*is);
+            // TODO
+            return mem;
+        }
+        else if (o->encoding == OBJ_ENCODING_HT)
+        {
+            dict *d = o->ptr;
+            mem += sizeof(*d);
+            // TODO
+            return mem;
+        }
+        break;
+
+    case OBJ_HASH:
+        if (o->encoding == OBJ_ENCODING_HT)
+        {
+            dict *d = o->ptr;
+            mem += sizeof(*d);
+            // TODO
+            return mem;
+        }
+        else if (o->encoding == OBJ_ENCODING_ZIPLIST)
+        {
+            unsigned char *zl = o->ptr;
+            mem += ziplistBlobLen(zl);
+            return mem;
+        }
+        break;
+
+    case OBJ_ZSET:
+        if (o->encoding == OBJ_ENCODING_ZIPLIST)
+        {
+            unsigned char *zl  = o->ptr;
+            mem += ziplistBlobLen(zl);
+            return mem;
+        }
+        else if (o->encoding == OBJ_ENCODING_SKIPLIST)
+        {
+            zset *zs = o->ptr;
+            mem += sizeof(*zs);
+
+            dict *zs_dict = zs->dict;
+            mem += sizeof((*zs_dict));
+            zskiplist *zsl = zs->zsl;
+            mem += sizeof(*zsl);
+            // TOOO
+            return mem;
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    serverPanic("estimate_mem_for_object(), unknow type = %d or encoding = %d",
+                (int)o->type, (int)o->encoding);
+    return 0;
+}
+
 /* Called in main thread by cron and command ROCKEVICT.
  *
  * When caller select some keys (before setting rock value), it will call here
@@ -209,7 +304,8 @@ static void write_batch_for_hash_and_abandon(const int len, const int *dbids, sd
  * 
  * try_evict_to_rocksdb_for_db() will set the values to rock value for these matched keys.
  * 
- * Return the actual number of keys for eviction whkch are really setted to rock value.
+ * Return the actual number of keys for eviction whkch are really setted to rock value
+ *        and the estimated memory size for eviction because the eviction is for an robj.
  * 
  * NOTE1: The caller needs to use space_in_write_ring_buffer() first
  *        to know the available space for ring buffer.
@@ -226,14 +322,14 @@ static void write_batch_for_hash_and_abandon(const int len, const int *dbids, sd
  *        The caller needs exclude them from the try_keys and guarantee this.
  * 
  * NOTE5: The keys must be in redis db.
- * 
- * NOTE6: IF from_cron is true, it is called from server cron() job.
- *        And cron() gurantee not use duplicated keys.
  */
-int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, 
-                                const sds *try_keys, const int from_cron)
+static int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, 
+                                       const sds *try_keys, size_t *mem)
 {
     serverAssert(try_len > 0);
+
+    if (mem)
+        *mem = 0;
 
     int evict_len = 0;
     int evict_dbids[RING_BUFFER_LEN];
@@ -270,13 +366,12 @@ int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids,
             evict_vals[evict_len] = v;
 
             ++evict_len;
+            if (mem)
+                *mem += estimate_mem_for_object(v);
         }
     }
 
     serverAssert(evict_len > 0);
-    if (from_cron)
-        // cron can not use duplicated keys, check NOTE 6.
-        serverAssert(evict_len == try_len);     
 
     write_batch_for_db_and_abandon(evict_len, evict_dbids, evict_keys, evict_vals);
 
@@ -293,7 +388,7 @@ int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids,
  * and the first key+field win the setting value to rock value.
  *
  * try_evict_to_rocksdb_for_hash() will set value to rock value for these matched fields.
- * Return the actual number of fields for eviction.
+ * Return the actual number of fields for eviction and the memory for eviction.
  *
  * NOTE1: The caller needs to use space_in_write_ring_buffer() first
  *        to know the available space for ring buffer.
@@ -308,15 +403,15 @@ int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids,
  *        The caller needs exclude them from the try_keys and guarantee this.
  * 
  * NOTE5: The key and filed must in redis db and has the correct type.
- * 
- * NOTE6: IF from_cron is true, it is called from server cron() job.
- *        And cron() gurantee not use duplicated key+field.
  */
-int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, 
-                                  const sds *try_keys, const sds *try_fields,
-                                  const int from_cron)
+static int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, 
+                                         const sds *try_keys, const sds *try_fields,
+                                         size_t *mem)
 {
     serverAssert(try_len > 0);
+
+    if (mem)
+        *mem = 0;
 
     int evict_len = 0;
     int evict_dbids[RING_BUFFER_LEN];
@@ -360,13 +455,12 @@ int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids,
             evict_vals[evict_len] = v;
 
             ++evict_len;
+            if (mem)
+                *mem += sdsAllocSize(v);
         }
     }
 
     serverAssert(evict_len > 0);
-    if (from_cron)
-        // cron can not use duplicated key+field, check NOTE 6.
-        serverAssert(evict_len == try_len);     
 
     write_batch_for_hash_and_abandon(evict_len, evict_dbids, evict_keys, evict_fields, evict_vals);
 
@@ -381,20 +475,20 @@ int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids,
  * 3. the key can not in candidates
  * 4. the key can not in rock hash
  *
- * If succesful, return TRY_EVICT_ONE_SUCCESS.
+ * If succesful, return TRY_EVICT_ONE_SUCCESS and if mem is valid, it saves the size of memory to evict.
  * 
  * If ring buffer is full right now, return TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL.
  * The caller can try again because the write thread is busy working 
  * and has not finished the wrintg jobs.
  * 
  */
-int try_evict_one_key_to_rocksdb_by_rockevict_command(const int dbid, const sds key)
+int try_evict_one_key_to_rocksdb(const int dbid, const sds key, size_t *mem)
 {
     const int space = space_in_write_ring_buffer();
     if (space == 0)
         return TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL;
     
-    serverAssert(try_evict_to_rocksdb_for_db(1, &dbid, &key, 0) == 1);
+    serverAssert(try_evict_to_rocksdb_for_db(1, &dbid, &key, mem) == 1);
     return TRY_EVICT_ONE_SUCCESS;
 }
 
@@ -403,13 +497,14 @@ int try_evict_one_key_to_rocksdb_by_rockevict_command(const int dbid, const sds 
  * Check the above try_evict_one_key_to_rocksdb_by_rockevict_command() more help
  * because there are a lot of constraints.
  */
-int try_evict_one_field_to_rocksdb_by_rockevithash_command(const int dbid, const sds key, const sds field)
+int try_evict_one_field_to_rocksdb(const int dbid, const sds key, 
+                                   const sds field, size_t *mem)
 {
     const int space = space_in_write_ring_buffer();
     if (space == 0)
         return TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL;
 
-    serverAssert(try_evict_to_rocksdb_for_hash(1, &dbid, &key, &field, 0) == 1);
+    serverAssert(try_evict_to_rocksdb_for_hash(1, &dbid, &key, &field, mem) == 1);
     return TRY_EVICT_ONE_SUCCESS;
 }
 
