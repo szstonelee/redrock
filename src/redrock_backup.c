@@ -786,4 +786,200 @@ inline int is_evict_value(const robj *v)
 
 
 
+#define MAX_ESTIMATE_STEPS     32
+
+/* We use approximate algorithm to estimate a quicklist memory
+ * If quicklist count is less than or equal to MAX_ESTIMATE_STEPS,
+ * it will be the acutal memory size.
+ * Otherwise, we use avarge prediction for the whole quicklist.
+ */
+static size_t estimate_quicklist(const robj *o)
+{
+    quicklist *ql = o->ptr;
+    size_t mem = sizeof(*ql);
+    
+    const size_t ql_count = quicklistCount(ql);
+    if (ql_count == 0)
+        return mem;
+
+    quicklistIter *qit = quicklistGetIterator(ql, AL_START_HEAD);
+    quicklistEntry entry;
+    size_t steps = 0;
+    size_t step_nodes_mem = 0;    
+    while(quicklistNext(qit, &entry)) 
+    {
+        // each entry (node) encoded as ziplist
+        unsigned char *zl = entry.node->zl;
+        step_nodes_mem += ziplistBlobLen(zl);
+
+        ++steps;
+        if (steps == MAX_ESTIMATE_STEPS)
+            break;
+    }
+    quicklistReleaseIterator(qit);    
+    
+    serverAssert(steps > 0 && ql_count >= steps);
+    size_t estimate_nodes_mem = step_nodes_mem;
+    if (ql_count > steps)
+         estimate_nodes_mem *= ql_count / steps;
+    
+    mem += estimate_nodes_mem;
+    mem += sizeof(quicklistNode) * ql_count;
+
+    return mem;
+}
+
+/* We use approximate algorithm to estimate a hash memory
+ * If hash count is less than or equal to MAX_ESTIMATE_STEPS,
+ * it will be the acutal memory size.
+ * Otherwise, we use avarge prediction for the whole hash.
+ * 
+ * If value_as_sds is true (i.e., 1), the value of sds is calculated as a sds pointer.
+ * Otherwise, it is either a NULL pointer(like set type) or real pointer(list zset) 
+ *            which we do not calculate for the memory. 
+ */
+static size_t estimate_hash(dict *d, const int value_as_sds)
+{
+    size_t mem = sizeof(dict);
+    mem += sizeof(dictEntry) * (d->ht[0].size + d->ht[1].size);
+
+    const size_t dict_cnt = dictSize(d);
+    if (dict_cnt == 0)
+        return mem;
+
+    dictIterator *di = dictGetIterator(d);
+    dictEntry* de;
+    size_t steps = 0;
+    size_t step_nodes_mem = 0;    
+    while ((de = dictNext(di)))
+    {
+        const sds key = dictGetKey(de);
+        const sds val = dictGetVal(de);
+
+        step_nodes_mem += sdsAllocSize(key);
+
+        if (value_as_sds)
+            step_nodes_mem += sdsAllocSize(val);
+
+        ++steps;
+        if (steps == MAX_ESTIMATE_STEPS)
+            break;
+    }
+    dictReleaseIterator(di);    
+
+    serverAssert(steps > 0 && dict_cnt >= steps);
+    size_t estimate_nodes_mem = step_nodes_mem;
+    if (dict_cnt > steps)
+         estimate_nodes_mem *= dict_cnt / steps;
+    
+    mem += estimate_nodes_mem;
+
+    return mem;
+
+}
+
+staic size_t estimate_zskiplist(zskiplist *zsl)
+{
+    size_t mem = sizeof(zskiplist);
+
+    const size_t zsl_cnt = zsl->length;
+    if (zsl_cnt == 0)
+        return mem;
+
+    mem += zsl_cnt * sizeof(zskiplistNode);
+
+    
+
+    return mem;
+}
+
+static size_t estimate_mem_for_object(const robj *o)
+{
+    serverAssert(o);
+    serverAssert(!is_rock_value(o));
+
+    size_t mem = sizeof(*o);    // the struct of robj
+
+    switch(o->type)
+    {
+    case OBJ_STRING:
+        if (o->encoding == OBJ_ENCODING_INT)
+        {
+            return mem;
+        }
+        else if (o->encoding == OBJ_ENCODING_RAW || o->encoding == OBJ_ENCODING_EMBSTR)
+        {
+            mem += sdsAllocSize(o->ptr);
+            return mem;
+        }
+        break;
+
+    case OBJ_LIST:
+        if (o->encoding == OBJ_ENCODING_QUICKLIST)
+        {
+            mem += estimate_quicklist(o);
+            return mem;
+        }        
+        break;
+
+    case OBJ_SET:
+        if (o->encoding == OBJ_ENCODING_INTSET)
+        {
+            intset *is = o->ptr;
+            mem += intsetBlobLen(is);
+            return mem;
+        }
+        else if (o->encoding == OBJ_ENCODING_HT)
+        {
+            dict *d = o->ptr;
+            mem += estimate_hash(d, 0);
+            return mem;
+        }
+        break;
+
+    case OBJ_HASH:
+        if (o->encoding == OBJ_ENCODING_HT)
+        {
+            dict *d = o->ptr;
+            mem += estimate_hash(d, 1);
+            return mem;
+        }
+        else if (o->encoding == OBJ_ENCODING_ZIPLIST)
+        {
+            unsigned char *zl = o->ptr;
+            mem += ziplistBlobLen(zl);
+            return mem;
+        }
+        break;
+
+    case OBJ_ZSET:
+        if (o->encoding == OBJ_ENCODING_ZIPLIST)
+        {
+            unsigned char *zl  = o->ptr;
+            mem += ziplistBlobLen(zl);
+            return mem;
+        }
+        else if (o->encoding == OBJ_ENCODING_SKIPLIST)
+        {
+            zset *zs = o->ptr;
+            mem += sizeof(*zs);
+
+            dict *zs_dict = zs->dict;
+            mem += estimate_hash(zs_dict, 0);
+
+            zskiplist *zsl = zs->zsl;
+            mem += estimate_zskiplist(zsl);
+
+            return mem;
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    serverPanic("estimate_mem_for_object(), unknow type = %d or encoding = %d",
+                (int)o->type, (int)o->encoding);
+    return 0;
+}
 

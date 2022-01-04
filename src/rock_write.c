@@ -200,100 +200,6 @@ static void write_batch_for_hash_and_abandon(const int len, const int *dbids, sd
     }
 }
 
-static size_t estimate_mem_for_object(const robj *o)
-{
-    serverAssert(o);
-    serverAssert(!is_rock_value(o));
-
-    size_t mem = sizeof(*o);    // the struct of robj
-
-    switch(o->type)
-    {
-    case OBJ_STRING:
-        if (o->encoding == OBJ_ENCODING_INT)
-        {
-            return mem;
-        }
-        else if (o->encoding == OBJ_ENCODING_RAW || o->encoding == OBJ_ENCODING_EMBSTR)
-        {
-            mem += sdsAllocSize(o->ptr);
-            return mem;
-        }
-        break;
-
-    case OBJ_LIST:
-        if (o->encoding == OBJ_ENCODING_QUICKLIST)
-        {
-            quicklist *l = o->ptr;
-            mem += sizeof(*l);
-            // TODO: use sample ways
-            return mem;
-        }
-        
-        break;
-
-    case OBJ_SET:
-        if (o->encoding == OBJ_ENCODING_INTSET)
-        {
-            intset *is = o->ptr;
-            mem += sizeof(*is);
-            // TODO
-            return mem;
-        }
-        else if (o->encoding == OBJ_ENCODING_HT)
-        {
-            dict *d = o->ptr;
-            mem += sizeof(*d);
-            // TODO
-            return mem;
-        }
-        break;
-
-    case OBJ_HASH:
-        if (o->encoding == OBJ_ENCODING_HT)
-        {
-            dict *d = o->ptr;
-            mem += sizeof(*d);
-            // TODO
-            return mem;
-        }
-        else if (o->encoding == OBJ_ENCODING_ZIPLIST)
-        {
-            unsigned char *zl = o->ptr;
-            mem += ziplistBlobLen(zl);
-            return mem;
-        }
-        break;
-
-    case OBJ_ZSET:
-        if (o->encoding == OBJ_ENCODING_ZIPLIST)
-        {
-            unsigned char *zl  = o->ptr;
-            mem += ziplistBlobLen(zl);
-            return mem;
-        }
-        else if (o->encoding == OBJ_ENCODING_SKIPLIST)
-        {
-            zset *zs = o->ptr;
-            mem += sizeof(*zs);
-
-            dict *zs_dict = zs->dict;
-            mem += sizeof((*zs_dict));
-            zskiplist *zsl = zs->zsl;
-            mem += sizeof(*zsl);
-            // TOOO
-            return mem;
-        }
-        break;
-
-    default:
-        break;
-    }
-
-    serverPanic("estimate_mem_for_object(), unknow type = %d or encoding = %d",
-                (int)o->type, (int)o->encoding);
-    return 0;
-}
 
 /* Called in main thread by cron and command ROCKEVICT.
  *
@@ -323,9 +229,12 @@ static size_t estimate_mem_for_object(const robj *o)
  * 
  * NOTE5: The keys must be in redis db.
  */
+#define OBJ_SIZE_SAMPLE_NUMBER      32
 static int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, 
                                        const sds *try_keys, size_t *mem)
 {
+    size_t objectComputeSize(robj *o, size_t sample_size);  // declaration in object.c
+
     serverAssert(try_len > 0);
 
     if (mem)
@@ -367,7 +276,7 @@ static int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids,
 
             ++evict_len;
             if (mem)
-                *mem += estimate_mem_for_object(v);
+                *mem += objectComputeSize(v, OBJ_SIZE_SAMPLE_NUMBER);
         }
     }
 

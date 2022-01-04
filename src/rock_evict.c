@@ -255,8 +255,9 @@ void on_empty_db_for_rock_evict(const int dbnum)
 /* The following is for eviction pool operation */
 /*                                              */
 
-#define EVPOOL_SIZE 16
-#define EVPOOL_CACHED_SDS_SIZE 255
+#define EVPOOL_SIZE             16      // like Redis eviction pool size
+#define EVPOOL_CACHED_SDS_SIZE  255
+#define SAMPLE_NUMBER           5       // like Redis sample number
 
 struct evictKeyPoolEntry 
 {
@@ -283,7 +284,9 @@ static struct evictHashPoolEntry *evict_hash_pool = NULL;
 /* Create a new eviction pool for db key of rock evict */
 static void evict_key_pool_alloc(void) 
 {
-    struct evictKeyPoolEntry *ep = zmalloc(sizeof(struct evictKeyPoolEntry) * EVPOOL_SIZE);
+    struct evictKeyPoolEntry *ep = 
+           zmalloc(sizeof(struct evictKeyPoolEntry) * EVPOOL_SIZE);
+
     for (int i = 0; i < EVPOOL_SIZE; ++i) 
     {
         ep[i].idle = 0;
@@ -297,7 +300,9 @@ static void evict_key_pool_alloc(void)
 
 /* Create a new eviction pool for rock hash. */
 static void evict_hash_pool_alloc(void) {
-    struct evictHashPoolEntry *ep = zmalloc(sizeof(struct evictHashPoolEntry) * EVPOOL_SIZE);
+    struct evictHashPoolEntry *ep = 
+           zmalloc(sizeof(struct evictHashPoolEntry) * EVPOOL_SIZE);
+
     for (int i = 0; i < EVPOOL_SIZE; ++i) 
     {
         ep[i].idle = 0;
@@ -332,15 +337,15 @@ static size_t evict_key_pool_populate(const int dbid)
     if (dictSize(db->rock_evict) == 0)
         return 0;
 
-    dictEntry* sample_des[EVPOOL_SIZE];
-    const unsigned int count = dictGetSomeKeys(db->rock_evict, sample_des, EVPOOL_SIZE);
-    if (count == 0)
-        return 0;
+    dictEntry* sample_des[SAMPLE_NUMBER];
+    const unsigned int count = dictGetSomeKeys(db->rock_evict, sample_des, SAMPLE_NUMBER);
+    serverAssert(count != 0);
 
     size_t insert_cnt = 0;
     struct evictKeyPoolEntry *pool = evict_key_pool;
 
-    for (int j = 0; j < (int)count; j++) {
+    for (int j = 0; j < (int)count; j++) 
+    {
         dictEntry *de = sample_des[j];
         const sds key = dictGetKey(de);
 
@@ -348,8 +353,8 @@ static size_t evict_key_pool_populate(const int dbid)
         serverAssert(de_db);
         robj *o = dictGetVal(de_db);
         
-        unsigned long long idle = 
-            server.maxmemory_policy & MAXMEMORY_FLAG_LFU ? 255 - (o->lru & 255) : estimateObjectIdleTime(o);
+        unsigned long long idle = server.maxmemory_policy & MAXMEMORY_FLAG_LFU ? 
+                                  255 - (o->lru & 255) : estimateObjectIdleTime(o);
 
         /* Insert the element inside the pool.
          * First, find the first empty bucket or the first populated
@@ -358,16 +363,23 @@ static size_t evict_key_pool_populate(const int dbid)
         while (k < EVPOOL_SIZE &&
                pool[k].key &&
                pool[k].idle < idle) k++;
-        if (k == 0 && pool[EVPOOL_SIZE-1].key != NULL) {
+
+        if (k == 0 && pool[EVPOOL_SIZE-1].key != NULL) 
+        {
             /* Can't insert if the element is < the worst element we have
              * and there are no empty buckets. */
             continue;
-        } else if (k < EVPOOL_SIZE && pool[k].key == NULL) {
+        } 
+        else if (k < EVPOOL_SIZE && pool[k].key == NULL) 
+        {
             /* Inserting into empty position. No setup needed before insert. */
-        } else {
+        } 
+        else 
+        {
             /* Inserting in the middle. Now k points to the first element
              * greater than the element to insert.  */
-            if (pool[EVPOOL_SIZE-1].key == NULL) {
+            if (pool[EVPOOL_SIZE-1].key == NULL) 
+            {
                 /* Free space on the right? Insert at k shifting
                  * all the elements from k to end to the right. */
 
@@ -376,7 +388,9 @@ static size_t evict_key_pool_populate(const int dbid)
                 memmove(pool+k+1,pool+k,
                     sizeof(pool[0])*(EVPOOL_SIZE-k-1));
                 pool[k].cached = cached;
-            } else {
+            } 
+            else 
+            {
                 /* No free space on right? Insert at k-1 */
                 k--;
                 /* Shift all elements on the left of k (included) to the
@@ -394,13 +408,17 @@ static size_t evict_key_pool_populate(const int dbid)
          * (according to the profiler, not my fantasy. Remember:
          * premature optimization bla bla bla. */
         int klen = sdslen(key);
-        if (klen > EVPOOL_CACHED_SDS_SIZE) {
+        if (klen > EVPOOL_CACHED_SDS_SIZE) 
+        {
             pool[k].key = sdsdup(key);
-        } else {
+        } 
+        else 
+        {
             memcpy(pool[k].cached,key,klen+1);
             sdssetlen(pool[k].cached,klen);
             pool[k].key = pool[k].cached;
         }
+
         pool[k].idle = idle;
         pool[k].dbid = dbid;
     }
@@ -463,13 +481,18 @@ static void pick_best_key_from_key_pool(int *best_dbid, sds *best_key)
     // We can not find the best key from the pool
 }
 
-/* Perform one key eviction.
+/* Try to perform one key eviction.
+ *
  * The return value is the memory size for eviction (NOTE: not actually released because the async mode)
+ * 
  * If memory size is zero, it means failure for such cases:
- * 1. key pool populate fail (but could be temporary)
- * 2. can not find the best key in th pool for eviction. (it also could be temporary)
+ * 1. the db->rock_evict is empty (but the caller should avoid this condition)
+ * 2. can not find the best key in th pool for eviction because 2-1) and 2-2)
+ *    2-1) the sample are all younger than all itmes in the previous pool
+ *    2-2) the pool are all ghosts
+ *    but we can retry because ghosts will leave the pool for pick_best_key_from_key_pool() call
  */
-static size_t perform_one_key_eviction()
+static size_t try_to_perform_one_key_eviction()
 {
     static int key_loop_dbid = 0;   // loop for each db
 
@@ -519,16 +542,33 @@ static size_t perform_one_key_eviction()
     return mem;
 }
 
-void perform_key_eviction(const size_t want_to_free)
+/* Try to evict keys to the want_to_free size
+ *
+ * 1. if we calculate the evict size (because aysnc mode and approximate esitmate) 
+ *    over want_to_free, returnn
+ * 2. or if timeout (10ms), return. Timeout could be for the busy of RocksDB write
+ */
+static void perform_key_eviction(const size_t want_to_free)
 {
     int finish = 0;
     size_t free_total = 0;
     monotime evictionTimer;
     elapsedStart(&evictionTimer);
+    int try_fail_cnt = 0;
 
     while (!finish)
     {
-        size_t will_free_mem = perform_one_key_eviction();
+        size_t will_free_mem = try_to_perform_one_key_eviction();
+        if (will_free_mem == 0)
+        {
+            ++try_fail_cnt;
+            if (try_fail_cnt >= 2)
+                serverLog(LL_WARNING, "try_to_perform_one_key_eviction() return 2 failure continously!");
+        }
+        else
+        {
+            try_fail_cnt = 0;
+        }
 
         free_total += will_free_mem;
 
@@ -539,7 +579,9 @@ void perform_key_eviction(const size_t want_to_free)
         else
         {
             if (elapsedMs(evictionTimer) >= 10)
-                finish = 1;            
+                // timeout
+                finish = 1;    
+                serverLog(LL_WARNING, "perform_key_eviction() timeout");        
         }
     }
 }
