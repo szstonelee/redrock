@@ -150,6 +150,7 @@ void on_db_del_key_for_rock_evict(const int dbid, const sds key)
 }
 
 /* After a key is overwritten in redis db, it will call here.
+ *       e.g., set k v  then set k 1. This example will change the value to a shared object.
  * The new_o is the replaced object for the redis_key in db.
  */
 void on_db_overwrite_key_for_rock_evict(const int dbid, const sds key, const robj *new_o)
@@ -171,12 +172,13 @@ void on_db_overwrite_key_for_rock_evict(const int dbid, const sds key, const rob
     if (is_shared_value(new_o))
         return;
 
+    const sds internal_key = dictGetKey(de);
+
     // NOTE: because on_overwrite_key_from_db_for_rock_hash()
     //       call before on_db_overwrite_key_for_rock_evict()
-    if (is_in_rock_hash(dbid, key))
+    if (is_in_rock_hash(dbid, internal_key))
         return;
 
-    sds internal_key = dictGetKey(de);
     serverAssert(dictAdd(db->rock_evict, internal_key, NULL) == DICT_OK);
 }
 
@@ -444,7 +446,7 @@ static void pick_best_key_from_key_pool(int *best_dbid, sds *best_key)
 
         const int dbid = pool[k].dbid;
 
-        dict *d = server.db[pool[k].dbid].dict;
+        dict *d = server.db[dbid].dict;
         dictEntry *de = dictFind(d, pool[k].key);
 
         /* Remove the entry from the pool. */
@@ -519,7 +521,12 @@ static size_t try_to_perform_one_key_eviction()
     sds best_key = NULL;
     pick_best_key_from_key_pool(&best_dbid, &best_key);
     if (best_key == NULL)
+    {
+        // In theory, we can not get this condition
+        // but return zero is safe for this abnormal condition
+        serverLog(LL_WARNING, "best_key == NULL for key eviction");
         return 0;
+    }
 
     // We can evict the key
     size_t mem = 0;
@@ -532,6 +539,7 @@ static size_t try_to_perform_one_key_eviction()
         case TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL:
             break;      // try again until success
         case TRY_EVICT_ONE_SUCCESS:
+            // serverLog(LL_WARNING, "evict key = %s, dbid = %d, mem = %lu", best_key, best_dbid, mem);
             not_write_success = 0;
             break;
         default:
@@ -539,6 +547,7 @@ static size_t try_to_perform_one_key_eviction()
         }
     }
     
+    serverAssert(mem > 0);
     return mem;
 }
 
@@ -548,40 +557,33 @@ static size_t try_to_perform_one_key_eviction()
  *    over want_to_free, returnn
  * 2. or if timeout (10ms), return. Timeout could be for the busy of RocksDB write
  */
-static void perform_key_eviction(const size_t want_to_free)
+void perform_key_eviction(const size_t want_to_free)
 {
-    int finish = 0;
     size_t free_total = 0;
     monotime evictionTimer;
     elapsedStart(&evictionTimer);
-    int try_fail_cnt = 0;
 
-    while (!finish)
+    while (free_total < want_to_free)
     {
         size_t will_free_mem = try_to_perform_one_key_eviction();
         if (will_free_mem == 0)
         {
-            ++try_fail_cnt;
-            if (try_fail_cnt >= 2)
-                serverLog(LL_WARNING, "try_to_perform_one_key_eviction() return 2 failure continously!");
-        }
-        else
-        {
-            try_fail_cnt = 0;
+            // In theory, it means no key avaiable for eviction
+            // while the memory is not enough
+            serverLog(LL_WARNING, "No available keys for eviction!");
+            return;
         }
 
         free_total += will_free_mem;
 
-        if (free_total >= want_to_free)
+        if (free_total < want_to_free && elapsedMs(evictionTimer) >= 10)
         {
-            finish = 1;
-        }
-        else
-        {
-            if (elapsedMs(evictionTimer) >= 10)
-                // timeout
-                finish = 1;    
-                serverLog(LL_WARNING, "perform_key_eviction() timeout");        
+            // timeout
+            serverLog(LL_WARNING, "perform_key_eviction() timeout, but alreay evict mem = %lu", free_total);   
+            return;     
         }
     }
+
+    // serverLog(LL_WARNING, "perform_key_eviction success, want_to_free = %lu, free_total = %lu",
+    //          want_to_free, free_total);
 }

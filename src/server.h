@@ -718,6 +718,7 @@ typedef struct redisDb {
     dict *ready_keys;           /* Blocked keys that received a PUSH */
     dict *watched_keys;         /* WATCHED keys for MULTI/EXEC CAS */
     dict *rock_hash;            /* Rock hash for each field for RocksDB */ 
+    size_t rock_hash_field_cnt; /* Rock hash field total count */
     dict *rock_evict;           /* Rock evict for whole key for RocksDB */
     int id;                     /* Database ID */
     long long avg_ttl;          /* Average TTL, just for stats */

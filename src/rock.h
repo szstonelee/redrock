@@ -63,8 +63,8 @@ int check_and_set_rock_status_in_processCommand(client *c);
  */
 inline int is_rock_value(const robj *v)
 {
-    return  v == shared.rock_val_str_other ||
-            v == shared.rock_val_str_int ||
+    return  v == shared.rock_val_str_int ||
+            v == shared.rock_val_str_other ||
             v == shared.rock_val_list_quicklist ||
             v == shared.rock_val_set_int ||
             v == shared.rock_val_set_ht ||
@@ -82,8 +82,7 @@ inline int is_shared_value(const robj *v)
     return v->refcount == OBJ_SHARED_REFCOUNT;
 }
 
-
-/* Only OBJ_STRING, OBJ_LIST, OBJ_SET, OBJ_HASH, OBJ_ZSET is included
+/* Only OBJ_STRING (exclude OBJ_ENCODING_INT), OBJ_LIST, OBJ_SET, OBJ_HASH, OBJ_ZSET is included
  * and can be evicted to RocksDB.
  * Check get_match_rock_value() in rock_marshal.c
  * 
@@ -107,17 +106,6 @@ inline int is_not_supported_evict_type(const robj *v)
     return !is_rock_type(v);
 }
 
-/*
-inline int is_evict_hash_value(const sds v)
-{
-    return v != shared.hash_rock_val_for_field;
-}
-*/
-
-/* Check a client is in the state waiting for rock value.
- * Return 1 if the client is waiting some rock value.
- * Otherwise return 0.
- */
 inline int is_client_in_waiting_rock_value_state(const client *c)
 {
     return c->rock_key_num != 0;

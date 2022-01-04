@@ -12,6 +12,7 @@
 #include "rock_read.h"
 #include "rock_hash.h"
 #include "rock_marshal.h"
+#include "rock_evict.h"
 
 #include <dirent.h>
 #include <ftw.h>
@@ -190,30 +191,16 @@ void init_rocksdb(const char* folder_original_path)
 }
 
 
-
-/*
-static sds debug_random_sds(const int max_len)
-{
-    int rand_len = random() % max_len;
-
-    sds s = sdsempty();
-    s = sdsMakeRoomFor(s, max_len);
-    for (int i = 0; i < rand_len; ++i)
-    {
-        const char c = 'a' + (random() % 26);
-        s = sdscatlen(s, &c, 1);
-    }
-    return s;
-}
-*/
-
-
 /* For debug command, i.e. debugrock ... */
 void debug_rock(client *c)
 {
     sds flag = c->argv[1]->ptr;
 
-    if (strcasecmp(flag, "mem") ==  0)
+    if (strcasecmp(flag, "evictkey") == 0)
+    {
+        perform_key_eviction(70);
+    }
+    else if (strcasecmp(flag, "mem") ==  0)
     {
     }
     else if (strcasecmp(flag, "evictkeys") == 0 && c->argc >= 3)
@@ -383,13 +370,14 @@ void create_shared_object_for_rock()
     shared.rock_cmd_fail = listCreate();
     listAddNodeHead(shared.rock_cmd_fail, NULL);    // NOTE: at lease one element in the list
 
+    const long long val = 123456;   // NOTE: can not too small which will be shared object
+    shared.rock_val_str_int = createStringObjectFromLongLong(val);
+    serverAssert(shared.rock_val_str_int->encoding == OBJ_ENCODING_INT);
+    makeObjectShared(shared.rock_val_str_int);
+
     const char *str = "shared str";
     shared.rock_val_str_other = createStringObject(str, strlen(str));
     makeObjectShared(shared.rock_val_str_other);
-
-    long long val = 123456;
-    shared.rock_val_str_int = createStringObjectFromLongLong(val);
-    makeObjectShared(shared.rock_val_str_int);
     
     shared.rock_val_list_quicklist = createQuicklistObject();
     makeObjectShared(shared.rock_val_list_quicklist);

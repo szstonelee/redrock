@@ -34,9 +34,10 @@ robj* get_match_rock_value(const robj *o)
 
     switch(o->type)
     {
-    case OBJ_STRING:
+    case OBJ_STRING:        
         if (o->encoding == OBJ_ENCODING_INT)
         {
+            // NOTE: OBJ_ENCODING_INT is OK for RocksDB because it use one robj size
             match = shared.rock_val_str_int;
         }
         else if (o->encoding == OBJ_ENCODING_RAW || o->encoding == OBJ_ENCODING_EMBSTR)
@@ -92,13 +93,13 @@ robj* get_match_rock_value(const robj *o)
     return match;
 }
 
-
 static sds marshal_str_int(const robj *o, sds s)
 {
     long long val = (long long)o->ptr;
     s = sdscatlen(s, &val, 8);
     return s;
 }
+
 
 static size_t cal_room_str_int(const robj *o)
 {
@@ -730,7 +731,7 @@ sds marshal_object(const robj* o)
     case ROCK_TYPE_STRING_INT:
         s = marshal_str_int(o, s);
         break;
-
+        
     case ROCK_TYPE_STRING_OTHER:
         s = marshal_str_other(o, s);
         break;

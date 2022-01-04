@@ -983,3 +983,53 @@ static size_t estimate_mem_for_object(const robj *o)
     return 0;
 }
 
+
+static sds marshal_str_int(const robj *o, sds s)
+{
+    long long val = (long long)o->ptr;
+    s = sdscatlen(s, &val, 8);
+    return s;
+}
+
+
+static size_t cal_room_str_int(const robj *o)
+{
+    UNUSED(o);
+    return 8;
+}
+
+static robj* unmarshal_str_int(const char *buf, const size_t sz)
+{
+    serverAssert(sz == 8);
+    long long val = *((long long*)buf);
+    return createStringObjectFromLongLong(val);
+}
+
+/*
+inline int is_evict_hash_value(const sds v)
+{
+    return v != shared.hash_rock_val_for_field;
+}
+*/
+
+/* Check a client is in the state waiting for rock value.
+ * Return 1 if the client is waiting some rock value.
+ * Otherwise return 0.
+ */
+
+
+/*
+static sds debug_random_sds(const int max_len)
+{
+    int rand_len = random() % max_len;
+
+    sds s = sdsempty();
+    s = sdsMakeRoomFor(s, max_len);
+    for (int i = 0; i < rand_len; ++i)
+    {
+        const char c = 'a' + (random() % 26);
+        s = sdscatlen(s, &c, 1);
+    }
+    return s;
+}
+*/

@@ -124,6 +124,25 @@ static void debug_check_lru(const char *from, dict *hash, dict *lrus, const sds 
     
 }
 
+static void debug_check_rock_hash_field_cnt(const int dbid, const char *from)
+{
+    redisDb *db = server.db + dbid;
+
+    size_t total = 0;
+    dictIterator *di_hash = dictGetIterator(db->rock_hash);
+    dictEntry *de_hash;
+    while ((de_hash = dictNext(di_hash)))
+    {
+        dict *lrus = dictGetVal(de_hash);
+        total += dictSize(lrus);
+    }
+    dictReleaseIterator(di_hash);
+
+    if (total != db->rock_hash_field_cnt)
+        serverPanic("debug_check_ock_hash_field_cnt() fail, from = %s, total = %lu, db->rock_hash_field_cnt = %lu",
+                    from, total, db->rock_hash_field_cnt);
+}
+
 /* Calculate the first lru info for rock hash.
  * Referecne object.c createObject()
  * For LFU, use default counter LFU_INIT_VAL which is 5.
@@ -216,7 +235,11 @@ static void add_whole_redis_hash_to_rock_hash(const int dbid, const sds redis_ke
     dictReleaseIterator(di_hash);
 
     serverAssert(dictSize(lrus) > server.hash_max_rock_entries);
-    serverAssert(dictAdd(db->rock_hash, internal_redis_key, lrus) == DICT_OK);    
+    serverAssert(dictAdd(db->rock_hash, internal_redis_key, lrus) == DICT_OK);
+    db->rock_hash_field_cnt += dictSize(lrus);    
+    #if defined RED_ROCK_DEBUG
+    debug_check_rock_hash_field_cnt(dbid, "add_whole_redis_hash_to_rock_hash");
+    #endif
 }
 
 /* After a hash key add a field, it will call here to determine
@@ -257,9 +280,11 @@ void on_hash_key_add_field(const int dbid, const sds redis_key, const sds field)
         dict *lrus = dictGetVal(de_rock_hash);
 
         serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);
+        db->rock_hash_field_cnt += 1;
 
         #if defined RED_ROCK_DEBUG
         debug_check_lru("on_hash_key_add_field", o->ptr, lrus, NULL);
+        debug_check_rock_hash_field_cnt(dbid, "on_hash_key_add_field");
         #endif
     }
     else
@@ -302,11 +327,17 @@ void on_hash_key_del_field(const int dbid, const sds redis_key, const sds field)
         dict *lrus = dictGetVal(de_rock_hash);
 
         int ret = dictDelete(lrus, field);
+        if (ret == DICT_OK)
+        {
+            serverAssert(db->rock_hash_field_cnt > 0);
+            --db->rock_hash_field_cnt;
+        }
 
         #if defined RED_ROCK_DEBUG
         if (ret == DICT_OK)
         {
             debug_check_lru("on_hash_key_del_field", o->ptr, lrus, field);
+            debug_check_rock_hash_field_cnt(dbid, "on_hash_key_del_field");
         }
         else
         {
@@ -440,6 +471,10 @@ void on_overwrite_field_for_rock_hash(const int dbid, const sds redis_key, const
         serverAssert(de_hash);
         sds internal_field = dictGetKey(de_hash);
         serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);
+        ++db->rock_hash_field_cnt;
+        #if defined RED_ROCK_DEBUG
+        debug_check_rock_hash_field_cnt(dbid, "on_overwrite_field_for_rock_hash");
+        #endif
     }
     else
     {
@@ -480,10 +515,12 @@ void on_recover_field_of_hash(const int dbid, const sds redis_key, const sds fie
 
     uint64_t clock = get_init_lru_for_rock_hash();
     // internal_field must not exist in lrus becuase of on_rockval_field_of_hash()
-    serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);   
+    serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK); 
+    ++db->rock_hash_field_cnt;
 
     #if defined RED_ROCK_DEBUG
     debug_check_lru("on_recover_field_of_hash", o->ptr, lrus, NULL);
+    debug_check_rock_hash_field_cnt(dbid, "on_recover_field_of_hash");
     #endif
 }
 
@@ -503,8 +540,13 @@ void on_rockval_field_of_hash(const int dbid, const sds redis_key, const sds fie
     dict *hash = o->ptr;
     dictEntry *de_hash = dictFind(hash, field);
     if (de_hash == NULL)
+    {
         serverPanic("on_rockval_field_of_hash() the field is not in hash, redis_key = %s, ield = %s", redis_key, field);
-    serverAssert(dictGetVal(de_hash) == shared.hash_rock_val_for_field);
+    }
+    else
+    {
+        serverAssert(dictGetVal(de_hash) == shared.hash_rock_val_for_field);
+    }
     #endif
 
     dictEntry *de_rock_hash = dictFind(db->rock_hash, internal_redis_key);
@@ -514,6 +556,14 @@ void on_rockval_field_of_hash(const int dbid, const sds redis_key, const sds fie
     {
         debug_print_lrus(lrus);
         serverPanic("on_rockval_field_of_hash(), key = %s, field = %s", redis_key, field);
+    }
+    else
+    {
+        serverAssert(db->rock_hash_field_cnt > 0);
+        --db->rock_hash_field_cnt;
+        #if defined RED_ROCK_DEBUG
+        debug_check_rock_hash_field_cnt(dbid, "on_rockval_field_of_hash");
+        #endif
     }
 
     #if defined RED_ROCK_DEBUG
@@ -559,7 +609,18 @@ void on_del_key_from_db_for_rock_hash(const int dbid, const sds redis_key)
     debug_check_rock_hash(dbid, redis_key);
     #endif
     redisDb *db = server.db + dbid;
-    dictDelete(db->rock_hash, redis_key);
+    dictEntry *de_hash = dictFind(db->rock_hash, redis_key);
+    if (de_hash)
+    {
+        sds internal_key = dictGetKey(de_hash);
+        dict *lrus = dictGetVal(de_hash);
+        serverAssert(db->rock_hash_field_cnt >= dictSize(lrus));
+        db->rock_hash_field_cnt -= dictSize(lrus);
+        dictDelete(db->rock_hash, internal_key);
+        #if defined RED_ROCK_DEBUG
+        debug_check_rock_hash_field_cnt(dbid, "on_del_key_from_db_for_rock_hash");
+        #endif        
+    }
 }
 
 /* After a key is overwritten in redis db, it will call here.
@@ -569,7 +630,19 @@ void on_overwrite_key_from_db_for_rock_hash(const int dbid, const sds redis_key,
 {
     redisDb *db = server.db + dbid;
     // NOTE: could exist in rock hash or not
-    dictDelete(db->rock_hash, redis_key);       
+    dictEntry *de_hash = dictFind(db->rock_hash, redis_key);
+    if (de_hash)
+    {
+        sds internal_key = dictGetKey(de_hash);
+        dict *lrus = dictGetVal(de_hash);
+        serverAssert(db->rock_hash_field_cnt >= dictSize(lrus));
+        db->rock_hash_field_cnt -= dictSize(lrus);
+        dictDelete(db->rock_hash, internal_key);
+        #if defined RED_ROCK_DEBUG
+        debug_check_rock_hash_field_cnt(dbid, "on_overwrite_key_from_db_for_rock_hash");
+        #endif        
+    }
+           
 
     if (server.hash_max_rock_entries == 0)
         return;
@@ -612,6 +685,7 @@ void on_empty_db_for_hash(const int dbnum)
         redisDb *db = server.db + dbid;
         dict *rock_hash = db->rock_hash;
         dictEmpty(rock_hash, NULL);
+        db->rock_hash_field_cnt = 0;
     }
 }
 

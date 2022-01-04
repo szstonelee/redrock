@@ -28,20 +28,33 @@ def append_long_str():
         print(check)
         raise Exception("append_long_str fail")
 
-
-
+# LONG_MAX 9223372036854775807
 def decr():
-    original_num = 3433423492323
+    original_num = 9223372036854775807
     r.set(key, original_num)
     rock_evict(key)
     res = r.execute_command("decr", key)
     if res != original_num - 1:
         print(res)
         raise Exception("decr fail")
+    small_num = 83423932424    
+    r.set(key, small_num)
+    rock_evict(key)
+    res = r.execute_command("decr", key)
+    if res != small_num - 1:
+        print(res)
+        raise Exception("decr fail2")
+    share_int = 7
+    r.set(key, share_int)   # can not be evicted because it is shared object
+    rock_evict(key)
+    res = r.execute_command("decr", key)
+    if res != share_int - 1:
+        print(res)
+        raise Exception("decr fail3")
 
 
 def decrby():
-    original_num = 3433423492323
+    original_num = 9223372036854775807
     r.set(key, original_num)
     decrement = 123
     rock_evict(key)
@@ -106,7 +119,7 @@ def getset():
 
 
 def incr():
-    num = 342340429
+    num = 342340429389223
     r.set(key, num)
     rock_evict(key)
     res = r.execute_command("incr", key)

@@ -3267,6 +3267,7 @@ void initServer(void) {
         server.db[j].defrag_later = listCreate();
         listSetFreeMethod(server.db[j].defrag_later,(void (*)(void*))sdsfree);
         server.db[j].rock_hash = init_rock_hash_dict();
+        server.db[j].rock_hash_field_cnt = 0;
         server.db[j].rock_evict = init_rock_evict_dict();
     }
     evictionPoolAlloc(); /* Initialize the LRU keys pool. */
