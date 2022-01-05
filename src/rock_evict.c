@@ -338,7 +338,8 @@ static size_t evict_key_pool_populate(const int dbid)
 
     dictEntry* sample_des[SAMPLE_KEY_NUMBER];
     const unsigned int count = dictGetSomeKeys(db->rock_evict, sample_des, SAMPLE_KEY_NUMBER);
-    serverAssert(count != 0);
+    if (count == 0)
+        return 0;       // NOTE dictGetSomeKeys could return zero if dict size is very slow
 
     size_t insert_cnt = 0;
     struct evictKeyPoolEntry *pool = evict_key_pool;
@@ -429,7 +430,8 @@ static size_t evict_key_pool_populate(const int dbid)
 /* Check the above evict_key_pool_populate() for more details.
  * The algorithm is similiar. 
  */
-#define SAMPLE_HASH_FIELD_NUMBER   5
+#define SAMPLE_HASH_KEY_NUMBER     5
+#define SAMPLE_HASH_FIELD_NUMBER    5
 static size_t evict_hash_pool_populate(const int dbid)
 {
     // first, sample some fields from rock_hash
@@ -440,12 +442,28 @@ static size_t evict_hash_pool_populate(const int dbid)
     if (dictSize(db->rock_hash) == 0)
         return 0;
 
-    dictEntry* sample_key_des[1];
-    const unsigned int key_count = dictGetSomeKeys(db->rock_evict, sample_key_des, 1);
-    serverAssert(key_count == 1);
+    dictEntry* sample_key_des[SAMPLE_HASH_KEY_NUMBER];
+    const unsigned int key_count = dictGetSomeKeys(db->rock_hash, sample_key_des, SAMPLE_HASH_KEY_NUMBER);
+    if (key_count == 0)
+        return 0;       // NOTE dictGetSomeKeys could return zero if dict size is very slow
 
-    sds hash_key = dictGetKey(sample_key_des[0]);
-    dict *lrus = dictGetVal(sample_key_des[0]);
+    // NOTE: We sample hash key, but we only use only one hash key which has the most lrus
+    int max_hash_index = 0;
+    size_t max_lru_size = dictSize((dict*)dictGetVal(sample_key_des[0]));
+    for (unsigned int i = 1; i < key_count; ++i)
+    {
+        dict *current_lrus = dictGetVal(sample_key_des[i]);
+        size_t current_lru_size = dictSize(current_lrus);
+        if (current_lru_size > max_lru_size)
+        {
+            max_hash_index = i;
+            max_lru_size = current_lru_size;
+        }
+    } 
+
+    sds hash_key = dictGetKey(sample_key_des[max_hash_index]);
+    dict *lrus = dictGetVal(sample_key_des[max_hash_index]);
+
     // NOTE: lrus could be empty
     //       e.g., a hash key in rock_hash then all fields have benn evicted
     //             NOTE: the hash key with empty lrus can not be deleted 
@@ -456,7 +474,8 @@ static size_t evict_hash_pool_populate(const int dbid)
 
     dictEntry* sample_field_des[SAMPLE_HASH_FIELD_NUMBER];
     const unsigned int field_count = dictGetSomeKeys(lrus, sample_field_des, SAMPLE_HASH_FIELD_NUMBER);
-    serverAssert(field_count != 0);
+    if (field_count == 0)
+        return 0;   // NOTE dictGetSomeKeys could return zero if dict size is very slow
 
     size_t insert_cnt = 0;
     struct evictHashPoolEntry *pool = evict_hash_pool;
@@ -602,8 +621,7 @@ static void pick_best_key_from_key_pool(int *best_dbid, sds *best_key)
          *           or even changed to rock hash
          */
         if (de) {
-            robj *o = dictGetVal(de);
-            sds internal_key = dictGetKey(de);
+            const sds internal_key = dictGetKey(de);
 
             // NOTE: which one can be evicted is very complicated,
             //       so we call check_valid_evict_of_key_for_db()
@@ -663,9 +681,8 @@ static void pick_best_field_from_hash_pool(int *best_dbid, sds *best_field, sds 
          *           or even be evicted to RocksDB by command rockevicthash
          */
         if (de_field) { 
-            sds v = dictGetVal(de_field);
-            sds internal_field = dictGetKey(de_field);
-            sds internal_hash_key = dictGetKey(de_db);
+            const sds internal_field = dictGetKey(de_field);
+            const sds internal_hash_key = dictGetKey(de_db);
 
             // NOTE: which one can be evicted is very complicated,
             //       so we call check_valid_evict_of_key_for_hash()
@@ -716,6 +733,7 @@ static size_t try_to_perform_one_key_eviction()
     }
 
     if (all_db_not_available)
+        // NOTE: if dictionary size is very low, it could return zero
         return 0;
 
     int best_dbid = 0;
@@ -774,6 +792,7 @@ static size_t try_to_perform_one_field_eviction()
     }
 
     if (all_db_not_available)
+        // NOTE: if dictionary size is very low, it could return zero
         return 0;
 
     int best_dbid = 0;
@@ -799,8 +818,8 @@ static size_t try_to_perform_one_field_eviction()
         case TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL:
             break;      // try again until success
         case TRY_EVICT_ONE_SUCCESS:
-            serverLog(LL_WARNING, "evict field = %s, best_hash_key = %s, dbid = %d, mem = %lu", 
-                      best_field, best_hash_key, best_dbid, mem);
+            // serverLog(LL_WARNING, "evict field = %s, best_hash_key = %s, dbid = %d, mem = %lu", 
+            //          best_field, best_hash_key, best_dbid, mem);
             not_write_success = 0;
             break;
         default:
@@ -831,7 +850,7 @@ void perform_key_eviction(const size_t want_to_free)
         {
             // In theory, it means no key avaiable for eviction
             // while the memory is not enough
-            serverLog(LL_WARNING, "No available keys for eviction!");
+            serverLog(LL_WARNING, "No available keys for eviction or very tiny size dictionary!");
             return;
         }
 
@@ -863,7 +882,7 @@ void perform_field_eviction(const size_t want_to_free)
         {
             // In theory, it means no field avaiable for eviction
             // while the memory is not enough
-            serverLog(LL_WARNING, "No available keys for eviction!");
+            serverLog(LL_WARNING, "No available fields for eviction or very tiny size dictionary!!");
             return;
         }
 
@@ -877,6 +896,6 @@ void perform_field_eviction(const size_t want_to_free)
         }
     }
 
-    serverLog(LL_WARNING, "perform_field_eviction success, want_to_free = %lu, free_total = %lu",
-              want_to_free, free_total);
+    // serverLog(LL_WARNING, "perform_field_eviction success, want_to_free = %lu, free_total = %lu",
+    //          want_to_free, free_total);
 }
