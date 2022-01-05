@@ -19,5 +19,6 @@ void evict_pool_init();
 
 // for test
 void perform_key_eviction(const size_t want_to_free);
+void perform_field_eviction(const size_t want_to_free);
 
 #endif

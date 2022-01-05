@@ -37,15 +37,19 @@ void rock_evict_hash(client *c);
 void debug_rock(client *c);
 
 #define CHECK_EVICT_OK                                          0
-#define CHECK_EVICT_NOT_FOUND                                   1
-#define CHECK_EVICT_EXPIRED                                     2
-#define CHECK_EVICT_ALREADY_ROCK_VALUE                          3
+#define CHECK_EVICT_EXPIRED                                     1
+#define CHECK_EVICT_NOT_FOUND                                   2
+#define CHECK_EVICT_ALREADY_WHOLE_ROCK_VALUE                    3
 #define CHECK_EVICT_SHARED_VALUE                                4
 #define CHECK_EVICT_NOT_SUPPORTED_TYPE                          5
 #define CHECK_EVICT_IN_CANDIDAES                                6
+// The following is special for key
 #define CHECK_EVICT_ALREADY_IN_ROCK_HASH_FOR_DB_KEY             7
+// The following is special for rock hash
 #define CHECK_EVICT_TYPE_OR_ENCODING_WRONG_FOR_FIELD            8
-#define CHECK_EVICT_NOT_IN_ROCK_HASH_FOR_FIELD                  9       
+#define CHECK_EVICT_NOT_FOUND_FIELD                             9
+#define CHECK_EVICT_NOT_IN_ROCK_HASH_FOR_FIELD                  10   
+#define CHECK_EVICT_ALREAY_FIELD_ROCK_VALUE                     11    
 
 int check_valid_evict_of_key_for_db(const int dbid, const sds redis_key);
 int check_valid_evict_of_key_for_hash(const int dbid, const sds hash_key, const sds hash_field);

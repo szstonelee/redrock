@@ -196,7 +196,11 @@ void debug_rock(client *c)
 {
     sds flag = c->argv[1]->ptr;
 
-    if (strcasecmp(flag, "evictkey") == 0)
+    if (strcasecmp(flag, "evictfield") == 0)
+    {
+        perform_field_eviction(10);
+    }
+    else if (strcasecmp(flag, "evictkey") == 0)
     {
         perform_key_eviction(70);
     }
@@ -392,7 +396,7 @@ void create_shared_object_for_rock()
     makeObjectShared(shared.rock_val_hash_ziplist);
 
     shared.rock_val_hash_ht = createHashObject();
-    hashTypeConvert(shared.rock_val_hash_ht, OBJ_ENCODING_HT);
+    hashTypeConvert(shared.rock_val_hash_ht, OBJ_ENCODING_HT);  // NOTE: We must conver to an empty dict
     makeObjectShared(shared.rock_val_hash_ht);
 
     shared.rock_val_zset_ziplist = createZsetZiplistObject();
@@ -857,26 +861,26 @@ void wait_rock_threads_exit()
  */
 int check_valid_evict_of_key_for_db(const int dbid, const sds redis_key)
 {
-    int keyIsExpired(redisDb *db, robj *key);       // declaration in db.c
-
     redisDb *db = server.db + dbid;
 
-    dictEntry *de_db = dictFind(db->dict, redis_key);
-    if (de_db == NULL)
-        return CHECK_EVICT_NOT_FOUND;
-    
+    int keyIsExpired(redisDb *db, robj *key);       // declaration in db.c
     robj *o_key = createStringObject(redis_key, sdslen(redis_key));
     if (keyIsExpired(db, o_key))
     {
+        expireIfNeeded(db, o_key);  // try to expire the key (only master node can delete)
         decrRefCount(o_key);
         return CHECK_EVICT_EXPIRED;
     }
     decrRefCount(o_key);
 
+    dictEntry *de_db = dictFind(db->dict, redis_key);
+    if (de_db == NULL)
+        return CHECK_EVICT_NOT_FOUND;    
+
     const robj *val = dictGetVal(de_db);
 
     if (is_rock_value(val))
-        return CHECK_EVICT_ALREADY_ROCK_VALUE;
+        return CHECK_EVICT_ALREADY_WHOLE_ROCK_VALUE;
     
     if (is_shared_value(val))
         return CHECK_EVICT_SHARED_VALUE;
@@ -887,6 +891,7 @@ int check_valid_evict_of_key_for_db(const int dbid, const sds redis_key)
     if (already_in_candidates_for_db(dbid, redis_key))
         return CHECK_EVICT_IN_CANDIDAES;
 
+    /* The following is special for db key */
     if (is_in_rock_hash(dbid, redis_key))
         // if a hash key already in rock hash, it can not be 
         // evicted to RocksDB as a whole key
@@ -906,32 +911,27 @@ int check_valid_evict_of_key_for_db(const int dbid, const sds redis_key)
  */
 int check_valid_evict_of_key_for_hash(const int dbid, const sds hash_key, const sds hash_field)
 {
-    int keyIsExpired(redisDb *db, robj *key);       // declaration in db.c
-
     redisDb *db = server.db + dbid;
 
-    dictEntry *de_db = dictFind(db->dict, hash_key);
-    if (de_db == NULL)
-        return CHECK_EVICT_NOT_FOUND;
-
-    /* one more check for hash key and hash field */
-    robj *o = dictGetVal(de_db);
-    if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
-        return CHECK_EVICT_TYPE_OR_ENCODING_WRONG_FOR_FIELD;
-    
+    int keyIsExpired(redisDb *db, robj *key);       // declaration in db.c
     robj *o_key = createStringObject(hash_key, sdslen(hash_key));
     if (keyIsExpired(db, o_key))
     {
+        expireIfNeeded(db, o_key);  // try to expire the key (only master node can delete)
         decrRefCount(o_key);
         return CHECK_EVICT_EXPIRED;
     }
     decrRefCount(o_key);
 
+    dictEntry *de_db = dictFind(db->dict, hash_key);
+    if (de_db == NULL)
+        return CHECK_EVICT_NOT_FOUND;
+
     const robj *val = dictGetVal(de_db);
 
     if (is_rock_value(val))
-        return CHECK_EVICT_ALREADY_ROCK_VALUE;
-    
+        return CHECK_EVICT_ALREADY_WHOLE_ROCK_VALUE;
+
     if (is_shared_value(val))
         return CHECK_EVICT_SHARED_VALUE;
 
@@ -941,8 +941,21 @@ int check_valid_evict_of_key_for_hash(const int dbid, const sds hash_key, const 
     if (already_in_candidates_for_hash(dbid, hash_key, hash_field))
         return CHECK_EVICT_IN_CANDIDAES;
 
-    if (!(is_in_rock_hash(dbid, hash_key)))
+    /* The following is special for rock hash */
+    robj *o = dictGetVal(de_db);
+    if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
+        return CHECK_EVICT_TYPE_OR_ENCODING_WRONG_FOR_FIELD;
+
+    dictEntry *de_hash = dictFind(o->ptr, hash_field);
+    if (de_hash == NULL)
+        return CHECK_EVICT_NOT_FOUND_FIELD;
+    
+    if (!is_in_rock_hash(dbid, hash_key))
         return CHECK_EVICT_NOT_IN_ROCK_HASH_FOR_FIELD;
+
+    sds field_val = dictGetVal(de_hash);
+    if (field_val == shared.hash_rock_val_for_field)
+        return CHECK_EVICT_ALREAY_FIELD_ROCK_VALUE;
 
     return CHECK_EVICT_OK;
 }
@@ -957,13 +970,16 @@ void rock_evict(client *c)
         return;
     }
 
-    const char *already_rock_val = "ALREADY_ROCK_VAL_MAYBE_EXPIRE";
-    const char *not_found = "NOT_FOUND";
-    const char *expire_val = "EXPIRE_VALUE";
-    const char *shared_val = "SHARED_VALUE_NO_NEED_TO_EVICT";
     const char *can_evict = "CAN_EVICT_AND_WRITTEN_TO_ROCKSDB";
+
+    const char *expire_val = "EXPIRE_VALUE";
+    const char *not_found = "NOT_FOUND_KEY";
+    const char *already_rock_val = "ALREADY_WHOLE_ROCK_VAL";
+    const char *shared_val = "SHARED_VALUE_NO_NEED_TO_EVICT";
     const char *not_supported = "CAN_NOT_EVICT_FOR_NOT_SUPPORTED_TYPE";
     const char *already_in_candidates = "CAN_NOT_EVICT_FOR_IN_CANDIDATES_TRY_LATER";
+
+    // special for db key
     const char *alreay_in_rock_hash = "CAN_NOT_EVICT_BECAUSE_IT_IS_ROCK_HASH";
 
     serverAssert(c->argc > 1);
@@ -986,15 +1002,15 @@ void rock_evict(client *c)
         case CHECK_EVICT_OK:
             break;
 
-        case CHECK_EVICT_NOT_FOUND:
-            r = createStringObject(not_found, strlen(not_found));
-            break;
-
         case CHECK_EVICT_EXPIRED:
             r = createStringObject(expire_val, strlen(expire_val));
             break;
 
-        case CHECK_EVICT_ALREADY_ROCK_VALUE:
+        case CHECK_EVICT_NOT_FOUND:
+            r = createStringObject(not_found, strlen(not_found));
+            break;
+
+        case CHECK_EVICT_ALREADY_WHOLE_ROCK_VALUE:
             r = createStringObject(already_rock_val, strlen(already_rock_val));
             break;
 
@@ -1056,15 +1072,20 @@ void rock_evict_hash(client *c)
         return;
     }
 
-    const char *already_rock_val = "ALREADY_ROCK_VAL_MAYBE_EXPIRE";
-    const char *not_found = "NOT_FOUND";
-    const char *expire_val = "EXPIRE_VALUE";
-    const char *shared_val = "SHARED_VALUE_NO_NEED_TO_EVICT";
     const char *can_evict = "CAN_EVICT_AND_WRITTEN_TO_ROCKSDB";
+
+    const char *expire_val = "EXPIRE_VALUE";
+    const char *not_found = "NOT_FOUND_KEY";
+    const char *already_whole_rock_val = "ALREADY_WHOLE_ROCK_VAL";
+    const char *shared_val = "SHARED_VALUE_NO_NEED_TO_EVICT";
     const char *not_supported = "CAN_NOT_EVICT_FOR_NOT_SUPPORTED_TYPE";
     const char *already_in_candidates = "CAN_NOT_EVICT_FOR_IN_CANDIDATES_TRY_LATER";
-    const char *not_in_rock_hash = "CAN_NOT_EVICT_BECAUSE_NOT_IN_ROCK_HASH";
+
+    // special for rock hash
     const char *wrong_type_or_encoding = "CAN_NOT_EVICT_FOR_WRONG_TYPE_OR_ENCODING";
+    const char *not_found_field = "NOT_FOUND_FIELD";
+    const char *not_in_rock_hash = "CAN_NOT_EVICT_BECAUSE_NOT_IN_ROCK_HASH";
+    const char *already_field_rock_val = "ALREADY_FIELD_ROCK_VAL";
 
     serverAssert(c->argc > 2);
     const int field_num = c->argc - 2;
@@ -1085,16 +1106,16 @@ void rock_evict_hash(client *c)
         case CHECK_EVICT_OK:
             break;
 
-        case CHECK_EVICT_NOT_FOUND:
-            r = createStringObject(not_found, strlen(not_found));
-            break;
-
         case CHECK_EVICT_EXPIRED:
             r = createStringObject(expire_val, strlen(expire_val));
             break;
 
-        case CHECK_EVICT_ALREADY_ROCK_VALUE:
-            r = createStringObject(already_rock_val, strlen(already_rock_val));
+        case CHECK_EVICT_NOT_FOUND:
+            r = createStringObject(not_found, strlen(not_found));
+            break;
+
+        case CHECK_EVICT_ALREADY_WHOLE_ROCK_VALUE:
+            r = createStringObject(already_whole_rock_val, strlen(already_whole_rock_val));
             break;
 
         case CHECK_EVICT_SHARED_VALUE:
@@ -1109,12 +1130,21 @@ void rock_evict_hash(client *c)
             r = createStringObject(already_in_candidates, strlen(already_in_candidates));
             break;
 
+        case CHECK_EVICT_TYPE_OR_ENCODING_WRONG_FOR_FIELD:
+            r = createStringObject(wrong_type_or_encoding, strlen(wrong_type_or_encoding));
+            break;
+
         case CHECK_EVICT_NOT_IN_ROCK_HASH_FOR_FIELD:
             r = createStringObject(not_in_rock_hash, strlen(not_in_rock_hash));
             break;
 
-        case CHECK_EVICT_TYPE_OR_ENCODING_WRONG_FOR_FIELD:
-            r = createStringObject(wrong_type_or_encoding, strlen(wrong_type_or_encoding));
+
+        case CHECK_EVICT_NOT_FOUND_FIELD:
+            r = createStringObject(not_found_field, strlen(not_found_field));
+            break;
+
+        case CHECK_EVICT_ALREAY_FIELD_ROCK_VALUE:
+            r = createStringObject(already_field_rock_val, strlen(already_field_rock_val));
             break;
 
         default:

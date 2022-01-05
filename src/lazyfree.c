@@ -148,9 +148,17 @@ size_t lazyfreeGetFreeEffort(robj *key, robj *obj) {
  * will be reclaimed in a different bio.c thread. */
 #define LAZYFREE_THRESHOLD 64
 int dbAsyncDelete(redisDb *db, robj *key) {
-    // NOTE: call before deleting the key from db
-    on_del_key_from_db_for_rock_hash(db->id, key->ptr);
-    on_db_del_key_for_rock_evict(db->id, key->ptr);
+    // NOTE: We need to whether the key is in redis DB
+    //       because the caller does not guarantee call twice for one key
+    //       e.g., delGenericCommand() call expireIfNeeded() 
+    //             which can call dbAsyncDelete() or dbSyncDelete()
+    //             and for loop for delGenericCommand() could repeat the keys
+    //       Only the first time call to here guarantee the key exist in redis db
+    if (dictFind(db->dict, key->ptr))
+    {
+        on_del_key_from_db_for_rock_hash(db->id, key->ptr);
+        on_db_del_key_for_rock_evict(db->id, key->ptr);
+    }
 
     /* Deleting an entry from the expires dict will not free the sds of
      * the key, because it is shared with the main dictionary. */

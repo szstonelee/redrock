@@ -37,7 +37,7 @@ def decr():
     if res != original_num - 1:
         print(res)
         raise Exception("decr fail")
-    small_num = 83423932424    
+    small_num = 83423932424
     r.set(key, small_num)
     rock_evict(key)
     res = r.execute_command("decr", key)
