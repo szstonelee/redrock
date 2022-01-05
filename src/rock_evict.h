@@ -18,7 +18,8 @@ void on_empty_db_for_rock_evict(const int dbnum);
 void evict_pool_init();
 
 // for test
-void perform_key_eviction(const size_t want_to_free);
-void perform_field_eviction(const size_t want_to_free);
+// size_t perform_key_eviction(const size_t want_to_free);
+// size_t perform_field_eviction(const size_t want_to_free);
+void perform_rock_eviction();
 
 #endif

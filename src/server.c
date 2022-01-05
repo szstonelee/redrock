@@ -2279,6 +2279,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                           0,
                           &ei);
 
+    perform_rock_eviction();
+
     server.cronloops++;
     return 1000/server.hz;
 }

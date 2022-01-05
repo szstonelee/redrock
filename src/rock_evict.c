@@ -837,7 +837,7 @@ static size_t try_to_perform_one_field_eviction()
  *    over want_to_free, returnn
  * 2. or if timeout (10ms), return. Timeout could be for the busy of RocksDB write
  */
-void perform_key_eviction(const size_t want_to_free)
+static size_t perform_key_eviction(const size_t want_to_free)
 {
     size_t free_total = 0;
     monotime evictionTimer;
@@ -851,7 +851,7 @@ void perform_key_eviction(const size_t want_to_free)
             // In theory, it means no key avaiable for eviction
             // while the memory is not enough
             serverLog(LL_WARNING, "No available keys for eviction or very tiny size dictionary!");
-            return;
+            break;
         }
 
         free_total += will_free_mem;
@@ -860,16 +860,17 @@ void perform_key_eviction(const size_t want_to_free)
         {
             // timeout
             serverLog(LL_WARNING, "perform_key_eviction() timeout, but alreay evict mem = %lu", free_total);   
-            return;     
+            break;     
         }
     }
-
+    
     // serverLog(LL_WARNING, "perform_key_eviction success, want_to_free = %lu, free_total = %lu",
     //          want_to_free, free_total);
+    return free_total;
 }
 
 /* Reference the above perform_key_eviction() for similiar algorithm */
-void perform_field_eviction(const size_t want_to_free)
+static size_t perform_field_eviction(const size_t want_to_free)
 {
     size_t free_total = 0;
     monotime evictionTimer;
@@ -883,7 +884,7 @@ void perform_field_eviction(const size_t want_to_free)
             // In theory, it means no field avaiable for eviction
             // while the memory is not enough
             serverLog(LL_WARNING, "No available fields for eviction or very tiny size dictionary!!");
-            return;
+            break;
         }
 
         free_total += will_free_mem;
@@ -892,10 +893,53 @@ void perform_field_eviction(const size_t want_to_free)
         {
             // timeout
             serverLog(LL_WARNING, "perform_field_eviction() timeout, but alreay evict mem = %lu", free_total);   
-            return;     
+            break;     
         }
     }
 
     // serverLog(LL_WARNING, "perform_field_eviction success, want_to_free = %lu, free_total = %lu",
     //          want_to_free, free_total);
+    return free_total;
+}
+
+/* return 1 to choose key eviction, 0 to choose field eviction */
+static int choose_key_or_field_eviction()
+{
+    size_t key_cnt = 0;
+    for (int i = 0; i < server.dbnum; ++i)
+    {
+        redisDb *db = server.db + i;
+        key_cnt += dictSize(db->rock_evict);
+    }
+
+    size_t field_cnt = 0;
+    for (int i = 0; i < server.dbnum; ++i)
+    {
+        redisDb *db = server.db + i;
+        field_cnt += db->rock_hash_field_cnt;
+    }
+
+    return key_cnt >= field_cnt;
+}
+
+void perform_rock_eviction()
+{
+    if (server.maxrockmem == 0)
+        return;
+
+    size_t used = zmalloc_used_memory();
+    if (used <= server.maxrockmem)
+        return;
+
+    const size_t want_to_free = used - server.maxrockmem;
+    if (choose_key_or_field_eviction())
+    {
+        size_t free = perform_key_eviction(want_to_free);
+        serverLog(LL_NOTICE, "free from key = %lu", free);
+    }
+    else
+    {
+        size_t free = perform_field_eviction(want_to_free);
+        serverLog(LL_NOTICE, "free from field = %lu", free);
+    }
 }

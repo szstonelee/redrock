@@ -198,11 +198,11 @@ void debug_rock(client *c)
 
     if (strcasecmp(flag, "evictfield") == 0)
     {
-        perform_field_eviction(10);
+        // perform_field_eviction(10);
     }
     else if (strcasecmp(flag, "evictkey") == 0)
     {
-        perform_key_eviction(70);
+        // perform_key_eviction(70);
     }
     else if (strcasecmp(flag, "mem") ==  0)
     {
