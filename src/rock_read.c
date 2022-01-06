@@ -942,6 +942,7 @@ static void check_ring_buf_first_and_recover_for_hash(const int dbid,
     *unrecovered_fields = left_fields;
 }
 
+#if defined RED_ROCK_DEBUG
 static void debug_check_all_db_keys_are_rock_value(const int dbid, const list *redis_keys)
 {
     redisDb *db = server.db + dbid;
@@ -958,7 +959,9 @@ static void debug_check_all_db_keys_are_rock_value(const int dbid, const list *r
                         dbid, key);
     }
 }
+#endif
 
+#if defined RED_ROCK_DEBUG
 static void debug_check_all_hash_fields_are_rock_value(const int dbid, 
                                                        const list *hash_keys, const list *hash_fields)
 {
@@ -988,6 +991,7 @@ static void debug_check_all_hash_fields_are_rock_value(const int dbid,
         serverAssert(val == shared.hash_rock_val_for_field);
     }
 }
+#endif
 
 /* Called in main thread when a client finds it needs some redis keys to
  * continue for a command because the whole key's value is in RocksDB.

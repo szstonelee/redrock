@@ -4,7 +4,7 @@
 #include "server.h"
 #include <rocksdb/c.h>
 
-#define RED_ROCK_DEBUG      // run debug code if defined this macro. In release build, comment this line
+// #define RED_ROCK_DEBUG      // run debug code if defined this macro. In release build, comment this line
 
 
 #define ROCK_KEY_FOR_DB     0
@@ -35,6 +35,7 @@ void rock_evict(client *c);
 void rock_evict_hash(client *c);
 
 void debug_rock(client *c);
+void rock_stat(client *c);
 
 #define CHECK_EVICT_OK                                          0
 #define CHECK_EVICT_EXPIRED                                     1

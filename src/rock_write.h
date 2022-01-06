@@ -6,9 +6,6 @@
 
 extern pthread_t rock_write_thread_id;
 
-// also for server cron
-#define RING_BUFFER_LEN 64
-// #define RING_BUFFER_LEN 2  // for dbug, NOTE: if setting 1, compiler will generate some warnings
 
 void init_and_start_rock_write_thread();    // for server.c
 

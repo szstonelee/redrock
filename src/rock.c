@@ -7,7 +7,7 @@
 #define _FILE_OFFSET_BITS 64
 
 #include "rock.h"
-#include "server.h"
+// #include "server.h"
 #include "rock_write.h"
 #include "rock_read.h"
 #include "rock_hash.h"
@@ -196,7 +196,12 @@ void debug_rock(client *c)
 {
     sds flag = c->argv[1]->ptr;
 
-    if (strcasecmp(flag, "evictfield") == 0)
+    if (strcasecmp(flag, "rockstat") == 0)
+    {
+        rock_stat(c);
+        return;
+    }
+    else if (strcasecmp(flag, "evictfield") == 0)
     {
         // perform_field_eviction(10);
     }
@@ -994,7 +999,7 @@ void rock_evict(client *c)
         // Always reply key, then result
         addReplyBulk(c, c->argv[1]);
 
-        robj *r = NULL;     // result
+        const char *r = NULL;     // result
 
         const int check_evict = check_valid_evict_of_key_for_db(dbid, key);
         switch (check_evict)
@@ -1003,31 +1008,31 @@ void rock_evict(client *c)
             break;
 
         case CHECK_EVICT_EXPIRED:
-            r = createStringObject(expire_val, strlen(expire_val));
+            r = expire_val;
             break;
 
         case CHECK_EVICT_NOT_FOUND:
-            r = createStringObject(not_found, strlen(not_found));
+            r = not_found;
             break;
 
         case CHECK_EVICT_ALREADY_WHOLE_ROCK_VALUE:
-            r = createStringObject(already_rock_val, strlen(already_rock_val));
+            r = already_rock_val;
             break;
 
         case CHECK_EVICT_SHARED_VALUE:
-            r = createStringObject(shared_val, strlen(shared_val));
+            r = shared_val;
             break;
 
         case CHECK_EVICT_NOT_SUPPORTED_TYPE:
-            r = createStringObject(not_supported, strlen(not_supported));
+            r = not_supported;
             break;
 
         case CHECK_EVICT_IN_CANDIDAES:
-            r = createStringObject(already_in_candidates, strlen(already_in_candidates));
+            r = already_in_candidates;
             break;
 
         case CHECK_EVICT_ALREADY_IN_ROCK_HASH_FOR_DB_KEY:
-            r = createStringObject(alreay_in_rock_hash, strlen(alreay_in_rock_hash));
+            r = alreay_in_rock_hash;
             break;
 
         default:
@@ -1048,7 +1053,7 @@ void rock_evict(client *c)
                 break;      // loop continue
                         
             case TRY_EVICT_ONE_SUCCESS:
-                r = createStringObject(can_evict, strlen(can_evict));
+                r = can_evict;
                 break;
 
             default:
@@ -1057,8 +1062,7 @@ void rock_evict(client *c)
         }
 
         serverAssert(r != NULL);
-        addReplyBulk(c, r);
-        decrRefCount(r);
+        addReplyBulkCString(c, r);
     }
 }
 
@@ -1098,7 +1102,7 @@ void rock_evict_hash(client *c)
         const sds hash_field = c->argv[i+2]->ptr;
         addReplyBulk(c, c->argv[i+2]);  // alwyas reply field, then result
 
-        robj *r = NULL;     // result
+        const char *r = NULL;     // result
 
         const int check_evict = check_valid_evict_of_key_for_hash(dbid, hash_key, hash_field);
         switch (check_evict)
@@ -1107,44 +1111,43 @@ void rock_evict_hash(client *c)
             break;
 
         case CHECK_EVICT_EXPIRED:
-            r = createStringObject(expire_val, strlen(expire_val));
+            r = expire_val;
             break;
 
         case CHECK_EVICT_NOT_FOUND:
-            r = createStringObject(not_found, strlen(not_found));
+            r = not_found;
             break;
 
         case CHECK_EVICT_ALREADY_WHOLE_ROCK_VALUE:
-            r = createStringObject(already_whole_rock_val, strlen(already_whole_rock_val));
+            r = already_whole_rock_val;
             break;
 
         case CHECK_EVICT_SHARED_VALUE:
-            r = createStringObject(shared_val, strlen(shared_val));
+            r = shared_val;
             break;
 
         case CHECK_EVICT_NOT_SUPPORTED_TYPE:
-            r = createStringObject(not_supported, strlen(not_supported));
+            r = not_supported;
             break;
 
         case CHECK_EVICT_IN_CANDIDAES:
-            r = createStringObject(already_in_candidates, strlen(already_in_candidates));
+            r = already_in_candidates;
             break;
 
         case CHECK_EVICT_TYPE_OR_ENCODING_WRONG_FOR_FIELD:
-            r = createStringObject(wrong_type_or_encoding, strlen(wrong_type_or_encoding));
+            r = wrong_type_or_encoding;
             break;
 
         case CHECK_EVICT_NOT_IN_ROCK_HASH_FOR_FIELD:
-            r = createStringObject(not_in_rock_hash, strlen(not_in_rock_hash));
+            r = not_in_rock_hash;
             break;
 
-
         case CHECK_EVICT_NOT_FOUND_FIELD:
-            r = createStringObject(not_found_field, strlen(not_found_field));
+            r = not_found_field;
             break;
 
         case CHECK_EVICT_ALREAY_FIELD_ROCK_VALUE:
-            r = createStringObject(already_field_rock_val, strlen(already_field_rock_val));
+            r = already_field_rock_val;
             break;
 
         default:
@@ -1165,7 +1168,7 @@ void rock_evict_hash(client *c)
                 break;      // loop continue
 
             case TRY_EVICT_ONE_SUCCESS:
-                r = createStringObject(can_evict, strlen(can_evict));
+                r = can_evict;
                 break;
 
             default:
@@ -1174,7 +1177,56 @@ void rock_evict_hash(client *c)
         }
 
         serverAssert(r != NULL);
-        addReplyBulk(c, r);
-        decrRefCount(r);
+        addReplyBulkCString(c, r);
     }    
+}
+
+static void get_rock_info(size_t *total_key_num, 
+                          size_t *total_rock_evict_num, 
+                          size_t *total_rock_hash_num,
+                          size_t *total_rock_hash_field_num)
+{
+    for (int i = 0; i < server.dbnum; ++i)
+    {
+        redisDb *db = server.db + i;
+        *total_key_num += dictSize(db->dict);
+        *total_rock_evict_num += dictSize(db->rock_evict);
+        *total_rock_hash_num += dictSize(db->rock_hash);
+        *total_rock_hash_field_num += db->rock_hash_field_cnt;
+    }
+}
+
+/* For command rockstat */
+void rock_stat(client *c)
+{
+    void bytesToHuman(char *s, unsigned long long n);   // declaration in server.c
+
+    addReplyArrayLen(c, 2);
+
+    sds s; 
+
+    // line 1 : memory
+    s = sdsempty();
+    size_t zmalloc_used = zmalloc_used_memory();
+    size_t total_system_mem = server.system_memory_size;
+    char hmem[64];
+    char total_system_hmem[64];
+    bytesToHuman(hmem,zmalloc_used);
+    bytesToHuman(total_system_hmem, total_system_mem);
+    s = sdscatprintf(s, "used = %zu, used_human = %s, sys = %zu, sys_human = %s", 
+                     zmalloc_used, hmem, total_system_mem, total_system_hmem);
+    addReplyBulkCString(c, s);
+
+    // line 2 : rock info
+    s = sdsempty();
+    size_t total_key_num = 0;
+    size_t total_rock_evict_num = 0;
+    size_t total_rock_hash_num = 0;
+    size_t total_rock_hash_field_num = 0;
+    get_rock_info(&total_key_num, &total_rock_evict_num, &total_rock_hash_num, &total_rock_hash_field_num);
+    s = sdscatprintf(s, "key_num = %zu, evict_key_num = %zu, evict_hash_num = %zu, evict_field_num = %zu",
+                     total_key_num, total_rock_evict_num, total_rock_hash_num, total_rock_hash_field_num);
+    addReplyBulkCString(c, s);
+
+    sdsfree(s);
 }

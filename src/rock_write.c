@@ -8,6 +8,9 @@
 // #include <stddef.h>
 // #include <assert.h>
 
+#define RING_BUFFER_LEN  256
+// #define RING_BUFFER_LEN 2  // for dbug, NOTE: if setting 1, compiler will generate some warnings
+
 
 /* Write Spin Lock for Apple OS and Linux */
 #if defined(__APPLE__)

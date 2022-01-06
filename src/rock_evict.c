@@ -589,7 +589,7 @@ static size_t evict_hash_pool_populate(const int dbid)
  * Because the pool has previous values, so we need to take care of it.
  * And we also clear the pool for scanning keys.
  * 
- * NOTE: It needs to call evict_key_pool_populate() before this call.
+ * NOTE: It needs to call evict_key_pool_populate() for all dbs before this call.
  */
 static void pick_best_key_from_key_pool(int *best_dbid, sds *best_key)
 {
@@ -701,6 +701,8 @@ static void pick_best_field_from_hash_pool(int *best_dbid, sds *best_field, sds 
     // We can not find the best field from the pool
 }
 
+#define MAX_WAIT_RING_BUFFER_US 10
+
 /* Try to perform one key eviction.
  *
  * The return value is the memory size for eviction (NOTE: not actually released because the async mode)
@@ -714,26 +716,16 @@ static void pick_best_field_from_hash_pool(int *best_dbid, sds *best_field, sds 
  */
 static size_t try_to_perform_one_key_eviction()
 {
-    static int key_loop_dbid = 0;   // loop for each db
-
-    const int dbnum = server.dbnum;
-    int all_db_not_available = 1;
-    for (int i = 0; i < dbnum; ++i)
+    size_t key_total = 0;
+    for (int i = 0; i < server.dbnum; ++i)
     {
-        const int ret = evict_key_pool_populate(key_loop_dbid);
-        if (ret != 0)
-        {
-            all_db_not_available = 0;
-            break;
-        }
-        
-        ++key_loop_dbid;
-        if (key_loop_dbid == dbnum)
-            key_loop_dbid = 0;
+        redisDb *db = server.db + i;
+        key_total += dictSize(db->rock_evict);
+
+        evict_key_pool_populate(i);
     }
 
-    if (all_db_not_available)
-        // NOTE: if dictionary size is very low, it could return zero
+    if (key_total == 0)
         return 0;
 
     int best_dbid = 0;
@@ -748,51 +740,55 @@ static size_t try_to_perform_one_key_eviction()
     }
 
     // We can evict the key
+    monotime timer;
+    elapsedStart(&timer);
+
     size_t mem = 0;
     int not_write_success = 1;
+    uint64_t elapse_us = 0;
     while (not_write_success)
     {
         const int ret = try_evict_one_key_to_rocksdb(best_dbid, best_key, &mem);
         switch (ret)
         {
         case TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL:
+            elapse_us = elapsedUs(timer);
+            if (elapse_us > MAX_WAIT_RING_BUFFER_US)
+            {
+                serverLog(LL_WARNING, "key eviction waiting for ring buffer timout = %zu (us)", elapse_us);
+                return SIZE_MAX;
+            }
+
+            usleep(1);
             break;      // try again until success
+
         case TRY_EVICT_ONE_SUCCESS:
             // serverLog(LL_WARNING, "evict key = %s, dbid = %d, mem = %lu", best_key, best_dbid, mem);
             not_write_success = 0;
             break;
+
         default:
             serverPanic("perform_one_key_eviction()");
         }
     }
     
-    serverAssert(mem > 0);
+    serverAssert(mem > 0 && mem != SIZE_MAX);
     return mem;
 }
 
 /* Reference the above try_to_perform_one_key_eviction() for the similiar algorithm */
 static size_t try_to_perform_one_field_eviction()
 {
-    static int hash_loop_dbid = 0;   // loop for each db
-
-    const int dbnum = server.dbnum;
-    int all_db_not_available = 1;
-    for (int i = 0; i < dbnum; ++i)
+    size_t field_total = 0;
+    for (int i = 0; i < server.dbnum; ++i)
     {
-        const int ret = evict_hash_pool_populate(hash_loop_dbid);
-        if (ret != 0)
-        {
-            all_db_not_available = 0;
-            break;
-        }
-        
-        ++hash_loop_dbid;
-        if (hash_loop_dbid == dbnum)
-            hash_loop_dbid = 0;
+        redisDb *db = server.db + i;
+        field_total += db->rock_hash_field_cnt;
+
+        evict_hash_pool_populate(i);
     }
 
-    if (all_db_not_available)
-        // NOTE: if dictionary size is very low, it could return zero
+    if (field_total == 0)
         return 0;
 
     int best_dbid = 0;
@@ -808,28 +804,44 @@ static size_t try_to_perform_one_field_eviction()
     }
 
     // We can evict the field
+    monotime timer;
+    elapsedStart(&timer);
+
     size_t mem = 0;
     int not_write_success = 1;
+    uint64_t elapse_us = 0;
     while (not_write_success)
     {
         const int ret = try_evict_one_field_to_rocksdb(best_dbid, best_hash_key, best_field, &mem);
         switch (ret)
         {
         case TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL:
+            elapse_us = elapsedUs(timer);
+            if (elapse_us > MAX_WAIT_RING_BUFFER_US)
+            {
+                serverLog(LL_WARNING, "field eviction waiting for ring buffer timout = %zu (us)", elapse_us);
+                return SIZE_MAX;
+            }
+
+            usleep(1);
             break;      // try again until success
+
         case TRY_EVICT_ONE_SUCCESS:
             // serverLog(LL_WARNING, "evict field = %s, best_hash_key = %s, dbid = %d, mem = %lu", 
             //          best_field, best_hash_key, best_dbid, mem);
             not_write_success = 0;
             break;
+
         default:
             serverPanic("perform_one_key_eviction()");
         }
     }
     
-    serverAssert(mem > 0);
+    serverAssert(mem > 0 && mem != SIZE_MAX);
     return mem;
 }
+
+#define EVICTION_TIMEOUT_MS 10
 
 /* Try to evict keys to the want_to_free size
  *
@@ -850,17 +862,24 @@ static size_t perform_key_eviction(const size_t want_to_free)
         {
             // In theory, it means no key avaiable for eviction
             // while the memory is not enough
-            serverLog(LL_WARNING, "No available keys for eviction or very tiny size dictionary!");
+            serverLog(LL_WARNING, "No available keys for eviction!");
             break;
         }
 
+        if (will_free_mem == SIZE_MAX)
+            break;      // timeout for waitng for ring buffer
+
         free_total += will_free_mem;
 
-        if (free_total < want_to_free && elapsedMs(evictionTimer) >= 10)
+        if (free_total < want_to_free)
         {
-            // timeout
-            serverLog(LL_WARNING, "perform_key_eviction() timeout, but alreay evict mem = %lu", free_total);   
-            break;     
+            const uint64_t elapse_ms = elapsedMs(evictionTimer);
+            if (elapse_ms > EVICTION_TIMEOUT_MS)
+            {
+                serverLog(LL_WARNING, "perform_key_eviction() timeout for %zu (ms), but alreay evict mem = %lu, want_to_free = %zu", 
+                                      elapse_ms, free_total, want_to_free);   
+                break;     
+            }
         }
     }
     
@@ -883,17 +902,25 @@ static size_t perform_field_eviction(const size_t want_to_free)
         {
             // In theory, it means no field avaiable for eviction
             // while the memory is not enough
-            serverLog(LL_WARNING, "No available fields for eviction or very tiny size dictionary!!");
+            serverLog(LL_WARNING, "No available fields for eviction!");
             break;
         }
 
+        if (will_free_mem == SIZE_MAX)
+            break;  // timeout for waitng for ring buffer
+
         free_total += will_free_mem;
 
-        if (free_total < want_to_free && elapsedMs(evictionTimer) >= 10)
+        if (free_total < want_to_free)
         {
-            // timeout
-            serverLog(LL_WARNING, "perform_field_eviction() timeout, but alreay evict mem = %lu", free_total);   
-            break;     
+            const uint64_t elapse_ms = elapsedMs(evictionTimer);
+            if (elapse_ms > EVICTION_TIMEOUT_MS)
+            {
+                // timeout
+                serverLog(LL_WARNING, "perform_field_eviction() timeout for %zu (ms), but alreay evict mem = %zu, want_to_free = %zu", 
+                                      elapse_ms, free_total, want_to_free);   
+                break;     
+            }
         }
     }
 
@@ -922,6 +949,7 @@ static int choose_key_or_field_eviction()
     return key_cnt >= field_cnt;
 }
 
+#define MAX_FREE_MEMORY_SIZE_FOR_ONE_CRON   (2<<20)
 void perform_rock_eviction()
 {
     if (server.maxrockmem == 0)
@@ -931,15 +959,18 @@ void perform_rock_eviction()
     if (used <= server.maxrockmem)
         return;
 
-    const size_t want_to_free = used - server.maxrockmem;
+    const size_t over_to_free = used - server.maxrockmem;
+    const size_t want_to_free = over_to_free > MAX_FREE_MEMORY_SIZE_FOR_ONE_CRON 
+                                ? MAX_FREE_MEMORY_SIZE_FOR_ONE_CRON : over_to_free;
+
     if (choose_key_or_field_eviction())
     {
-        size_t free = perform_key_eviction(want_to_free);
-        serverLog(LL_NOTICE, "free from key = %lu", free);
+        perform_key_eviction(want_to_free);
+        // serverLog(LL_NOTICE, "free from key = %lu", free);
     }
     else
     {
-        size_t free = perform_field_eviction(want_to_free);
-        serverLog(LL_NOTICE, "free from field = %lu", free);
+        perform_field_eviction(want_to_free);
+        // serverLog(LL_NOTICE, "free from field = %lu", free);
     }
 }

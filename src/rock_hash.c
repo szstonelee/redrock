@@ -58,6 +58,7 @@ dictType fieldLruDictType = {
     dictExpandAllowed           /* allow to expand */
 };
 
+#if defined RED_ROCK_DEBUG
 static void debug_print_lrus(const dict *lrus)
 {
     dictIterator *di = dictGetIterator((dict*)lrus);
@@ -70,7 +71,9 @@ static void debug_print_lrus(const dict *lrus)
 
     dictReleaseIterator(di);
 }
+#endif
 
+#if defined RED_ROCK_DEBUG
 static void debug_check_lru(const char *from, dict *hash, dict *lrus, const sds will_delete_field)
 {
     size_t sz_hash = dictSize(hash);
@@ -123,7 +126,9 @@ static void debug_check_lru(const char *from, dict *hash, dict *lrus, const sds 
     }
     
 }
+#endif
 
+#if defined RED_ROCK_DEBUG
 static void debug_check_rock_hash_field_cnt(const int dbid, const char *from)
 {
     redisDb *db = server.db + dbid;
@@ -142,6 +147,7 @@ static void debug_check_rock_hash_field_cnt(const int dbid, const char *from)
         serverPanic("debug_check_ock_hash_field_cnt() fail, from = %s, total = %lu, db->rock_hash_field_cnt = %lu",
                     from, total, db->rock_hash_field_cnt);
 }
+#endif
 
 /* Calculate the first lru info for rock hash.
  * Referecne object.c createObject()
@@ -554,7 +560,9 @@ void on_rockval_field_of_hash(const int dbid, const sds redis_key, const sds fie
     dict *lrus = dictGetVal(de_rock_hash);
     if (dictDelete(lrus, field) != DICT_OK)
     {
+        #if defined RED_ROCK_DEBUG
         debug_print_lrus(lrus);
+        #endif 
         serverPanic("on_rockval_field_of_hash(), key = %s, field = %s", redis_key, field);
     }
     else
@@ -571,6 +579,7 @@ void on_rockval_field_of_hash(const int dbid, const sds redis_key, const sds fie
     #endif    
 }
 
+#if defined RED_ROCK_DEBUG
 static void debug_check_rock_hash(const int dbid, const sds redis_key)
 {
     redisDb *db = server.db + dbid;
@@ -599,6 +608,7 @@ static void debug_check_rock_hash(const int dbid, const sds redis_key)
         dictReleaseIterator(di_lrus);
     }
 }
+#endif
 
 /* Before a key is deleted from redis db, it will call here.
  * NOTE: The key may be not a hash key

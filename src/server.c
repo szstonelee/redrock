@@ -661,9 +661,11 @@ struct redisCommand redisCommandTable[] = {
      "ok-loading fast ok-stale @keyspace",
      0,NULL,0,0,0,0,0,0},
 
+/*
     {"swapdb", NULL, swapdbCommand,3,
      "write fast @keyspace @dangerous",
      0,NULL,0,0,0,0,0,0},
+*/
 
     {"move", move_cmd_for_rock, moveCommand,3,
      "write fast @keyspace",
@@ -1112,6 +1114,10 @@ struct redisCommand redisCommandTable[] = {
      "admin no-script ok-stale",
      0,NULL,0,0,0,0,0,0},
 
+    {"debugrock", NULL, debug_rock,-2,
+     "read-only random",
+     0,NULL,0,0,0,0,0,0},
+
     {"rockevict", NULL, rock_evict,-2,
      "read-only random @keyspace",
      0,NULL,0,0,0,0,0,0},
@@ -1120,8 +1126,8 @@ struct redisCommand redisCommandTable[] = {
      "read-only random @keyspace",
      0,NULL,0,0,0,0,0,0},
 
-    {"debugrock", NULL, debug_rock,-2,
-     "read-only random",
+    {"rockstat", NULL, rock_stat,-1,
+     "read-only fast",
      0,NULL,0,0,0,0,0,0}
 };
 
