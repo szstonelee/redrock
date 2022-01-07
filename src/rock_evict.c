@@ -707,7 +707,10 @@ static void pick_best_field_from_hash_pool(int *best_dbid, sds *best_field, sds 
  *
  * The return value is the memory size for eviction (NOTE: not actually released because the async mode)
  * 
- * If memory size is zero, it means failure for such cases:
+ * if return memory size is SIZE_MAX which is not possible, it means ring buffer is full
+ *    which inidcates that the write thread is busy.
+ * 
+ * If return memory size is zero, it means failure for such cases:
  * 1. the db->rock_evict is empty (but the caller should avoid this condition)
  * 2. can not find the best key in th pool for eviction because 2-1) and 2-2)
  *    2-1) the sample are all younger than all itmes in the previous pool
@@ -740,37 +743,13 @@ static size_t try_to_perform_one_key_eviction()
     }
 
     // We can evict the key
-    monotime timer;
-    elapsedStart(&timer);
-
     size_t mem = 0;
-    int not_write_success = 1;
-    uint64_t elapse_us = 0;
-    while (not_write_success)
-    {
-        const int ret = try_evict_one_key_to_rocksdb(best_dbid, best_key, &mem);
-        switch (ret)
-        {
-        case TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL:
-            elapse_us = elapsedUs(timer);
-            if (elapse_us > MAX_WAIT_RING_BUFFER_US)
-            {
-                serverLog(LL_WARNING, "key eviction waiting for ring buffer timout = %zu (us)", elapse_us);
-                return SIZE_MAX;
-            }
-
-            usleep(1);
-            break;      // try again until success
-
-        case TRY_EVICT_ONE_SUCCESS:
-            // serverLog(LL_WARNING, "evict key = %s, dbid = %d, mem = %lu", best_key, best_dbid, mem);
-            not_write_success = 0;
-            break;
-
-        default:
-            serverPanic("perform_one_key_eviction()");
-        }
-    }
+    const int ret = try_evict_one_key_to_rocksdb(best_dbid, best_key, &mem);
+    if (ret == TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL)
+        return SIZE_MAX;
+    
+    serverAssert(ret == TRY_EVICT_ONE_SUCCESS);
+    // serverLog(LL_WARNING, "evict key = %s, dbid = %d, mem = %lu", best_key, best_dbid, mem);
     
     serverAssert(mem > 0 && mem != SIZE_MAX);
     return mem;
@@ -804,44 +783,40 @@ static size_t try_to_perform_one_field_eviction()
     }
 
     // We can evict the field
-    monotime timer;
-    elapsedStart(&timer);
-
     size_t mem = 0;
-    int not_write_success = 1;
-    uint64_t elapse_us = 0;
-    while (not_write_success)
-    {
-        const int ret = try_evict_one_field_to_rocksdb(best_dbid, best_hash_key, best_field, &mem);
-        switch (ret)
-        {
-        case TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL:
-            elapse_us = elapsedUs(timer);
-            if (elapse_us > MAX_WAIT_RING_BUFFER_US)
-            {
-                serverLog(LL_WARNING, "field eviction waiting for ring buffer timout = %zu (us)", elapse_us);
-                return SIZE_MAX;
-            }
+    const int ret = try_evict_one_field_to_rocksdb(best_dbid, best_hash_key, best_field, &mem);
+    if (ret == TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL)
+        return SIZE_MAX;
 
-            usleep(1);
-            break;      // try again until success
+    serverAssert(ret == TRY_EVICT_ONE_SUCCESS);
 
-        case TRY_EVICT_ONE_SUCCESS:
-            // serverLog(LL_WARNING, "evict field = %s, best_hash_key = %s, dbid = %d, mem = %lu", 
-            //          best_field, best_hash_key, best_dbid, mem);
-            not_write_success = 0;
-            break;
-
-        default:
-            serverPanic("perform_one_key_eviction()");
-        }
-    }
+    // serverLog(LL_WARNING, "evict field = %s, best_hash_key = %s, dbid = %d, mem = %lu", 
+    //          best_field, best_hash_key, best_dbid, mem);
     
     serverAssert(mem > 0 && mem != SIZE_MAX);
     return mem;
 }
 
-#define EVICTION_TIMEOUT_MS 10
+#define EVICTION_TIMEOUT_MS 1
+
+static int try_cnt = 0;
+static int noavail_cnt = 0;
+static int rbuf_timeout_cnt = 0;
+static int free_timeout_cnt = 0;
+static int success_cnt = 0;
+static int success_key_cnt = 0;
+static size_t success_total_us = 0;
+static size_t timeout_key_cnt = 0;
+
+void debug_print_key_evict()
+{
+    serverLog(LL_WARNING, "try_cnt = %d, noavail_cnt = %d, rbuf_timeout_cnt = %d, free_timeout_cnt = %d, "
+                          "success_cnt = %d, success_total_us = %zu, avg success (us) = %zu, "
+                          "timeout_key_cnt = %zu, avg key cnt of free_time_out = %zu",
+                          try_cnt, noavail_cnt, rbuf_timeout_cnt, free_timeout_cnt, 
+                          success_cnt, success_total_us, success_cnt == 0 ? 0 : success_total_us/(size_t)success_cnt,
+                          timeout_key_cnt, free_timeout_cnt == 0 ? 0 : timeout_key_cnt/(size_t)free_timeout_cnt);
+}
 
 /* Try to evict keys to the want_to_free size
  *
@@ -851,15 +826,21 @@ static size_t try_to_perform_one_field_eviction()
  */
 static size_t perform_key_eviction(const size_t want_to_free)
 {
+    ++try_cnt;
+
     size_t free_total = 0;
     monotime evictionTimer;
     elapsedStart(&evictionTimer);
+
+    int key_cnt_for_this_eviction = 0;
+    int timeout_of_eviction = 0;
 
     while (free_total < want_to_free)
     {
         size_t will_free_mem = try_to_perform_one_key_eviction();
         if (will_free_mem == 0)
         {
+            ++noavail_cnt;
             // In theory, it means no key avaiable for eviction
             // while the memory is not enough
             serverLog(LL_WARNING, "No available keys for eviction!");
@@ -867,7 +848,12 @@ static size_t perform_key_eviction(const size_t want_to_free)
         }
 
         if (will_free_mem == SIZE_MAX)
+        {
+            ++rbuf_timeout_cnt;
             break;      // timeout for waitng for ring buffer
+        }
+
+        ++key_cnt_for_this_eviction;
 
         free_total += will_free_mem;
 
@@ -875,11 +861,27 @@ static size_t perform_key_eviction(const size_t want_to_free)
         {
             const uint64_t elapse_ms = elapsedMs(evictionTimer);
             if (elapse_ms > EVICTION_TIMEOUT_MS)
-            {
+            {                
+                timeout_of_eviction = 1;
                 serverLog(LL_WARNING, "perform_key_eviction() timeout for %zu (ms), but alreay evict mem = %lu, want_to_free = %zu", 
                                       elapse_ms, free_total, want_to_free);   
                 break;     
             }
+        }
+    }
+
+    if (free_total >= want_to_free)
+    {
+        ++success_cnt;
+        success_key_cnt += key_cnt_for_this_eviction;
+        success_total_us += elapsedUs(evictionTimer);
+    }
+    else
+    {
+        if (timeout_of_eviction)
+        {
+            ++free_timeout_cnt;;
+            timeout_key_cnt += key_cnt_for_this_eviction;
         }
     }
     

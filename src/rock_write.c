@@ -8,7 +8,7 @@
 // #include <stddef.h>
 // #include <assert.h>
 
-#define RING_BUFFER_LEN  256
+#define RING_BUFFER_LEN  16
 // #define RING_BUFFER_LEN 2  // for dbug, NOTE: if setting 1, compiler will generate some warnings
 
 
@@ -258,7 +258,9 @@ static int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids,
         // the rock_read.c API. Keys in candidates means they are in async mode
         // and can removed from candidates later by main thread.
         // check NOTE 4.
+        #if defined RED_ROCK_DEBUG
         serverAssert(!already_in_candidates_for_db(dbid, try_key));  
+        #endif
 
         // check NOTE 5.
         redisDb *db = server.db + dbid;

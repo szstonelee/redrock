@@ -3,6 +3,8 @@
 
 #include "server.h"
 
+void debug_print_key_evict();
+
 dict* init_rock_evict_dict();
 void init_rock_evict_before_enter_event_loop();
 

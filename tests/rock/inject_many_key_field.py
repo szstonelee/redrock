@@ -13,7 +13,7 @@ def _main():
         if dice_for_hash == 1:
             hash_cnt = hash_cnt + 1
             hkey = "hkey" + str(hash_cnt)
-            field_num = random.randint(1, 300)
+            field_num = random.randint(1, 100)
             for j in range(1, field_num+1):
                 field = "f" + str(j)
                 r.execute_command("hset", hkey, field, val)

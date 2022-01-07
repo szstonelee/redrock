@@ -196,7 +196,11 @@ void debug_rock(client *c)
 {
     sds flag = c->argv[1]->ptr;
 
-    if (strcasecmp(flag, "rockstat") == 0)
+    if (strcasecmp(flag, "evictkeyreport") == 0) 
+    {
+        debug_print_key_evict();
+    }
+    else if (strcasecmp(flag, "rockstat") == 0)
     {
         rock_stat(c);
         return;
@@ -1207,14 +1211,14 @@ void rock_stat(client *c)
 
     // line 1 : memory
     s = sdsempty();
-    size_t zmalloc_used = zmalloc_used_memory();
-    size_t total_system_mem = server.system_memory_size;
     char hmem[64];
+    bytesToHuman(hmem, zmalloc_used_memory());
     char total_system_hmem[64];
-    bytesToHuman(hmem,zmalloc_used);
-    bytesToHuman(total_system_hmem, total_system_mem);
-    s = sdscatprintf(s, "used = %zu, used_human = %s, sys = %zu, sys_human = %s", 
-                     zmalloc_used, hmem, total_system_mem, total_system_hmem);
+    bytesToHuman(total_system_hmem, server.system_memory_size);
+    char peak_hmem[64];
+    bytesToHuman(peak_hmem,server.stat_peak_memory);
+    s = sdscatprintf(s, "used_human = %s, used_peak_human = %s, sys_human = %s", 
+                     hmem, peak_hmem, total_system_hmem);
     addReplyBulkCString(c, s);
 
     // line 2 : rock info
