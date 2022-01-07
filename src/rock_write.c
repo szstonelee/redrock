@@ -8,7 +8,7 @@
 // #include <stddef.h>
 // #include <assert.h>
 
-#define RING_BUFFER_LEN  16
+#define RING_BUFFER_LEN  8
 // #define RING_BUFFER_LEN 2  // for dbug, NOTE: if setting 1, compiler will generate some warnings
 
 

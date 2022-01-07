@@ -198,12 +198,9 @@ void debug_rock(client *c)
 
     if (strcasecmp(flag, "evictkeyreport") == 0) 
     {
-        debug_print_key_evict();
-    }
-    else if (strcasecmp(flag, "rockstat") == 0)
-    {
-        rock_stat(c);
-        return;
+        #ifdef RED_ROCK_EVICT_INFO
+        eviction_info_print();
+        #endif
     }
     else if (strcasecmp(flag, "evictfield") == 0)
     {

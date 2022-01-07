@@ -2,8 +2,11 @@
 #define __ROCK_EVICT_H
 
 #include "server.h"
+#include "rock.h"
 
-void debug_print_key_evict();
+#ifdef RED_ROCK_EVICT_INFO
+void eviction_info_print();
+#endif
 
 dict* init_rock_evict_dict();
 void init_rock_evict_before_enter_event_loop();

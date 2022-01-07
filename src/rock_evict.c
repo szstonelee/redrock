@@ -1,5 +1,5 @@
 #include "rock_evict.h"
-#include "rock.h"
+// #include "rock.h"
 #include "rock_hash.h"
 #include "rock_write.h"
 
@@ -701,7 +701,7 @@ static void pick_best_field_from_hash_pool(int *best_dbid, sds *best_field, sds 
     // We can not find the best field from the pool
 }
 
-#define MAX_WAIT_RING_BUFFER_US 10
+// #define MAX_WAIT_RING_BUFFER_US 10
 
 /* Try to perform one key eviction.
  *
@@ -797,26 +797,28 @@ static size_t try_to_perform_one_field_eviction()
     return mem;
 }
 
-#define EVICTION_TIMEOUT_MS 1
+#ifdef RED_ROCK_EVICT_INFO
 
-static int try_cnt = 0;
-static int noavail_cnt = 0;
-static int rbuf_timeout_cnt = 0;
-static int free_timeout_cnt = 0;
-static int success_cnt = 0;
-static int success_key_cnt = 0;
-static size_t success_total_us = 0;
-static size_t timeout_key_cnt = 0;
+static int ei_try_cnt = 0;
+static int ei_noavail_cnt = 0;
+static int ei_rbuf_timeout_cnt = 0;
+static int ei_free_timeout_cnt = 0;
+static int ei_success_cnt = 0;
+static size_t ei_success_total_us = 0;
+static size_t ei_timeout_cnt = 0;
 
-void debug_print_key_evict()
+
+void eviction_info_print()
 {
-    serverLog(LL_WARNING, "try_cnt = %d, noavail_cnt = %d, rbuf_timeout_cnt = %d, free_timeout_cnt = %d, "
+    serverLog(LL_WARNING, "try_cnt = %d, noavail_cnt = %d, rbuf_timeout_cnt = %d, "
                           "success_cnt = %d, success_total_us = %zu, avg success (us) = %zu, "
-                          "timeout_key_cnt = %zu, avg key cnt of free_time_out = %zu",
-                          try_cnt, noavail_cnt, rbuf_timeout_cnt, free_timeout_cnt, 
-                          success_cnt, success_total_us, success_cnt == 0 ? 0 : success_total_us/(size_t)success_cnt,
-                          timeout_key_cnt, free_timeout_cnt == 0 ? 0 : timeout_key_cnt/(size_t)free_timeout_cnt);
+                          "free_timeout_cnt = %d, avg key/field cnt of free_time_out = %zu, timeout_cnt(key/field) = %zu",
+                          ei_try_cnt, ei_noavail_cnt, ei_rbuf_timeout_cnt,  
+                          ei_success_cnt, ei_success_total_us, ei_success_cnt == 0 ? 0 : ei_success_total_us/(size_t)ei_success_cnt,
+                          ei_free_timeout_cnt, ei_free_timeout_cnt == 0 ? 0 : ei_timeout_cnt/(size_t)ei_free_timeout_cnt, ei_timeout_cnt);
 }
+
+#endif
 
 /* Try to evict keys to the want_to_free size
  *
@@ -824,23 +826,26 @@ void debug_print_key_evict()
  *    over want_to_free, returnn
  * 2. or if timeout (10ms), return. Timeout could be for the busy of RocksDB write
  */
-static size_t perform_key_eviction(const size_t want_to_free)
+static size_t perform_key_eviction(const size_t want_to_free, const unsigned int timeout_us)
 {
-    ++try_cnt;
+    #ifdef RED_ROCK_EVICT_INFO
+    ++ei_try_cnt;
+    int cnt_for_this_eviction = 0;
+    int timeout_of_eviction = 0;
+    #endif
 
     size_t free_total = 0;
-    monotime evictionTimer;
-    elapsedStart(&evictionTimer);
-
-    int key_cnt_for_this_eviction = 0;
-    int timeout_of_eviction = 0;
-
+    monotime timer;
+    elapsedStart(&timer);
+    
     while (free_total < want_to_free)
     {
         size_t will_free_mem = try_to_perform_one_key_eviction();
         if (will_free_mem == 0)
         {
-            ++noavail_cnt;
+            #ifdef RED_ROCK_EVICT_INFO
+            ++ei_noavail_cnt;
+            #endif
             // In theory, it means no key avaiable for eviction
             // while the memory is not enough
             serverLog(LL_WARNING, "No available keys for eviction!");
@@ -849,59 +854,75 @@ static size_t perform_key_eviction(const size_t want_to_free)
 
         if (will_free_mem == SIZE_MAX)
         {
-            ++rbuf_timeout_cnt;
+            #ifdef RED_ROCK_EVICT_INFO
+            ++ei_rbuf_timeout_cnt;
+            #endif
             break;      // timeout for waitng for ring buffer
         }
 
-        ++key_cnt_for_this_eviction;
+        #ifdef RED_ROCK_EVICT_INFO
+        ++cnt_for_this_eviction;
+        #endif
 
         free_total += will_free_mem;
 
         if (free_total < want_to_free)
         {
-            const uint64_t elapse_ms = elapsedMs(evictionTimer);
-            if (elapse_ms > EVICTION_TIMEOUT_MS)
-            {                
+            const uint64_t elapse_us = elapsedUs(timer);
+            if (elapse_us > timeout_us)
+            {           
+                // timeouut
+                #ifdef RED_ROCK_EVICT_INFO     
                 timeout_of_eviction = 1;
-                serverLog(LL_WARNING, "perform_key_eviction() timeout for %zu (ms), but alreay evict mem = %lu, want_to_free = %zu", 
-                                      elapse_ms, free_total, want_to_free);   
+                serverLog(LL_WARNING, "perform_key_eviction() timeout for %zu (us), but alreay evict mem = %lu, want_to_free = %zu", 
+                                      elapse_us, free_total, want_to_free);  
+                #endif 
                 break;     
             }
         }
     }
 
+#ifdef RED_ROCK_EVICT_INFO
     if (free_total >= want_to_free)
     {
-        ++success_cnt;
-        success_key_cnt += key_cnt_for_this_eviction;
-        success_total_us += elapsedUs(evictionTimer);
+        ++ei_success_cnt;
+        ei_success_cnt += cnt_for_this_eviction;
+        ei_success_total_us += elapsedUs(timer);
     }
     else
     {
         if (timeout_of_eviction)
         {
-            ++free_timeout_cnt;;
-            timeout_key_cnt += key_cnt_for_this_eviction;
+            ++ei_free_timeout_cnt;;
+            ei_timeout_cnt += cnt_for_this_eviction;
         }
     }
+#endif
     
-    // serverLog(LL_WARNING, "perform_key_eviction success, want_to_free = %lu, free_total = %lu",
-    //          want_to_free, free_total);
     return free_total;
 }
 
 /* Reference the above perform_key_eviction() for similiar algorithm */
-static size_t perform_field_eviction(const size_t want_to_free)
+static size_t perform_field_eviction(const size_t want_to_free, const unsigned int timeout_us)
 {
+    #ifdef RED_ROCK_EVICT_INFO
+    ++ei_try_cnt;
+    int cnt_for_this_eviction = 0;
+    int timeout_of_eviction = 0;
+    #endif
+
     size_t free_total = 0;
-    monotime evictionTimer;
-    elapsedStart(&evictionTimer);
+    monotime timer;
+    elapsedStart(&timer);
 
     while (free_total < want_to_free)
     {
         size_t will_free_mem = try_to_perform_one_field_eviction();
         if (will_free_mem == 0)
         {
+            #ifdef RED_ROCK_EVICT_INFO
+            ++ei_noavail_cnt;
+            #endif
             // In theory, it means no field avaiable for eviction
             // while the memory is not enough
             serverLog(LL_WARNING, "No available fields for eviction!");
@@ -909,25 +930,52 @@ static size_t perform_field_eviction(const size_t want_to_free)
         }
 
         if (will_free_mem == SIZE_MAX)
+        {
+            #ifdef RED_ROCK_EVICT_INFO
+            ++ei_rbuf_timeout_cnt;
+            #endif
             break;  // timeout for waitng for ring buffer
+        }
+
+        #ifdef RED_ROCK_EVICT_INFO
+        ++cnt_for_this_eviction;
+        #endif
 
         free_total += will_free_mem;
 
         if (free_total < want_to_free)
         {
-            const uint64_t elapse_ms = elapsedMs(evictionTimer);
-            if (elapse_ms > EVICTION_TIMEOUT_MS)
+            const uint64_t elapse_us = elapsedUs(timer);
+            if (elapse_us > timeout_us)
             {
                 // timeout
-                serverLog(LL_WARNING, "perform_field_eviction() timeout for %zu (ms), but alreay evict mem = %zu, want_to_free = %zu", 
-                                      elapse_ms, free_total, want_to_free);   
+                #ifdef RED_ROCK_EVICT_INFO     
+                timeout_of_eviction = 1;                
+                serverLog(LL_WARNING, "perform_field_eviction() timeout for %zu (us), but alreay evict mem = %zu, want_to_free = %zu", 
+                                      elapse_us, free_total, want_to_free); 
+                #endif  
                 break;     
             }
         }
     }
 
-    // serverLog(LL_WARNING, "perform_field_eviction success, want_to_free = %lu, free_total = %lu",
-    //          want_to_free, free_total);
+#ifdef RED_ROCK_EVICT_INFO
+    if (free_total >= want_to_free)
+    {
+        ++ei_success_cnt;
+        ei_success_cnt += cnt_for_this_eviction;
+        ei_success_total_us += elapsedUs(timer);
+    }
+    else
+    {
+        if (timeout_of_eviction)
+        {
+            ++ei_free_timeout_cnt;;
+            ei_timeout_cnt += cnt_for_this_eviction;
+        }
+    }
+#endif
+
     return free_total;
 }
 
@@ -951,28 +999,65 @@ static int choose_key_or_field_eviction()
     return key_cnt >= field_cnt;
 }
 
-#define MAX_FREE_MEMORY_SIZE_FOR_ONE_CRON   (2<<20)
+#define EVICTION_MIN_TIMEOUT_US (1<<10)             // about 1 ms
+#define EVICTION_MAX_TIMEOUT_US (1<<12)             // about 4 ms
 void perform_rock_eviction()
 {
+    #ifdef RED_ROCK_EVICT_INFO
+    static monotime timer;
+    static int timing_in_process = 0;    
+    #endif
+
+    static unsigned int timeout = EVICTION_MIN_TIMEOUT_US;
+    static long long last_stat_numcommands = 0L;
+    
     if (server.maxrockmem == 0)
         return;
 
     size_t used = zmalloc_used_memory();
     if (used <= server.maxrockmem)
-        return;
-
-    const size_t over_to_free = used - server.maxrockmem;
-    const size_t want_to_free = over_to_free > MAX_FREE_MEMORY_SIZE_FOR_ONE_CRON 
-                                ? MAX_FREE_MEMORY_SIZE_FOR_ONE_CRON : over_to_free;
-
-    if (choose_key_or_field_eviction())
     {
-        perform_key_eviction(want_to_free);
-        // serverLog(LL_NOTICE, "free from key = %lu", free);
+        #ifdef RED_ROCK_EVICT_INFO
+        if (timing_in_process)
+            serverLog(LL_WARNING, "eviction debug info: total seconds = %zu", elapsedMs(timer)/1000);
+
+        timing_in_process = 0;
+        #endif        
+        
+        return;
+    }
+
+    #ifdef RED_ROCK_EVICT_INFO
+    if (!timing_in_process)
+    {
+        elapsedStart(&timer);
+        timing_in_process = 1;   
+    } 
+    #endif
+
+    const size_t want_to_free = used - server.maxrockmem;
+
+    if (server.stat_numcommands != last_stat_numcommands)
+    {
+        // If there are some commands in the periood, i.e., server is busy, 
+        // tiemout needs to be go back to 1 ms
+        last_stat_numcommands = server.stat_numcommands;
+        timeout = EVICTION_MIN_TIMEOUT_US;
     }
     else
     {
-        perform_field_eviction(want_to_free);
-        // serverLog(LL_NOTICE, "free from field = %lu", free);
+        // othewise, server is idle, we can double the timeout until 8 ms
+        timeout <<= 1;
+        if (timeout > EVICTION_MAX_TIMEOUT_US)
+            timeout = EVICTION_MAX_TIMEOUT_US;
+    }
+
+    if (choose_key_or_field_eviction())
+    {
+        perform_key_eviction(want_to_free, timeout);
+    }
+    else
+    {
+        perform_field_eviction(want_to_free, timeout);
     }
 }
