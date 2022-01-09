@@ -1183,20 +1183,72 @@ void rock_evict_hash(client *c)
     }    
 }
 
-static void get_rock_info(size_t *total_key_num, 
+static void get_rock_info(int *no_zero_dbnum,
+                          size_t *total_key_num, 
                           size_t *total_rock_evict_num, 
                           size_t *total_rock_hash_num,
                           size_t *total_rock_hash_field_num)
 {
     for (int i = 0; i < server.dbnum; ++i)
     {
+        int this_db_zero = 1;
+
         redisDb *db = server.db + i;
         *total_key_num += dictSize(db->dict);
-        *total_rock_evict_num += dictSize(db->rock_evict);
-        *total_rock_hash_num += dictSize(db->rock_hash);
+
+        const size_t key_cnt = dictSize(db->rock_evict);
+        *total_rock_evict_num += key_cnt;
+        if (key_cnt != 0)
+            this_db_zero = 0;
+
+        const size_t hash_cnt = dictSize(db->rock_hash);
+        *total_rock_hash_num += hash_cnt;
+        if (hash_cnt != 0)
+            this_db_zero = 0;
+
         *total_rock_hash_field_num += db->rock_hash_field_cnt;
+
+        if (!this_db_zero)
+            ++(*no_zero_dbnum);
     }
 }
+
+/* For Linux, it is OK to get avail mem at runtiime, but for MacOS，it can't.
+ * So for MacOS, we return SIZE_MAX which means it is impossible
+ */
+static size_t get_avail_mem_of_os()
+{
+#if defined(__APPLE__)
+    return SIZE_MAX;
+#else   // linux
+    return sysconf(_SC_AVPHYS_PAGES) * sysconf(_SC_PAGESIZE);
+#endif    
+}
+
+/* return the config least free memory in bytes
+ * or if config to zero, i.e., system defined, 
+ * return different size for differnt machine.
+ */
+static unsigned long long get_least_free_mem_in_bytes()
+{
+    unsigned long long least_free_mem = server.leastfreemem;
+    if (least_free_mem == 0ULL)
+    {
+        // system defined least free memory
+        if (server.system_memory_size >= (10ULL<<30))
+        {
+            // if this machine has memory more than 10G, we set least free mem to 1G
+            least_free_mem = 1ULL<<30;
+        }
+        else
+        {
+            // otherwise, 512M
+            least_free_mem = 512ULL<<20;
+        }
+    }
+    return least_free_mem;
+}
+
 
 /* For command rockstat */
 void rock_stat(client *c)
@@ -1216,22 +1268,27 @@ void rock_stat(client *c)
     char peak_hmem[64];
     bytesToHuman(peak_hmem, server.stat_peak_memory);
     char avail_hmem[64];
-    bytesToHuman(avail_hmem, sysconf(_SC_AVPHYS_PAGES) * sysconf(_SC_PAGESIZE));
-    s = sdscatprintf(s, "used_human = %s, used_peak_human = %s, sys_human = %s, avail_hmem = %s", 
-                     hmem, peak_hmem, total_system_hmem, avail_hmem);
+    bytesToHuman(avail_hmem, get_avail_mem_of_os());
+    char least_free_hmem[64];
+    bytesToHuman(least_free_hmem, get_least_free_mem_in_bytes());
+    char max_rock_hmem[64];
+    bytesToHuman(max_rock_hmem, server.maxrockmem);
+    s = sdscatprintf(s, "used_human = %s, used_peak_human = %s, sys_human = %s, avail_hmem = %s, least_free_hmem = %s, max_rock_hmem = %s", 
+                     hmem, peak_hmem, total_system_hmem, avail_hmem, least_free_hmem, max_rock_hmem);
     addReplyBulkCString(c, s);
+    sdsfree(s);
 
     // line 2 : rock info
     s = sdsempty();
+    int no_zero_dbnum = 0;
     size_t total_key_num = 0;
     size_t total_rock_evict_num = 0;
     size_t total_rock_hash_num = 0;
     size_t total_rock_hash_field_num = 0;
-    get_rock_info(&total_key_num, &total_rock_evict_num, &total_rock_hash_num, &total_rock_hash_field_num);
-    s = sdscatprintf(s, "key_num = %zu, evict_key_num = %zu, evict_hash_num = %zu, evict_field_num = %zu",
-                     total_key_num, total_rock_evict_num, total_rock_hash_num, total_rock_hash_field_num);
+    get_rock_info(&no_zero_dbnum, &total_key_num, &total_rock_evict_num, &total_rock_hash_num, &total_rock_hash_field_num);
+    s = sdscatprintf(s, "no_zero_dbnum = %d, key_num = %zu, evict_key_num = %zu, evict_hash_num = %zu, evict_field_num = %zu",
+                     no_zero_dbnum, total_key_num, total_rock_evict_num, total_rock_hash_num, total_rock_hash_field_num);
     addReplyBulkCString(c, s);
-
     sdsfree(s);
 }
 
@@ -1397,8 +1454,16 @@ static void rock_all_for_evict_for_db_by_one_percentage(client *c, const int dbi
     }
 
     sds s = sdsempty();
-    s = sdscatprintf(s, "key evict %d (1/%d), scope = %zu, time = %zu (ms)", 
-                        p_index, EVICT_OUTPUT_PERCENTTAGE, scope, elapsedMs(timer));
+    if (EVICT_OUTPUT_PERCENTTAGE != 100)
+    {
+        s = sdscatprintf(s, "key evict %d (1/%d), scope = %zu, time = %zu (ms)", 
+                            p_index, EVICT_OUTPUT_PERCENTTAGE, scope, elapsedMs(timer));
+    }
+    else
+    {
+        s = sdscatprintf(s, "key evict %d%%, scope = %zu, time = %zu (ms)", 
+                            p_index, scope, elapsedMs(timer));
+    }
     addReplyBulkCString(c, s);
     sdsfree(s);
 }
@@ -1423,8 +1488,16 @@ static void rock_all_for_hash_for_db_by_one_percentage(client *c, const int dbid
     }
 
     sds s = sdsempty();
-    s = sdscatprintf(s, "field evict %d (1/%d), scope = %zu, time = %zu (ms)", 
-                        p_index, EVICT_OUTPUT_PERCENTTAGE, scope, elapsedMs(timer));
+    if (EVICT_OUTPUT_PERCENTTAGE != 100)
+    {
+        s = sdscatprintf(s, "field evict %d (1/%d), scope = %zu, time = %zu (ms)", 
+                            p_index, EVICT_OUTPUT_PERCENTTAGE, scope, elapsedMs(timer));
+    }
+    else
+    {
+        s = sdscatprintf(s, "field evict %d%%, scope = %zu, time = %zu (ms)", 
+                            p_index, scope, elapsedMs(timer));
+    }
     addReplyBulkCString(c, s);
     sdsfree(s);
 }
@@ -1620,4 +1693,33 @@ void rock_all(client *c)
 
     rock_all_for_evict(c);
     rock_all_for_hash(c);
+}
+
+/* Check current free memory is OK for continue the command.
+ * Return 1 if OK, otherwise 0.
+ *
+ * If free memory is not enough, two conditions will return 0
+ * 1. the client is in multi state and the command is to be buffered
+ * 2. the command will resume memory, i.e., is_denyoom_command is true.
+ *    For read-only command, it is OK even the value may be read from RocksDB
+ *    and consume memory because we have some sserver.leastfreemem for safe guarantee.
+ */
+int check_free_mem_for_command(const client *c, const int is_denyoom_command)
+{
+    const size_t cur_avail_mem = get_avail_mem_of_os();   // NOTE: for MacOs, it is the MAX_SIZE
+
+    const unsigned long long least_free_mem = get_least_free_mem_in_bytes();
+
+    if (cur_avail_mem >= least_free_mem)
+        return 1;
+
+    // free memory is not engough
+
+    if (c->flags & CLIENT_MULTI &&
+        c->cmd->proc != execCommand &&
+        c->cmd->proc != discardCommand &&
+        c->cmd->proc != resetCommand) 
+        return 0;       // if in multi state and need to buffer the command, it is NOT OK
+
+    return !is_denyoom_command;
 }

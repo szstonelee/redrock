@@ -2542,8 +2542,12 @@ void createSharedObjects(void) {
         "-READONLY You can't write against a read only replica.\r\n"));
     shared.noautherr = createObject(OBJ_STRING,sdsnew(
         "-NOAUTH Authentication required.\r\n"));
+    /*
     shared.oomerr = createObject(OBJ_STRING,sdsnew(
         "-OOM command not allowed when used memory > 'maxmemory'.\r\n"));
+    */
+    shared.oomerr = createObject(OBJ_STRING,sdsnew(
+        "-OOM command not allowed when free memory is less than 'leastfreemem'.\r\n"));
     shared.execaborterr = createObject(OBJ_STRING,sdsnew(
         "-EXECABORT Transaction discarded because of previous errors.\r\n"));
     shared.noreplicaserr = createObject(OBJ_STRING,sdsnew(
@@ -4164,6 +4168,15 @@ int processCommand(client *c, const int rock_async_re_entry) {
         }
     }
 
+    /* Because RedRock do not use Redis self eviction, i.e., server.maxmemory == 0 alwys,
+     * we need check memory usage for new variable server.leastfreemem
+     */
+    if (!check_free_mem_for_command(c, is_denyoom_command))
+    {
+        rejectCommand(c, shared.oomerr);
+        return C_OK;
+    }
+
     /* Make sure to use a reasonable amount of memory for client side
      * caching metadata. */
     if (server.tracking_clients) trackingLimitUsedSlots();
@@ -4311,19 +4324,6 @@ resume_in_aysnc_for_rock: ;     // empty statemennt
         c->woff = server.master_repl_offset;
         if (listLength(server.ready_keys))
             handleClientsBlockedOnKeys();
-
-/*
-        {
-            return C_ROCK;
-        }
-        else
-        {
-            call(c,CMD_CALL_FULL);
-            c->woff = server.master_repl_offset;
-            if (listLength(server.ready_keys))
-                handleClientsBlockedOnKeys();
-        }
-*/
     }
 
     return C_OK;

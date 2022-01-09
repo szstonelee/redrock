@@ -2381,6 +2381,32 @@ static int is_hash_max_rock_entries_valid(long long val, const char **err)
     return 1;
 }
 
+static int is_least_free_mem_valid(long long val, const char **err)
+{
+    if (val == 0)
+        return 1;
+
+    const size_t sys_mem = zmalloc_get_memory_size();
+    if (sys_mem < (2ULL<<30))
+    {
+        serverLog(LL_WARNING, "Your system memory is too low (at least 2G == %llu), system memory for this machine only = %zu", 
+                              2ULL<<30, sys_mem);
+        exit(1);
+    }
+
+    const unsigned long long max_free_mem = sys_mem - (1ULL<<30);
+    if ((unsigned long long)val >= max_free_mem)
+    {
+        static char msg[128];
+        sprintf(msg, "leastfreemem is too large, it must be zero or no bigger than the system memory minus 1G size == %llu",
+                      max_free_mem);
+        *err = msg;
+        return 0;
+    }
+
+    return 1;
+}
+
 static int update_hash_max_rock_entries(long long val, long long prev, const char **err)
 {
     UNUSED(prev);
@@ -2395,6 +2421,25 @@ static int update_hash_max_rock_entries(long long val, long long prev, const cha
     sprintf(msg, "hash-max-rock-entries must be greater than hash-max-ziplist-entries which is %lu", server.hash_max_ziplist_entries);
     *err = msg;
     return 0;
+}
+
+static int update_least_free_mem(long long val, long long prev, const char **err)
+{
+    UNUSED(prev);
+
+    if (val == 0)
+        return 1;
+
+    if ((size_t)val > server.system_memory_size - (1ULL<<30))
+    {
+        static char msg[128];
+        sprintf(msg, "least free mem can not too large, up to system memory minus 1G which is %llu", 
+               server.system_memory_size - (1ULL<<30));
+        *err = msg;
+        return 0;
+    }
+
+    return 1;
 }
 
 #ifdef USE_OPENSSL
@@ -2578,6 +2623,7 @@ standardConfig configs[] = {
     /* Unsigned Long Long configs */
     createULongLongConfig("maxmemory", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.maxmemory, 0, MEMORY_CONFIG, NULL, updateMaxmemory),
     createULongLongConfig("maxrockmem", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.maxrockmem, 100<<20, MEMORY_CONFIG, NULL, NULL),
+    createULongLongConfig("leastfreemem", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.leastfreemem, 0, MEMORY_CONFIG, is_least_free_mem_valid, update_least_free_mem),
 
     /* Size_t configs */
     createSizeTConfig("hash-max-ziplist-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_ziplist_entries, 2, INTEGER_CONFIG, NULL, update_hash_max_ziplist_entries),

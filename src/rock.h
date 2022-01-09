@@ -38,6 +38,8 @@ void debug_rock(client *c);
 void rock_stat(client *c);
 void rock_all(client *c);
 
+int check_free_mem_for_command(const client *c, const int is_denyoom_command);
+
 #define CHECK_EVICT_OK                                          0
 #define CHECK_EVICT_EXPIRED                                     1
 #define CHECK_EVICT_NOT_FOUND                                   2
