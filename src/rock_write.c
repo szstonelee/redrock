@@ -8,7 +8,9 @@
 // #include <stddef.h>
 // #include <assert.h>
 
-#define RING_BUFFER_LEN  8
+// NOTE: The less the ring_buffer_len, the more time need to evicition but less chance of time out of eviction  
+// #define RING_BUFFER_LEN  8       // In test, we can not evict to 100M (only 40M) for a long time
+#define RING_BUFFER_LEN  16         // In test, we can use tens of minutes to evict 100M
 // #define RING_BUFFER_LEN 2  // for dbug, NOTE: if setting 1, compiler will generate some warnings
 
 

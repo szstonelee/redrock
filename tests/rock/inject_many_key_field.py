@@ -50,7 +50,7 @@ def loop_read(str_cnt: int, hash_cnt: int, val: str):
 
         cnt = cnt + 1
         if cnt % 1000 == 0:
-            print(f"cnt = {cnt}, tiime = {time.time()}")
+            print(f"cnt = {cnt}, time = {time.time()}")
 
 
 def _main():

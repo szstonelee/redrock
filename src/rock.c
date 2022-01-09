@@ -16,6 +16,7 @@
 
 #include <dirent.h>
 #include <ftw.h>
+#include <unistd.h>
 
 redisAtomic int rock_threads_loop_forever;
 
@@ -1213,9 +1214,11 @@ void rock_stat(client *c)
     char total_system_hmem[64];
     bytesToHuman(total_system_hmem, server.system_memory_size);
     char peak_hmem[64];
-    bytesToHuman(peak_hmem,server.stat_peak_memory);
-    s = sdscatprintf(s, "used_human = %s, used_peak_human = %s, sys_human = %s", 
-                     hmem, peak_hmem, total_system_hmem);
+    bytesToHuman(peak_hmem, server.stat_peak_memory);
+    char avail_hmem[64];
+    bytesToHuman(avail_hmem, sysconf(_SC_AVPHYS_PAGES) * sysconf(_SC_PAGESIZE));
+    s = sdscatprintf(s, "used_human = %s, used_peak_human = %s, sys_human = %s, avail_hmem = %s", 
+                     hmem, peak_hmem, total_system_hmem, avail_hmem);
     addReplyBulkCString(c, s);
 
     // line 2 : rock info
