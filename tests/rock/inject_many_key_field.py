@@ -7,7 +7,7 @@ import time
 def insert_first(val: str):
     str_cnt = 0
     hash_cnt = 0
-    for i in range(1, 100001):
+    for i in range(1, 1000001):
         str_cnt = str_cnt + 1
         key = "key" + str(str_cnt)
         r.execute_command("set", key, val)

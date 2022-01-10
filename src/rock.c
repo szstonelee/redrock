@@ -1228,6 +1228,9 @@ static size_t get_avail_mem_of_os()
 /* return the config least free memory in bytes
  * or if config to zero, i.e., system defined, 
  * return different size for differnt machine.
+ * 
+ * For system defined, the least free memory do not use too much,
+ * because the page os (buff/cache in free -h) is not accounted for. 
  */
 static unsigned long long get_least_free_mem_in_bytes()
 {
@@ -1235,15 +1238,15 @@ static unsigned long long get_least_free_mem_in_bytes()
     if (least_free_mem == 0ULL)
     {
         // system defined least free memory
-        if (server.system_memory_size >= (10ULL<<30))
+        if (server.system_memory_size >= (256ULL<<20))
         {
-            // if this machine has memory more than 10G, we set least free mem to 1G
+            // if this machine has memory more than 10G, we set least free mem to 256M
             least_free_mem = 1ULL<<30;
         }
         else
         {
-            // otherwise, 512M
-            least_free_mem = 512ULL<<20;
+            // otherwise, 128M
+            least_free_mem = 128ULL<<20;
         }
     }
     return least_free_mem;
@@ -1267,14 +1270,14 @@ void rock_stat(client *c)
     bytesToHuman(total_system_hmem, server.system_memory_size);
     char peak_hmem[64];
     bytesToHuman(peak_hmem, server.stat_peak_memory);
-    char avail_hmem[64];
-    bytesToHuman(avail_hmem, get_avail_mem_of_os());
+    char free_hmem[64];
+    bytesToHuman(free_hmem, get_avail_mem_of_os());
     char least_free_hmem[64];
     bytesToHuman(least_free_hmem, get_least_free_mem_in_bytes());
     char max_rock_hmem[64];
     bytesToHuman(max_rock_hmem, server.maxrockmem);
-    s = sdscatprintf(s, "used_human = %s, used_peak_human = %s, sys_human = %s, avail_hmem = %s, least_free_hmem = %s, max_rock_hmem = %s", 
-                     hmem, peak_hmem, total_system_hmem, avail_hmem, least_free_hmem, max_rock_hmem);
+    s = sdscatprintf(s, "used_human = %s, used_peak_human = %s, sys_human = %s, free_hmem = %s, least_free_hmem = %s, max_rock_hmem = %s", 
+                     hmem, peak_hmem, total_system_hmem, free_hmem, least_free_hmem, max_rock_hmem);
     addReplyBulkCString(c, s);
     sdsfree(s);
 
@@ -1722,4 +1725,106 @@ int check_free_mem_for_command(const client *c, const int is_denyoom_command)
         return 0;       // if in multi state and need to buffer the command, it is NOT OK
 
     return !is_denyoom_command;
+}
+
+/* return size in bytes, if error, return 0.
+ */
+static size_t parse_rock_mem_size(const sds s)
+{
+    size_t len = sdslen(s);
+    char last_char = s[len-1];
+    if (!(last_char == 'm' || last_char == 'M' || last_char == 'g' || last_char == 'G'))
+        return 0;
+    
+    long long parse_val = 0LL;
+    if (string2ll(s, len-1, &parse_val) == 0)
+        return 0;
+
+    if (parse_val <= 0)
+        return 0;
+
+    const size_t val = (size_t)parse_val;
+
+    if (last_char == 'g' || last_char == 'G')
+    {
+        if (SIZE_MAX/(1ULL<<30) < val)
+            return 0;
+        
+        const size_t sz = val * (1ULL<<30);
+        if (sz >= server.system_memory_size)
+            return 0;
+
+        return sz;
+    }
+    else
+    {
+        if (SIZE_MAX/(1ULL<<20) < val)
+            return 0;
+
+        const size_t sz = val * (1ULL<<20);
+        if (sz >= server.system_memory_size)
+            return 0;
+
+        return sz;
+    }
+}
+
+/* return timeout for seconds, if error, return 0.
+ */
+static size_t parse_rock_mem_timeout(const sds s)
+{
+    long long val;
+    if (string2ll(s, sdslen(s), &val) == 0)
+        return 0;
+    
+    if (val <= 0)
+        return 0;
+
+    return (size_t)val;
+}
+
+/* command rockmem <mem_size> <timeout>(optional)
+ */
+void rock_mem(client *c)
+{
+    void bytesToHuman(char *s, unsigned long long n);   // declaration in server.c
+
+    // parse mem_size
+    const size_t mem_size = parse_rock_mem_size(c->argv[1]->ptr);
+    if (mem_size == 0)
+    {
+        addReplyError(c, "rockmem must specify correct memory size, not zero or negative to too large (more than system ram), the size number is like 77M or 77m or 77G or 77g");
+        return;
+    }
+
+    size_t timeout_sec = SIZE_MAX;
+    if (c->argc >= 3)
+    {
+        // parse timeout seconds
+        timeout_sec = parse_rock_mem_timeout(c->argv[2]->ptr);
+        if (timeout_sec == 0)
+        {
+            addReplyError(c, "rockmem timeout for seconds must be positive integer!");
+            return;
+        }
+    }
+
+    size_t timeout_ms;
+    if (timeout_sec >= SIZE_MAX/1000)
+    {
+        timeout_ms = SIZE_MAX;
+    }
+    else
+    {
+        timeout_ms = timeout_sec*1000;
+    }
+
+    const size_t freed = perform_rock_eviction_for_rock_mem(mem_size, timeout_ms);
+    
+    sds result = sdsempty();
+    char hmem[64];
+    bytesToHuman(hmem, freed);
+    result = sdscatprintf(result, "rockmem acutally freed %zu(bytes), which is %s", freed, hmem);
+
+    addReplyBulkSds(c, result);
 }

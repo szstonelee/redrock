@@ -25,6 +25,7 @@ void evict_pool_init();
 // for test
 // size_t perform_key_eviction(const size_t want_to_free);
 // size_t perform_field_eviction(const size_t want_to_free);
-void perform_rock_eviction();
+void perform_rock_eviction_in_cron();
+size_t perform_rock_eviction_for_rock_mem(const size_t want_to_free, const size_t timeout_in_ms);
 
 #endif

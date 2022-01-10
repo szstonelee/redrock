@@ -37,6 +37,7 @@ void rock_evict_hash(client *c);
 void debug_rock(client *c);
 void rock_stat(client *c);
 void rock_all(client *c);
+void rock_mem(client *c);
 
 int check_free_mem_for_command(const client *c, const int is_denyoom_command);
 

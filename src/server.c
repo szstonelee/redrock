@@ -1126,11 +1126,15 @@ struct redisCommand redisCommandTable[] = {
      "read-only random @keyspace",
      0,NULL,0,0,0,0,0,0},
 
-    {"rockstat", NULL, rock_stat,-1,
+    {"rockstat", NULL, rock_stat,1,
      "read-only fast",
      0,NULL,0,0,0,0,0,0},
 
     {"rockall", NULL, rock_all,-1,
+     "read-only fast",
+     0,NULL,0,0,0,0,0,0},
+
+    {"rockmem", NULL, rock_mem,-2,
      "read-only fast",
      0,NULL,0,0,0,0,0,0}
 };
@@ -2289,7 +2293,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                           0,
                           &ei);
 
-    perform_rock_eviction();
+    perform_rock_eviction_in_cron();
 
     server.cronloops++;
     return 1000/server.hz;

@@ -776,8 +776,19 @@ static size_t try_to_perform_one_field_eviction()
     pick_best_field_from_hash_pool(&best_dbid, &best_field, &best_hash_key);
     if (best_field == NULL)
     {
-        // In theory, we can not get this condition
+        // In theory, we can not get this condition frequently.
         // but return zero is safe for this abnormal condition
+        // NOTE: It does not like best_key === NULL, becasue in such following special case,
+        //       this warning is normal.
+        //       The case is like this:
+        //       We use two samples for field eviction ,first sample the rock_hash,
+        //       then the lrus in the rock_hash.
+        //       If a lot of rock_hash is empty (dictSize(lrus) == 0), 
+        //       the first sample is not efficient to pick an non-empty rock hash key,
+        //       so even one rock hash key has a huge lrus (a lot of fields)
+        //       it could appear this warning.
+        //       So the user of RedRock needs to design the dataset to avoid this.
+        //       NOTE: we can not remove empty rock hash key because of the integrity.
         serverLog(LL_WARNING, "best_field == NULL for field eviction");
         return 0;
     }
@@ -979,7 +990,7 @@ static size_t perform_field_eviction(const size_t want_to_free, const unsigned i
     return free_total;
 }
 
-/* return 1 to choose key eviction, 0 to choose field eviction */
+/* return 1 to choose key eviction, 0 to choose field eviction. -1 means key and field are all empty */
 static int choose_key_or_field_eviction()
 {
     size_t key_cnt = 0;
@@ -996,12 +1007,15 @@ static int choose_key_or_field_eviction()
         field_cnt += db->rock_hash_field_cnt;
     }
 
+    if (key_cnt == 0 && field_cnt == 0)
+        return -1;
+
     return key_cnt >= field_cnt;
 }
 
 #define EVICTION_MIN_TIMEOUT_US (1<<10)             // about 1 ms
 #define EVICTION_MAX_TIMEOUT_US (1<<12)             // about 4 ms
-void perform_rock_eviction()
+void perform_rock_eviction_in_cron()
 {
     #ifdef RED_ROCK_EVICT_INFO
     static monotime timer;
@@ -1052,12 +1066,71 @@ void perform_rock_eviction()
             timeout = EVICTION_MAX_TIMEOUT_US;
     }
 
-    if (choose_key_or_field_eviction())
+    const int choice_for_key = choose_key_or_field_eviction();
+    if (choice_for_key == -1)
+        return;
+
+    if (choice_for_key)
     {
         perform_key_eviction(want_to_free, timeout);
     }
     else
     {
         perform_field_eviction(want_to_free, timeout);
+    }
+}
+
+static size_t get_freed_mem_for_rock_mem(const size_t start_used)
+{
+    size_t current_used = zmalloc_used_memory();
+    if (current_used < start_used)
+    {
+        return start_used - current_used;;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+/* Called by the caller which is for command rockmem.
+ * want_to_free is the size the user want to free, and timeout is the max seconds for this operation.
+ * Return is the real size in bytes of freed (using zmalloc_used_memory() not like cron job)
+ * 
+ * The operation ends in such case:
+ * 1. the want_to_free is freed in timeout.
+ * 2. timeout
+ * 3. no key or field left for eviction.
+ */
+size_t perform_rock_eviction_for_rock_mem(const size_t want_to_free, const size_t timeout_in_ms)
+{
+    monotime timer;
+    elapsedStart(&timer);
+    size_t start_used = zmalloc_used_memory();
+
+    while (1)
+    {
+        const int choice_for_key = choose_key_or_field_eviction();
+        if (choice_for_key == -1)
+            // all key and field are emptys
+            return get_freed_mem_for_rock_mem(start_used);
+
+        if (choice_for_key)
+        {
+            try_to_perform_one_key_eviction();
+        }
+        else
+        {
+            try_to_perform_one_field_eviction();
+        }
+
+        // check memory usage
+        size_t current_used = zmalloc_used_memory();
+        if (current_used < start_used && start_used - current_used >= want_to_free)
+            return start_used - current_used;
+
+        // check timeout
+        if (elapsedMs(timer) > timeout_in_ms)
+            return get_freed_mem_for_rock_mem(start_used);
     }
 }
