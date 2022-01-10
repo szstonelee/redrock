@@ -1025,11 +1025,10 @@ void perform_rock_eviction_in_cron()
     static unsigned int timeout = EVICTION_MIN_TIMEOUT_US;
     static long long last_stat_numcommands = 0L;
     
-    if (server.maxrockmem == 0)
-        return;
+    const unsigned long long max_rock_mem = get_max_rock_mem_of_os();
 
-    size_t used = zmalloc_used_memory();
-    if (used <= server.maxrockmem)
+    const size_t used = zmalloc_used_memory();
+    if (used < max_rock_mem)
     {
         #ifdef RED_ROCK_EVICT_INFO
         if (timing_in_process)
@@ -1038,7 +1037,7 @@ void perform_rock_eviction_in_cron()
         timing_in_process = 0;
         #endif        
         
-        return;
+        return;     // memory usage is under limit, do nothing
     }
 
     #ifdef RED_ROCK_EVICT_INFO
@@ -1068,7 +1067,7 @@ void perform_rock_eviction_in_cron()
 
     const int choice_for_key = choose_key_or_field_eviction();
     if (choice_for_key == -1)
-        return;
+        return;     // all db empty for evictions
 
     if (choice_for_key)
     {

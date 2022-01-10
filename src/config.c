@@ -2622,7 +2622,7 @@ standardConfig configs[] = {
 
     /* Unsigned Long Long configs */
     createULongLongConfig("maxmemory", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.maxmemory, 0, MEMORY_CONFIG, NULL, updateMaxmemory),
-    createULongLongConfig("maxrockmem", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.maxrockmem, 100<<20, MEMORY_CONFIG, NULL, NULL),
+    createULongLongConfig("maxrockmem", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.maxrockmem, 0, MEMORY_CONFIG, NULL, NULL),
     createULongLongConfig("leastfreemem", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.leastfreemem, 0, MEMORY_CONFIG, is_least_free_mem_valid, update_least_free_mem),
 
     /* Size_t configs */

@@ -1,16 +1,33 @@
 from conn import r
 import random
 import time
+import redis
 
 # please set redrock rockmaxmem to 100 M and hash-max-rock-entries = 4
 
+
 def insert_first(val: str):
+    oom_msg = "OOM command not allowed when free memory is less than 'leastfreemem'."
     str_cnt = 0
     hash_cnt = 0
-    for i in range(1, 1000001):
+    fail_cnt = 0
+    sleep_secs = 6
+    warning_threshold = 10
+    for i in range(1, 3000001):
         str_cnt = str_cnt + 1
         key = "key" + str(str_cnt)
-        r.execute_command("set", key, val)
+        while True:
+            try:
+                r.execute_command("set", key, val)
+                fail_cnt = 0
+                break
+            except redis.exceptions.ResponseError as e:
+                if str(e) != oom_msg:
+                    raise e
+                fail_cnt = fail_cnt + 1
+                time.sleep(sleep_secs)
+                if fail_cnt >= warning_threshold:
+                    print(f"set oom fail_cnt = {fail_cnt}, key = {key}")
         dice_for_hash = random.randint(1, 100)
         if dice_for_hash == 1:
             hash_cnt = hash_cnt + 1
@@ -18,7 +35,18 @@ def insert_first(val: str):
             field_num = random.randint(1, 200)
             for j in range(1, field_num+1):
                 field = "f" + str(j)
-                r.execute_command("hset", hkey, field, val)
+                while True:
+                    try:
+                        r.execute_command("hset", hkey, field, val)
+                        fail_cnt = 0
+                        break
+                    except redis.exceptions.ResponseError as e:
+                        if str(e) != oom_msg:
+                            raise e
+                        fail_cnt = fail_cnt + 1
+                        time.sleep(sleep_secs)
+                        if fail_cnt >= warning_threshold:
+                            print(f"hset oom fail_cnt = {fail_cnt}, key = {key}, field = {field}")
         if i % 1000 == 0:
             print(f"i = {i}, time = {time.time()}")
 
@@ -56,7 +84,7 @@ def loop_read(str_cnt: int, hash_cnt: int, val: str):
 def _main():
     val = "v" * 1000
     str_cnt, hash_cnt = insert_first(val)
-    loop_read(int(str_cnt/2), int(hash_cnt/2), val)
+    loop_read(int(str_cnt/3), int(hash_cnt/3), val)
 
 
 if __name__ == '__main__':

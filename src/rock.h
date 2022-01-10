@@ -40,6 +40,7 @@ void rock_all(client *c);
 void rock_mem(client *c);
 
 int check_free_mem_for_command(const client *c, const int is_denyoom_command);
+unsigned long long get_max_rock_mem_of_os();    // for rock_evict.c
 
 #define CHECK_EVICT_OK                                          0
 #define CHECK_EVICT_EXPIRED                                     1

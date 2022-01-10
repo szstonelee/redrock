@@ -55,6 +55,9 @@ static void rek_mkdir(char *path)
 #define ROCKSDB_LEVEL_NUM   7
 void init_rocksdb(const char* folder_original_path)
 {
+    if (server.system_memory_size < (4ULL<<30))
+        serverLog(LL_WARNING, "System memory is too low for RocksDB, at least 4G! Your machine only has %zu(byte) RAM.", server.system_memory_size);
+
     // We add listening port to folder_path
     sds folder_path = sdsnewlen(folder_original_path, strlen(folder_original_path));
     sds listen_port = sdsfromlonglong(server.port);
@@ -1238,10 +1241,10 @@ static unsigned long long get_least_free_mem_in_bytes()
     if (least_free_mem == 0ULL)
     {
         // system defined least free memory
-        if (server.system_memory_size >= (256ULL<<20))
+        if (server.system_memory_size >= (10ULL<<30))
         {
             // if this machine has memory more than 10G, we set least free mem to 256M
-            least_free_mem = 1ULL<<30;
+            least_free_mem = 256ULL<<20;
         }
         else
         {
@@ -1252,6 +1255,29 @@ static unsigned long long get_least_free_mem_in_bytes()
     return least_free_mem;
 }
 
+unsigned long long get_max_rock_mem_of_os()
+{
+    if (server.maxrockmem != 0)
+        return server.maxrockmem;       // used-defined
+
+    const size_t sys_mem = server.system_memory_size;
+    if (sys_mem >= (10ULL<<30))
+    {
+        // if machine has 10G and above memory
+        // 2G for OS and 2G for RocksDB
+        return sys_mem - (4ULL<<30);
+    }
+    else if (sys_mem >= (5ULL<<30))
+    {
+        // 2G for OS and 1.5G for RocksDB
+        return sys_mem - (3500ULL<<20);
+    } 
+    else
+    {
+        // 1G for OS and 1G for RocksDB
+        return sys_mem - (2ULL<<30);
+    }
+}
 
 /* For command rockstat */
 void rock_stat(client *c)
@@ -1275,7 +1301,7 @@ void rock_stat(client *c)
     char least_free_hmem[64];
     bytesToHuman(least_free_hmem, get_least_free_mem_in_bytes());
     char max_rock_hmem[64];
-    bytesToHuman(max_rock_hmem, server.maxrockmem);
+    bytesToHuman(max_rock_hmem, get_max_rock_mem_of_os());
     s = sdscatprintf(s, "used_human = %s, used_peak_human = %s, sys_human = %s, free_hmem = %s, least_free_hmem = %s, max_rock_hmem = %s", 
                      hmem, peak_hmem, total_system_hmem, free_hmem, least_free_hmem, max_rock_hmem);
     addReplyBulkCString(c, s);
