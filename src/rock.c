@@ -55,6 +55,13 @@ static void rek_mkdir(char *path)
 #define ROCKSDB_LEVEL_NUM   7
 void init_rocksdb(const char* folder_original_path)
 {
+    if (server.system_memory_size < (2ULL<<30))
+    {
+        serverLog(LL_WARNING, "Your system memory is too low (at least 2G), system memory for this machine only = %zu",
+                              server.system_memory_size); 
+        exit(1);
+    }
+
     if (server.system_memory_size < (4ULL<<30))
         serverLog(LL_WARNING, "System memory is too low for RocksDB, at least 4G! Your machine only has %zu(byte) RAM.", server.system_memory_size);
 
@@ -1189,8 +1196,10 @@ void rock_evict_hash(client *c)
 static void get_rock_info(int *no_zero_dbnum,
                           size_t *total_key_num, 
                           size_t *total_rock_evict_num, 
+                          size_t *total_key_in_disk_num,
                           size_t *total_rock_hash_num,
-                          size_t *total_rock_hash_field_num)
+                          size_t *total_rock_hash_field_num,
+                          size_t *total_field_in_disk_num)
 {
     for (int i = 0; i < server.dbnum; ++i)
     {
@@ -1203,6 +1212,9 @@ static void get_rock_info(int *no_zero_dbnum,
         *total_rock_evict_num += key_cnt;
         if (key_cnt != 0)
             this_db_zero = 0;
+
+        *total_key_in_disk_num += db->rock_key_in_disk_cnt;
+        *total_field_in_disk_num += db->rock_field_in_disk_cnt;
 
         const size_t hash_cnt = dictSize(db->rock_hash);
         *total_rock_hash_num += hash_cnt;
@@ -1219,7 +1231,7 @@ static void get_rock_info(int *no_zero_dbnum,
 /* For Linux, it is OK to get avail mem at runtiime, but for MacOS，it can't.
  * So for MacOS, we return SIZE_MAX which means it is impossible
  */
-static size_t get_avail_mem_of_os()
+size_t get_free_mem_of_os()
 {
 #if defined(__APPLE__)
     return SIZE_MAX;
@@ -1228,17 +1240,23 @@ static size_t get_avail_mem_of_os()
 #endif    
 }
 
-/* return the config least free memory in bytes
- * or if config to zero, i.e., system defined, 
+/* return the config least free memory in bytes.
+ * 
+ * 1) if server.leastfreemem == 0, 
+ * it means the value is defined by system, 
  * return different size for differnt machine.
  * 
  * For system defined, the least free memory do not use too much,
  * because the page os (buff/cache in free -h) is not accounted for. 
+
+ * 2) if negative, it means disable least free mem checking.
+ * 
+ * 3) otherwise, it is up to the user. Any thing possible for the user responsibility. 
  */
-static unsigned long long get_least_free_mem_in_bytes()
+static long long get_least_free_mem_in_bytes()
 {
     unsigned long long least_free_mem = server.leastfreemem;
-    if (least_free_mem == 0ULL)
+    if (least_free_mem == 0)
     {
         // system defined least free memory
         if (server.system_memory_size >= (10ULL<<30))
@@ -1260,22 +1278,31 @@ unsigned long long get_max_rock_mem_of_os()
     if (server.maxrockmem != 0)
         return server.maxrockmem;       // used-defined
 
-    const size_t sys_mem = server.system_memory_size;
-    if (sys_mem >= (10ULL<<30))
+    const size_t init_free_mem = server.initial_free_mem;
+
+    if (init_free_mem == SIZE_MAX)
     {
-        // if machine has 10G and above memory
-        // 2G for OS and 2G for RocksDB
-        return sys_mem - (4ULL<<30);
+        // For MacOS
+        const size_t sys_mem = server.system_memory_size;
+        if (sys_mem >= (10ULL<<30))
+        {
+            return sys_mem - (4ULL<<30);
+        }
+        else if (sys_mem >= (5ULL<<30))
+        {
+            return sys_mem - (3500ULL<<20);
+        }
+        else
+        {
+            serverAssert(sys_mem > (2ULL<<30));
+            return sys_mem - (2ULL<<30);
+        }
     }
-    else if (sys_mem >= (5ULL<<30))
-    {
-        // 2G for OS and 1.5G for RocksDB
-        return sys_mem - (3500ULL<<20);
-    } 
     else
     {
-        // 1G for OS and 1G for RocksDB
-        return sys_mem - (2ULL<<30);
+        // Linux
+        serverAssert(init_free_mem > (2ULL<<30));
+        return init_free_mem - (2ULL<<30);
     }
 }
 
@@ -1297,9 +1324,17 @@ void rock_stat(client *c)
     char peak_hmem[64];
     bytesToHuman(peak_hmem, server.stat_peak_memory);
     char free_hmem[64];
-    bytesToHuman(free_hmem, get_avail_mem_of_os());
+    bytesToHuman(free_hmem, get_free_mem_of_os());
     char least_free_hmem[64];
-    bytesToHuman(least_free_hmem, get_least_free_mem_in_bytes());
+    const long long least_free_mem = get_least_free_mem_in_bytes();
+    if (least_free_mem < 0)
+    {
+        strncpy(least_free_hmem, "leastfreemem_disabled", 64);
+    }
+    else
+    {
+        bytesToHuman(least_free_hmem, (size_t)least_free_mem);
+    }
     char max_rock_hmem[64];
     bytesToHuman(max_rock_hmem, get_max_rock_mem_of_os());
     s = sdscatprintf(s, "used_human = %s, used_peak_human = %s, sys_human = %s, free_hmem = %s, least_free_hmem = %s, max_rock_hmem = %s", 
@@ -1312,11 +1347,17 @@ void rock_stat(client *c)
     int no_zero_dbnum = 0;
     size_t total_key_num = 0;
     size_t total_rock_evict_num = 0;
+    size_t total_key_in_disk_num = 0;
     size_t total_rock_hash_num = 0;
     size_t total_rock_hash_field_num = 0;
-    get_rock_info(&no_zero_dbnum, &total_key_num, &total_rock_evict_num, &total_rock_hash_num, &total_rock_hash_field_num);
-    s = sdscatprintf(s, "no_zero_dbnum = %d, key_num = %zu, evict_key_num = %zu, evict_hash_num = %zu, evict_field_num = %zu",
-                     no_zero_dbnum, total_key_num, total_rock_evict_num, total_rock_hash_num, total_rock_hash_field_num);
+    size_t total_field_in_disk_num = 0;    
+    get_rock_info(&no_zero_dbnum, &total_key_num, 
+                  &total_rock_evict_num, &total_key_in_disk_num, 
+                  &total_rock_hash_num, &total_rock_hash_field_num, &total_field_in_disk_num);
+
+    s = sdscatprintf(s, "no_zero_dbnum = %d, key_num = %zu, evict_key_num = %zu, key_in_disk_num = %zu, evict_hash_num = %zu, evict_field_num = %zu, field_in_disk_num = %zu",
+                     no_zero_dbnum, total_key_num, total_rock_evict_num, total_key_in_disk_num, total_rock_hash_num, total_rock_hash_field_num, total_field_in_disk_num);
+    
     addReplyBulkCString(c, s);
     sdsfree(s);
 }
@@ -1735,22 +1776,22 @@ void rock_all(client *c)
  */
 int check_free_mem_for_command(const client *c, const int is_denyoom_command)
 {
-    const size_t cur_avail_mem = get_avail_mem_of_os();   // NOTE: for MacOs, it is the MAX_SIZE
+    const long long least_free_mem = get_least_free_mem_in_bytes();
+    if (least_free_mem < 0)
+        return 1;       // disalbe least free mem check
 
-    const unsigned long long least_free_mem = get_least_free_mem_in_bytes();
-
-    if (cur_avail_mem >= least_free_mem)
+    const size_t current_free_mem = get_free_mem_of_os();   // NOTE: for MacOs, it is the MAX_SIZE
+    if (current_free_mem >= (size_t)least_free_mem)
         return 1;
 
     // free memory is not engough
-
     if (c->flags & CLIENT_MULTI &&
         c->cmd->proc != execCommand &&
         c->cmd->proc != discardCommand &&
         c->cmd->proc != resetCommand) 
         return 0;       // if in multi state and need to buffer the command, it is NOT OK
 
-    return !is_denyoom_command;
+    return !is_denyoom_command;     // deny oom command
 }
 
 /* return size in bytes, if error, return 0.

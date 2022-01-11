@@ -235,6 +235,12 @@ void dbOverwrite(redisDb *db, robj *key, robj *val) {
     serverAssertWithInfo(NULL,key,de != NULL);
     dictEntry auxentry = *de;
     robj *old = dictGetVal(de);
+
+    const int is_old_rock_val = is_rock_value(old);
+    size_t old_field_cnt = 0;
+    if (old->type == OBJ_HASH &&  old->encoding == OBJ_ENCODING_HT)
+        old_field_cnt = dictSize((dict*)old->ptr);
+
     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
         val->lru = old->lru;
     }
@@ -251,9 +257,9 @@ void dbOverwrite(redisDb *db, robj *key, robj *val) {
 
     dictFreeVal(db->dict, &auxentry);
 
-    on_overwrite_key_from_db_for_rock_hash(db->id, key->ptr, val);
+    on_overwrite_key_from_db_for_rock_hash(db->id, key->ptr, old_field_cnt, val);
     // NOTE: must follow the rock hash
-    on_db_overwrite_key_for_rock_evict(db->id, key->ptr, val);
+    on_db_overwrite_key_for_rock_evict(db->id, key->ptr, is_old_rock_val, val);
 }
 
 /* High level Set operation. This function can be used in order to set

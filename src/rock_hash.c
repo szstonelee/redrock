@@ -55,7 +55,7 @@ dictType fieldLruDictType = {
     dictSdsKeyCompare,          /* key compare */
     NULL,                       /* key destructor */
     NULL,                       /* val destructor */
-    dictExpandAllowed           /* allow to expand */
+    NULL                        /* allow to expand */
 };
 
 #if defined RED_ROCK_DEBUG
@@ -327,6 +327,16 @@ void on_hash_key_del_field(const int dbid, const sds redis_key, const sds field)
         return;
     }
 
+    dict *hash = o->ptr;
+    dictEntry *de_hash = dictFind(hash, field);
+    serverAssert(de_hash);
+    const sds v_of_field = dictGetVal(de_hash);
+    if (v_of_field == shared.hash_rock_val_for_field)
+    {
+        serverAssert(db->rock_field_in_disk_cnt > 0);
+        --db->rock_field_in_disk_cnt;
+    }
+
     dictEntry *de_rock_hash = dictFind(db->rock_hash, redis_key);
     if (de_rock_hash)
     {
@@ -442,11 +452,12 @@ void on_visit_all_fields_of_hash_for_readonly(const int dbid, const sds redis_ke
 /* After a field is overwritten, it will call here.
  *
  * If is_field_rock_value_before is false(0), it means a simple overwrite.
- * We need to whether check the redis_key is in rock hash and update the lru clock.
+ * We need to check whether the redis_key is in rock hash and update the lru clock.
  * 
  * If is_field_rock_value_before is true, we need to add the field to lrus of the rock hash. 
  */
-void on_overwrite_field_for_rock_hash(const int dbid, const sds redis_key, const sds field, const int is_field_rock_value_before)
+void on_overwrite_field_for_rock_hash(const int dbid, const sds redis_key, const sds field, 
+                                      const int is_field_rock_value_before)
 {
     redisDb *db = server.db + dbid;
     dictEntry *de_db = dictFind(db->dict, redis_key);
@@ -481,6 +492,9 @@ void on_overwrite_field_for_rock_hash(const int dbid, const sds redis_key, const
         #if defined RED_ROCK_DEBUG
         debug_check_rock_hash_field_cnt(dbid, "on_overwrite_field_for_rock_hash");
         #endif
+
+        serverAssert(db->rock_field_in_disk_cnt > 0);
+        --db->rock_field_in_disk_cnt;
     }
     else
     {
@@ -528,6 +542,9 @@ void on_recover_field_of_hash(const int dbid, const sds redis_key, const sds fie
     debug_check_lru("on_recover_field_of_hash", o->ptr, lrus, NULL);
     debug_check_rock_hash_field_cnt(dbid, "on_recover_field_of_hash");
     #endif
+
+    serverAssert(db->rock_field_in_disk_cnt > 0);
+    --db->rock_field_in_disk_cnt;
 }
 
 /* When rock_write.c already set one field's value to rock value.
@@ -577,6 +594,8 @@ void on_rockval_field_of_hash(const int dbid, const sds redis_key, const sds fie
     #if defined RED_ROCK_DEBUG
     debug_check_lru("on_rockval_field_of_hash", o->ptr, lrus, NULL);
     #endif    
+
+    ++db->rock_field_in_disk_cnt;
 }
 
 #if defined RED_ROCK_DEBUG
@@ -622,21 +641,34 @@ void on_del_key_from_db_for_rock_hash(const int dbid, const sds redis_key)
     dictEntry *de_hash = dictFind(db->rock_hash, redis_key);
     if (de_hash)
     {
+        dictEntry *de_db = dictFind(db->dict, redis_key);
+        serverAssert(de_db);
+        robj *o = dictGetVal(de_db);
+        serverAssert(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT);
+        const size_t total_field_cnt_in_hash = dictSize((dict*)o->ptr); 
+
         sds internal_key = dictGetKey(de_hash);
         dict *lrus = dictGetVal(de_hash);
+        const size_t lru_cnt = dictSize(lrus);
         serverAssert(db->rock_hash_field_cnt >= dictSize(lrus));
         db->rock_hash_field_cnt -= dictSize(lrus);
         dictDelete(db->rock_hash, internal_key);
         #if defined RED_ROCK_DEBUG
         debug_check_rock_hash_field_cnt(dbid, "on_del_key_from_db_for_rock_hash");
-        #endif        
+        #endif
+
+        serverAssert(total_field_cnt_in_hash >= lru_cnt);
+        const size_t field_cnt_in_disk = total_field_cnt_in_hash - lru_cnt;
+        serverAssert(db->rock_field_in_disk_cnt >= field_cnt_in_disk);
+        db->rock_field_in_disk_cnt -= field_cnt_in_disk;    
     }
 }
 
 /* After a key is overwritten in redis db, it will call here.
  * The new_o is the replaced object for the redis_key in db.
  */
-void on_overwrite_key_from_db_for_rock_hash(const int dbid, const sds redis_key, const robj *new_o)
+void on_overwrite_key_from_db_for_rock_hash(const int dbid, const sds redis_key, 
+                                            const size_t old_field_cnt, const robj *new_o)
 {
     redisDb *db = server.db + dbid;
     // NOTE: could exist in rock hash or not
@@ -645,15 +677,20 @@ void on_overwrite_key_from_db_for_rock_hash(const int dbid, const sds redis_key,
     {
         sds internal_key = dictGetKey(de_hash);
         dict *lrus = dictGetVal(de_hash);
+        const size_t lru_cnt = dictSize(lrus);
         serverAssert(db->rock_hash_field_cnt >= dictSize(lrus));
         db->rock_hash_field_cnt -= dictSize(lrus);
         dictDelete(db->rock_hash, internal_key);
         #if defined RED_ROCK_DEBUG
         debug_check_rock_hash_field_cnt(dbid, "on_overwrite_key_from_db_for_rock_hash");
-        #endif        
+        #endif    
+
+        serverAssert(old_field_cnt >= lru_cnt);
+        const size_t field_in_disk_cnt = old_field_cnt - lru_cnt;
+        serverAssert(db->rock_field_in_disk_cnt >= field_in_disk_cnt);
+        db->rock_field_in_disk_cnt -= field_in_disk_cnt;     
     }
            
-
     if (server.hash_max_rock_entries == 0)
         return;
 
@@ -696,6 +733,7 @@ void on_empty_db_for_hash(const int dbnum)
         dict *rock_hash = db->rock_hash;
         dictEmpty(rock_hash, NULL);
         db->rock_hash_field_cnt = 0;
+        db->rock_field_in_disk_cnt = 0;
     }
 }
 

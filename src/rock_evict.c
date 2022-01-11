@@ -35,8 +35,11 @@ dictType rockEvictDictType = {
 
 /* API for server initianization of db->rock_hash for each redisDB, 
  * like db->dict, db->expires */
-dict* init_rock_evict_dict()
+dict* init_rock_evict_dict(const int dbid)
 {
+    redisDb *db = server.db + dbid;
+    db->rock_key_in_disk_cnt = 0;
+    db->rock_field_in_disk_cnt = 0;
     return dictCreate(&rockEvictDictType, NULL);
 }
 
@@ -112,11 +115,10 @@ void on_db_del_key_for_rock_evict(const int dbid, const sds key)
 
     dictEntry *de = dictFind(db->dict, key);
     serverAssert(de);
-    sds internal_key = dictGetKey(de);
-
-#if defined RED_ROCK_DEBUG
+    const sds internal_key = dictGetKey(de);
     robj *o = dictGetVal(de);
 
+#if defined RED_ROCK_DEBUG
     if (is_rock_value(o))
     {
         serverAssert(dictFind(db->rock_evict, internal_key) == NULL);
@@ -144,17 +146,29 @@ void on_db_del_key_for_rock_evict(const int dbid, const sds key)
 
     // NOTE: could exist in rock_evict or not
     dictDelete(db->rock_evict, internal_key);
+    if (is_rock_value(o))
+    {
+        serverAssert(db->rock_key_in_disk_cnt > 0);
+        --db->rock_key_in_disk_cnt;
+    }
+
 }
 
 /* After a key is overwritten in redis db, it will call here.
  *       e.g., set k v  then set k 1. This example will change the value to a shared object.
- * The new_o is the replaced object for the redis_key in db.
+ * The new_o is the replaced object for the redis key in db.
  */
-void on_db_overwrite_key_for_rock_evict(const int dbid, const sds key, const robj *new_o)
+void on_db_overwrite_key_for_rock_evict(const int dbid, const sds key, const int is_old_rock_val, const robj *new_o)
 {
     redisDb *db = server.db + dbid;
     // NOTE: could exist in rock evict or not
     dictDelete(db->rock_evict, key);       
+
+    if (is_old_rock_val)
+    {
+        serverAssert(db->rock_key_in_disk_cnt > 0);
+        --db->rock_key_in_disk_cnt;
+    }
 
     dictEntry *de = dictFind(db->dict, key);
     serverAssert(de);
@@ -205,7 +219,8 @@ void on_rockval_key_for_rock_evict(const int dbid, const sds internal_key)
 {
     redisDb *db = server.db + dbid;
 
-    serverAssert(dictDelete(db->rock_evict, internal_key) == DICT_OK);
+    serverAssert(dictDelete(db->rock_evict, internal_key) == DICT_OK);    
+    ++db->rock_key_in_disk_cnt;
 }
 
 /* When rock_read.c already recover a whole key from RocksDB or ring buffer, 
@@ -224,6 +239,8 @@ void on_recover_key_for_rock_evict(const int dbid, const sds internal_key)
 #endif
 
     serverAssert(dictAdd(db->rock_evict, internal_key, NULL) == DICT_OK);
+    serverAssert(db->rock_key_in_disk_cnt > 0);
+    --db->rock_key_in_disk_cnt;
 }
 
 /* When flushdb or flushalldb, it will empty the db(s).
@@ -247,6 +264,7 @@ void on_empty_db_for_rock_evict(const int dbnum)
         redisDb *db = server.db + dbid;
         dict *rock_evict = db->rock_evict;
         dictEmpty(rock_evict, NULL);
+        db->rock_key_in_disk_cnt = 0;
     }
 }
 
@@ -1048,7 +1066,7 @@ void perform_rock_eviction_in_cron()
     } 
     #endif
 
-    const size_t want_to_free = used - server.maxrockmem;
+    const size_t want_to_free = used - get_max_rock_mem_of_os();
 
     if (server.stat_numcommands != last_stat_numcommands)
     {

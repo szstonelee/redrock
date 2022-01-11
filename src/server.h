@@ -719,7 +719,9 @@ typedef struct redisDb {
     dict *watched_keys;         /* WATCHED keys for MULTI/EXEC CAS */
     dict *rock_hash;            /* Rock hash for each field for RocksDB */ 
     size_t rock_hash_field_cnt; /* Rock hash field total count */
+    size_t rock_field_in_disk_cnt; /* How many fields already in disk */
     dict *rock_evict;           /* Rock evict for whole key for RocksDB */
+    size_t rock_key_in_disk_cnt;/* How many keys already in disk */
     int id;                     /* Database ID */
     long long avg_ttl;          /* Average TTL, just for stats */
     unsigned long expires_cursor; /* Cursor of the active expire cycle. */
@@ -1211,6 +1213,7 @@ struct redisServer {
     char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
     int sentinel_mode;          /* True if this instance is a Sentinel. */
     size_t initial_memory_usage; /* Bytes used after initialization. */
+    size_t initial_free_mem;    /* Bytes available for whole RedRock ater initialization */
     int always_show_logo;       /* Show logo even for non-stdout logging. */
     int in_eval;                /* Are we inside EVAL? */
     int in_exec;                /* Are we inside EXEC? */
@@ -1512,7 +1515,7 @@ struct redisServer {
     unsigned int maxclients;            /* Max number of simultaneous clients */
     unsigned long long maxmemory;   /* Max number of memory bytes to use */
     unsigned long long maxrockmem;  /* Max number of memory bytes for RedRock to use */
-    unsigned long long leastfreemem;/* Least free memory bytes for RedRock to process memory-consumed command */
+    long long leastfreemem;         /* Least free memory bytes for RedRock to process memory-consumed command */
     int maxmemory_policy;           /* Policy for key eviction */
     int maxmemory_samples;          /* Precision of random sampling */
     int maxmemory_eviction_tenacity;/* Aggressiveness of eviction processing */

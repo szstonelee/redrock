@@ -2381,20 +2381,13 @@ static int is_hash_max_rock_entries_valid(long long val, const char **err)
     return 1;
 }
 
+/*
 static int is_least_free_mem_valid(long long val, const char **err)
 {
-    if (val == 0)
+    if (val <= 0)
         return 1;
 
-    const size_t sys_mem = zmalloc_get_memory_size();
-    if (sys_mem < (2ULL<<30))
-    {
-        serverLog(LL_WARNING, "Your system memory is too low (at least 2G == %llu), system memory for this machine only = %zu", 
-                              2ULL<<30, sys_mem);
-        exit(1);
-    }
-
-    const unsigned long long max_free_mem = sys_mem - (1ULL<<30);
+    const unsigned long long max_free_mem = server.system_memory_size - (1ULL<<30);
     if ((unsigned long long)val >= max_free_mem)
     {
         static char msg[128];
@@ -2406,6 +2399,7 @@ static int is_least_free_mem_valid(long long val, const char **err)
 
     return 1;
 }
+*/
 
 static int update_hash_max_rock_entries(long long val, long long prev, const char **err)
 {
@@ -2427,7 +2421,7 @@ static int update_least_free_mem(long long val, long long prev, const char **err
 {
     UNUSED(prev);
 
-    if (val == 0)
+    if (val <= 0)
         return 1;
 
     if ((size_t)val > server.system_memory_size - (1ULL<<30))
@@ -2619,11 +2613,11 @@ standardConfig configs[] = {
     createLongLongConfig("proto-max-bulk-len", NULL, MODIFIABLE_CONFIG, 1024*1024, LONG_MAX, server.proto_max_bulk_len, 512ll*1024*1024, MEMORY_CONFIG, NULL, NULL), /* Bulk request max size */
     createLongLongConfig("stream-node-max-entries", NULL, MODIFIABLE_CONFIG, 0, LLONG_MAX, server.stream_node_max_entries, 100, INTEGER_CONFIG, NULL, NULL),
     createLongLongConfig("repl-backlog-size", NULL, MODIFIABLE_CONFIG, 1, LLONG_MAX, server.repl_backlog_size, 1024*1024, MEMORY_CONFIG, NULL, updateReplBacklogSize), /* Default: 1mb */
+    createLongLongConfig("leastfreemem", NULL, MODIFIABLE_CONFIG, -1, LLONG_MAX, server.leastfreemem, -1, INTEGER_CONFIG, NULL, update_least_free_mem),
 
     /* Unsigned Long Long configs */
     createULongLongConfig("maxmemory", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.maxmemory, 0, MEMORY_CONFIG, NULL, updateMaxmemory),
     createULongLongConfig("maxrockmem", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.maxrockmem, 0, MEMORY_CONFIG, NULL, NULL),
-    createULongLongConfig("leastfreemem", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.leastfreemem, 0, MEMORY_CONFIG, is_least_free_mem_valid, update_least_free_mem),
 
     /* Size_t configs */
     createSizeTConfig("hash-max-ziplist-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_ziplist_entries, 2, INTEGER_CONFIG, NULL, update_hash_max_ziplist_entries),

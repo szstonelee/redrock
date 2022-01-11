@@ -4,7 +4,7 @@
 #include "server.h"
 #include <rocksdb/c.h>
 
-#define RED_ROCK_DEBUG      // run debug code if defined this macro. In release build, comment this line
+// #define RED_ROCK_DEBUG      // run debug code if defined this macro. In release build, comment this line
 // #define RED_ROCK_EVICT_INFO     // for debug of eviction, please commont in release version
 
 #define ROCK_KEY_FOR_DB     0
@@ -41,6 +41,7 @@ void rock_mem(client *c);
 
 int check_free_mem_for_command(const client *c, const int is_denyoom_command);
 unsigned long long get_max_rock_mem_of_os();    // for rock_evict.c
+size_t get_free_mem_of_os();       // for server.c and rock.c
 
 #define CHECK_EVICT_OK                                          0
 #define CHECK_EVICT_EXPIRED                                     1

@@ -3288,7 +3288,7 @@ void initServer(void) {
         listSetFreeMethod(server.db[j].defrag_later,(void (*)(void*))sdsfree);
         server.db[j].rock_hash = init_rock_hash_dict();
         server.db[j].rock_hash_field_cnt = 0;
-        server.db[j].rock_evict = init_rock_evict_dict();
+        server.db[j].rock_evict = init_rock_evict_dict(j);
     }
     evictionPoolAlloc(); /* Initialize the LRU keys pool. */
     server.pubsub_channels = dictCreate(&keylistDictType,NULL);
@@ -3418,6 +3418,7 @@ void InitServerLast() {
     initThreadedIO();
     set_jemalloc_bg_thread(server.jemalloc_bg_thread);
     server.initial_memory_usage = zmalloc_used_memory();
+    server.initial_free_mem = get_free_mem_of_os();
 }
 
 /* Parse the flags string description 'strflags' and set them to the
