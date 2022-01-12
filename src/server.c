@@ -3171,6 +3171,8 @@ void makeThreadKillable(void) {
 /* Called from initServer() to init the RedRock environment */
 static void init_redrock()
 {    
+    check_mem_requirement_on_startup();
+
     init_client_id_table();     // for rock common
 
     init_rocksdb("/opt/redrock/rocksdb");

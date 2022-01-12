@@ -18,6 +18,7 @@ extern redisAtomic int rock_threads_loop_forever;
 
 void create_shared_object_for_rock();
 void init_rocksdb(const char* folder_original_path);
+void check_mem_requirement_on_startup();
 
 sds encode_rock_key_for_db(const int dbid, sds redis_to_rock_key);
 sds encode_rock_key_for_hash(const int dbid, sds hash_key_to_rock_key, const sds hash_field);

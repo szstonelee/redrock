@@ -55,16 +55,6 @@ static void rek_mkdir(char *path)
 #define ROCKSDB_LEVEL_NUM   7
 void init_rocksdb(const char* folder_original_path)
 {
-    if (server.system_memory_size < (2ULL<<30))
-    {
-        serverLog(LL_WARNING, "Your system memory is too low (at least 2G), system memory for this machine only = %zu",
-                              server.system_memory_size); 
-        exit(1);
-    }
-
-    if (server.system_memory_size < (4ULL<<30))
-        serverLog(LL_WARNING, "System memory is too low for RocksDB, at least 4G! Your machine only has %zu(byte) RAM.", server.system_memory_size);
-
     // We add listening port to folder_path
     sds folder_path = sdsnewlen(folder_original_path, strlen(folder_original_path));
     sds listen_port = sdsfromlonglong(server.port);
@@ -1239,6 +1229,52 @@ size_t get_free_mem_of_os()
     return sysconf(_SC_AVPHYS_PAGES) * sysconf(_SC_PAGESIZE);
 #endif    
 }
+
+static void exit_for_not_enough_free_mem_when_startup(const size_t mem)
+{
+    serverLog(LL_WARNING, "free mem is too low, for this machine at least %zu", mem);
+    exit(1);
+}
+
+void check_mem_requirement_on_startup()
+{
+    const size_t sys_mem = server.system_memory_size;
+    if (sys_mem < (4ULL<<30))
+    {
+        serverLog(LL_WARNING, "Your system memory is too low (at least 4G), system memory for this machine only = %zu",
+                              sys_mem); 
+        exit(1);
+    }
+
+    const size_t free_mem = get_free_mem_of_os();       // MacOS is SIZE_MAX
+
+    if (sys_mem <= (5ULL<<30))
+    {
+        if (free_mem < (2ULL<<30))
+            exit_for_not_enough_free_mem_when_startup(2ULL<<30);
+    }
+    else if (sys_mem <= (7ULL<<30))
+    {
+        if (free_mem < (4ULL<<30))
+            exit_for_not_enough_free_mem_when_startup(5ULL<<30);        
+    }
+    else if (sys_mem <= (15ULL<<30))
+    {
+        if (free_mem < (6ULL<<30))
+            exit_for_not_enough_free_mem_when_startup(10ULL<<30);
+    }
+    else if (sys_mem <= (31ULL<<30))
+    {
+        if (free_mem < (8ULL<<30))
+            exit_for_not_enough_free_mem_when_startup(20ULL<<30);
+    }
+    else
+    {
+        if (free_mem < (10ULL<<30))
+            exit_for_not_enough_free_mem_when_startup(40ULL<<30);
+    }
+}
+
 
 /* return the config least free memory in bytes.
  * 

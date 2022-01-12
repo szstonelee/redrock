@@ -807,7 +807,9 @@ static size_t try_to_perform_one_field_eviction()
         //       it could appear this warning.
         //       So the user of RedRock needs to design the dataset to avoid this.
         //       NOTE: we can not remove empty rock hash key because of the integrity.
+        #ifdef RED_ROCK_DEBUG
         serverLog(LL_WARNING, "best_field == NULL for field eviction");
+        #endif
         return 0;
     }
 
@@ -954,7 +956,11 @@ static size_t perform_field_eviction(const size_t want_to_free, const unsigned i
             #endif
             // In theory, it means no field avaiable for eviction
             // while the memory is not enough
+            // but for field, because for a special case which
+            // has a lot of empty rock_hash, it could happen
+            #ifdef RED_ROCK_DEBUG
             serverLog(LL_WARNING, "No available fields for eviction!");
+            #endif
             break;
         }
 
