@@ -241,7 +241,9 @@ static void add_whole_redis_hash_to_rock_hash(const int dbid, const sds redis_ke
     dictReleaseIterator(di_hash);
 
     serverAssert(dictSize(lrus) > server.hash_max_rock_entries);
-    serverAssert(dictAdd(db->rock_hash, internal_redis_key, lrus) == DICT_OK);
+    if (dictAdd(db->rock_hash, internal_redis_key, lrus) != DICT_OK)
+        serverPanic("add_whole_redis_hash_to_rock_hash(), key = %s", internal_redis_key);
+
     db->rock_hash_field_cnt += dictSize(lrus);    
     #if defined RED_ROCK_DEBUG
     debug_check_rock_hash_field_cnt(dbid, "add_whole_redis_hash_to_rock_hash");
@@ -761,6 +763,9 @@ void init_rock_hash_before_enter_event_loop()
         redisDb *db = server.db + i;
         dict* key_space = db->dict;
 
+        if (dictSize(db->rock_hash) != 0)
+            continue;       // for AOF reload
+
         dictIterator *di = dictGetIterator(key_space);
         dictEntry *de;
         while ((de = dictNext(di)))
@@ -772,6 +777,8 @@ void init_rock_hash_before_enter_event_loop()
                 if (dictSize(hash) > threshold)
                 {
                     sds internal_redis_key = dictGetKey(de);
+                    serverLog(LL_WARNING, "init_rock_hash_before_enter_event_loop(), add whole key = %s, rock_hash_size = %zu", 
+                             internal_redis_key, dictSize(db->rock_hash));
                     add_whole_redis_hash_to_rock_hash(i, internal_redis_key);
                 }
             }

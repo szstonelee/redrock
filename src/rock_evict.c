@@ -56,6 +56,9 @@ void init_rock_evict_before_enter_event_loop()
     {
         redisDb *db = server.db + i;
 
+        if (dictSize(db->rock_evict) != 0)
+            continue;       // for aof reload
+
         dictIterator *di = dictGetIterator(db->dict);
         dictEntry *de;
         while ((de = dictNext(di)))
