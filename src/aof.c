@@ -31,6 +31,8 @@
 #include "bio.h"
 #include "rio.h"
 
+#include "rock_rdb_aof.h"
+
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -1446,6 +1448,14 @@ ssize_t aofReadDiffFromParent(void) {
     return total;
 }
 
+static void release_if_tempory_object(robj *o, robj *check_o)
+{
+    if (o == check_o)
+        return;
+
+    decrRefCount(check_o);
+}
+
 int rewriteAppendOnlyFileRio(rio *aof) {
     dictIterator *di = NULL;
     dictEntry *de;
@@ -1473,6 +1483,8 @@ int rewriteAppendOnlyFileRio(rio *aof) {
 
             keystr = dictGetKey(de);
             o = dictGetVal(de);
+            robj *check_o = get_value_if_exist_in_rock_for_rdb_afo(o, j, keystr);
+
             initStaticStringObject(key,keystr);
 
             expiretime = getExpire(db,&key);
@@ -1484,19 +1496,82 @@ int rewriteAppendOnlyFileRio(rio *aof) {
                 if (rioWrite(aof,cmd,sizeof(cmd)-1) == 0) goto werr;
                 /* Key and value */
                 if (rioWriteBulkObject(aof,&key) == 0) goto werr;
-                if (rioWriteBulkObject(aof,o) == 0) goto werr;
+                // if (rioWriteBulkObject(aof,o) == 0) goto werr;
+                if (rioWriteBulkObject(aof, check_o) == 0)
+                {
+                    release_if_tempory_object(o, check_o);
+                    goto werr;
+                }
+                else
+                {
+                    release_if_tempory_object(o, check_o);
+                }
             } else if (o->type == OBJ_LIST) {
-                if (rewriteListObject(aof,&key,o) == 0) goto werr;
+                // if (rewriteListObject(aof,&key,o) == 0) goto werr;
+                if (rewriteListObject(aof, &key, check_o) == 0)
+                {
+                    release_if_tempory_object(o, check_o);
+                    goto werr;
+                }
+                else
+                {
+                    release_if_tempory_object(o, check_o);
+                }
             } else if (o->type == OBJ_SET) {
-                if (rewriteSetObject(aof,&key,o) == 0) goto werr;
+                // if (rewriteSetObject(aof,&key,o) == 0) goto werr;
+                if (rewriteSetObject(aof, &key, check_o) == 0)
+                {
+                    release_if_tempory_object(o, check_o);
+                    goto werr;
+                }
+                else
+                {
+                    release_if_tempory_object(o, check_o);
+                }
             } else if (o->type == OBJ_ZSET) {
-                if (rewriteSortedSetObject(aof,&key,o) == 0) goto werr;
+                // if (rewriteSortedSetObject(aof,&key,o) == 0) goto werr;
+                if (rewriteSortedSetObject(aof, &key, check_o) == 0)
+                {
+                    release_if_tempory_object(o, check_o);
+                    goto werr;
+                }
+                else
+                {
+                    release_if_tempory_object(o, check_o);
+                }
             } else if (o->type == OBJ_HASH) {
-                if (rewriteHashObject(aof,&key,o) == 0) goto werr;
+                // if (rewriteHashObject(aof,&key,o) == 0) goto werr;
+                if (rewriteHashObject(aof, &key, check_o) == 0)
+                {
+                    release_if_tempory_object(o, check_o);
+                    goto werr;
+                }
+                else
+                {
+                    release_if_tempory_object(o, check_o);
+                }
             } else if (o->type == OBJ_STREAM) {
-                if (rewriteStreamObject(aof,&key,o) == 0) goto werr;
+                // if (rewriteStreamObject(aof,&key,o) == 0) goto werr;
+                if (rewriteStreamObject(aof, &key, check_o) == 0)
+                {
+                    release_if_tempory_object(o, check_o);
+                    goto werr;
+                }
+                else
+                {
+                    release_if_tempory_object(o, check_o);
+                }
             } else if (o->type == OBJ_MODULE) {
-                if (rewriteModuleObject(aof,&key,o) == 0) goto werr;
+                // if (rewriteModuleObject(aof,&key,o) == 0) goto werr;
+                if (rewriteModuleObject(aof, &key, check_o) == 0)
+                {
+                    release_if_tempory_object(o, check_o);
+                    goto werr;
+                }
+                else
+                {
+                    release_if_tempory_object(o, check_o);
+                }
             } else {
                 serverPanic("Unknown object type");
             }

@@ -41,6 +41,7 @@
 #include "rock_read.h"
 #include "rock_hash.h"
 #include "rock_evict.h"
+#include "rock_rdb_aof.h"
 
 #include <time.h>
 #include <signal.h>
@@ -1253,6 +1254,7 @@ mstime_t mstime(void) {
  * the parent process. However if we are testing the coverage normal exit() is
  * used in order to obtain the right coverage information. */
 void exitFromChild(int retcode) {
+    on_exit_rdb_aof_process();
 #ifdef COVERAGE_TEST
     exit(retcode);
 #else
@@ -4468,6 +4470,8 @@ int prepareForShutdown(int flags) {
     closeListeningSockets(1);
     serverLog(LL_WARNING,"%s is now ready to exit, bye bye...",
         server.sentinel_mode ? "Sentinel" : "Redis");
+
+    wait_rock_threads_exit();
     return C_OK;
 }
 
@@ -5854,9 +5858,7 @@ static void sigShutdownHandler(int sig) {
     }
 
     serverLogFromHandler(LL_WARNING, msg);
-    server.shutdown_asap = 1;
-
-    wait_rock_threads_exit();
+    server.shutdown_asap = 1;    
 }
 
 void setupSignalHandlers(void) {
@@ -5942,14 +5944,24 @@ int redisFork(int purpose) {
         openChildInfoPipe();
     }
 
+    if (purpose == CHILD_TYPE_RDB || purpose == CHILD_TYPE_AOF)
+    {
+        serverAssert(!hasActiveChildProcess());
+        // rock only need to deal with rdb or aof sub process not aof sub process
+        if (!on_start_rdb_aof_process())
+            return -1;
+    }
+
     int childpid;
     long long start = ustime();
     if ((childpid = fork()) == 0) {
         /* Child */
+        set_process_id_in_child_process_for_rock();  // for RedRock
+
         server.in_fork_child = purpose;
         setOOMScoreAdj(CONFIG_OOM_BGCHILD);
         setupChildSignalHandlers();
-        closeChildUnusedResourceAfterFork();
+        closeChildUnusedResourceAfterFork();        
     } else {
         /* Parent */
         server.stat_total_forks++;

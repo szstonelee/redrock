@@ -33,6 +33,8 @@
 #include "endianconv.h"
 #include "stream.h"
 
+#include "rock_rdb_aof.h"
+
 #include <math.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -1258,7 +1260,23 @@ int rdbSaveRio(rio *rdb, int *error, int rdbflags, rdbSaveInfo *rsi) {
 
             initStaticStringObject(key,keystr);
             expire = getExpire(db,&key);
-            if (rdbSaveKeyValuePair(rdb,&key,o,expire) == -1) goto werr;
+
+            robj *check_o = get_value_if_exist_in_rock_for_rdb_afo(o, j, keystr);
+            // if (rdbSaveKeyValuePair(rdb,&key,o,expire) == -1) goto werr;
+            if (rdbSaveKeyValuePair(rdb, &key, check_o, expire) == -1)
+            {
+                if (o != check_o)
+                    // check_o is allocated from get_value_if_exist_in_rock_for_rdb_afo()
+                    decrRefCount(check_o);      
+
+                goto werr;
+            }
+            else
+            {
+                if (o != check_o)
+                    // check_o is allocated from get_value_if_exist_in_rock_for_rdb_afo()
+                    decrRefCount(check_o);
+            }
 
             /* When this RDB is produced as part of an AOF rewrite, move
              * accumulated diff from parent to child while rewriting in

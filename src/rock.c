@@ -1255,22 +1255,22 @@ void check_mem_requirement_on_startup()
     }
     else if (sys_mem <= (7ULL<<30))
     {
-        if (free_mem < (4ULL<<30))
+        if (free_mem < (3ULL<<30))
             exit_for_not_enough_free_mem_when_startup(5ULL<<30);        
     }
     else if (sys_mem <= (15ULL<<30))
     {
-        if (free_mem < (6ULL<<30))
+        if (free_mem < (4ULL<<30))
             exit_for_not_enough_free_mem_when_startup(10ULL<<30);
     }
     else if (sys_mem <= (31ULL<<30))
     {
-        if (free_mem < (8ULL<<30))
+        if (free_mem < (5ULL<<30))
             exit_for_not_enough_free_mem_when_startup(20ULL<<30);
     }
     else
     {
-        if (free_mem < (10ULL<<30))
+        if (free_mem < (6ULL<<30))
             exit_for_not_enough_free_mem_when_startup(40ULL<<30);
     }
 }

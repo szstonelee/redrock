@@ -298,8 +298,6 @@ int yesnotoi(char *s) {
 }
 
 void appendServerSaveParams(time_t seconds, int changes) {
-    return;     // disable rdb save for Debug. TODO: comment this when release
-
     server.saveparams = zrealloc(server.saveparams,sizeof(struct saveparam)*(server.saveparamslen+1));
     server.saveparams[server.saveparamslen].seconds = seconds;
     server.saveparams[server.saveparamslen].changes = changes;

@@ -351,7 +351,7 @@ static sds marshal_hash_ht(const robj *o, sds s)
     s = sdscatlen(s, &count, sizeof(size_t));
 
     dictIterator *di = dictGetIterator(hash);
-    dictEntry* de;
+    dictEntry *de;
     while ((de = dictNext(di))) 
     {
         sds field = dictGetKey(de);            

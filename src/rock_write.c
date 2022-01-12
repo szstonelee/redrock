@@ -657,6 +657,28 @@ list* get_vals_from_write_ring_buf_first_for_db(const int dbid, const list *redi
     }
 }
 
+/* This is the API for rock rdb and aof.
+ *
+ * The caller guarantee not in lock mode and in redis process.
+ * 
+ * If found, return the sds value (duplicated), otherwise NULL.
+ * The caller needs to release the resource if return is not NULL.
+ */
+sds get_key_val_str_from_write_ring_buf_first_in_redis_process(const int dbid, const sds key)
+{
+    sds val = NULL;
+
+    rock_w_lock();
+    const int index = exist_in_ring_buf_for_db_and_return_index(dbid, key);
+    if (index != -1)
+    {
+        val = sdsdup(rbuf_vals[index]);
+    }
+    rock_w_unlock();
+
+    return val;
+}
+
 /* Called in main thread.
  *
  * This is the API for rock_read.c. 
@@ -718,6 +740,28 @@ list* get_vals_from_write_ring_buf_first_for_hash(const int dbid, const list *ha
     {
         return r;
     }
+}
+
+/* This is the API for rock rdb and aof.
+ *
+ * The caller guarantee not in lock mode and in redis process.
+ * 
+ * If found, return the sds value (duplicated), otherwise NULL.
+ * The caller needs to deal with the resource if return is not NULL.
+ */
+sds get_field_val_str_from_write_ring_buf_first_in_redis_process(const int dbid, const sds hash_key, const sds field)
+{
+    sds val = NULL;
+
+    rock_w_lock();
+    const int index = exist_in_ring_buf_for_hash_and_return_index(dbid, hash_key, field);
+    if (index != -1)
+    {
+        val = sdsdup(rbuf_vals[index]); 
+    }
+    rock_w_unlock();
+
+    return val;
 }
 
 /* Called in main thread */
