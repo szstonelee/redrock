@@ -751,10 +751,10 @@ int is_in_rock_hash(const int dbid, const sds redis_key)
  */
 void init_rock_hash_before_enter_event_loop()
 {
-    if (server.hash_max_rock_entries == 0)
-        return;
-
     const size_t threshold = server.hash_max_rock_entries;
+
+    if (threshold == 0)
+        return;
 
     for (int i = 0; i < server.dbnum; ++i)
     {

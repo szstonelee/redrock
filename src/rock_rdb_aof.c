@@ -44,7 +44,7 @@ static robj* direct_read_one_key_val_from_rocksdb(const int dbid, const sds key)
     rock_key = encode_rock_key_for_db(dbid, rock_key);
 
     size_t db_val_len;
-    char *err;
+    char *err = NULL;
     rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
     char *db_val = rocksdb_get(rockdb, readoptions, rock_key, sdslen(rock_key), &db_val_len, &err);
     rocksdb_readoptions_destroy(readoptions);
@@ -73,7 +73,7 @@ static sds direct_read_one_field_val_from_rocksdb(const int dbid, const sds hash
     rock_key = encode_rock_key_for_hash(dbid, rock_key, field);
 
     size_t db_val_len;
-    char *err;
+    char *err = NULL;
     rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
     char *db_val = rocksdb_get(rockdb, readoptions, rock_key, sdslen(rock_key), &db_val_len, &err);
     rocksdb_readoptions_destroy(readoptions);
@@ -99,7 +99,9 @@ static robj* read_from_disk_for_key_in_redis_process(const int dbid, const sds k
     sds val = get_key_val_str_from_write_ring_buf_first_in_redis_process(dbid, key);
     if (val != NULL)
     {
-        return unmarshal_object(val);
+        robj *o = unmarshal_object(val);
+        sdsfree(val);
+        return o;
     }
     else
     {
@@ -109,7 +111,7 @@ static robj* read_from_disk_for_key_in_redis_process(const int dbid, const sds k
 }
 
 /* For hash_key, some fields are in disk, we need create an object value for the whole key  */
-static robj* read_from_diisk_for_whole_key_of_hash_in_redis_process(const int dbid, const sds hash_key)
+static robj* read_from_disk_for_whole_key_of_hash_in_redis_process(const int dbid, const sds hash_key)
 {
     redisDb *db = server.db + dbid;
     dictEntry *de_db = dictFind(db->dict, hash_key);
@@ -117,7 +119,7 @@ static robj* read_from_diisk_for_whole_key_of_hash_in_redis_process(const int db
     robj *o = dictGetVal(de_db);
     serverAssert(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT);
     dict *hash = o->ptr;
-    size_t hash_cnt = dictSize(hash);
+    const size_t hash_cnt = dictSize(hash);
 
     dict *new_hash = dictCreate(&hashDictType, NULL);
     if (hash_cnt > DICT_HT_INITIAL_SIZE)
@@ -130,6 +132,7 @@ static robj* read_from_diisk_for_whole_key_of_hash_in_redis_process(const int db
     {
         const sds field = dictGetKey(de);
         const sds val = dictGetVal(de);
+
         const sds copy_field = sdsdup(field);
 
         if (val == shared.hash_rock_val_for_field)
@@ -165,7 +168,7 @@ static robj* read_from_disk_in_redis_process(const int have_field_in_disk, const
 {
     if (have_field_in_disk)
     {
-        return read_from_diisk_for_whole_key_of_hash_in_redis_process(dbid, key);
+        return read_from_disk_for_whole_key_of_hash_in_redis_process(dbid, key);
     }
     else
     {

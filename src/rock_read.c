@@ -227,6 +227,7 @@ static void read_from_rocksdb(const int cnt, const sds *keys, sds *vals)
     for (int i = 0; i < cnt; ++i)
     {
         rockdb_key_sizes[i] = sdslen(keys[i]);
+        errs[i] = NULL;
     }
 
     // for manual debug
