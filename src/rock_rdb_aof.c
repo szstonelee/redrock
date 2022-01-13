@@ -237,8 +237,6 @@ void set_process_id_in_child_process_for_rock()
     serverAssert(child_process_id == 0);
 
     child_process_id = getpid();
-
-    serverLog(LL_WARNING, "child process id = %d", child_process_id);
 }
 
 /* Called in child process before exit()
@@ -476,9 +474,9 @@ static void* service_thread_for_rdb_aof_main(void *arg)
     serverAssert(snapshot != NULL);
     serverLog(LL_NOTICE, "we start a rdb/aof thread service with read-only snapshot for child process!");
 
-    serverLog(LL_WARNING, "service thread sleep for 20 seconds");
-    sleep(20);
-    serverLog(LL_WARNING, "service thread wakeup");
+    // serverLog(LL_WARNING, "service thread sleep for 20 seconds");
+    // sleep(20);
+    // serverLog(LL_WARNING, "service thread wakeup");
 
     rocksdb_release_snapshot(rockdb, snapshot);
     snapshot = NULL;
