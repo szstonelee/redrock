@@ -1033,3 +1033,28 @@ static sds debug_random_sds(const int max_len)
     return s;
 }
 */
+
+static void debug_print_pipe_fd(const int must_exit)
+{
+    serverLog(LL_WARNING, "pid = %d, req[0] = %d, req[1] = %d, res[0] = %d, res[1  = %d",
+                          getpid(), pipe_request[0], pipe_request[1], pipe_response[0], pipe_response[1]);
+    if (must_exit)
+        exit(1);
+}
+
+/* Called in service thread.
+ *
+ * When rdb/aof service thread exit, it needs to call here to clear all resources
+ */
+static void clear_when_service_thread_exit()
+{
+    serverAssert(snapshot != NULL);
+    rocksdb_release_snapshot(rockdb, snapshot);
+    snapshot = NULL;
+
+    clear_resource_pipe(1);
+
+    serverAssert(pthread_mutex_lock(&mutex) == 0);
+    service_thread_is_running = 0;
+
+}

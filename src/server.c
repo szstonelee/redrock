@@ -3183,6 +3183,8 @@ static void init_redrock()
     init_and_start_rock_read_thread();   // init rock read
 
     evict_pool_init();      // init evcition pool
+
+    init_for_rdb_aof_service();     // init the pipes (set to -1) for rdb/aof service
 }
 
 void initServer(void) {
@@ -5944,19 +5946,24 @@ int redisFork(int purpose) {
         openChildInfoPipe();
     }
 
-    if (purpose == CHILD_TYPE_RDB || purpose == CHILD_TYPE_AOF)
-    {
-        serverAssert(!hasActiveChildProcess());
-        // rock only need to deal with rdb or aof sub process not aof sub process
-        if (!on_start_rdb_aof_process())
-            return -1;
-    }
+    // if (purpose == CHILD_TYPE_RDB || purpose == CHILD_TYPE_AOF)
+    
+        // When a child process start, we need create a service,
+        // i.e., a thread in redis process as server, 
+        //       and two pipes for communicatioon of redis process and child process, 
+        // for rdb/aof read when the key or field is in disk
+        // becasue RocksDB does not support shared by process.
+    serverAssert(!hasActiveChildProcess());
+    if (!on_start_rdb_aof_process())
+        return -1;
+    
 
     int childpid;
     long long start = ustime();
     if ((childpid = fork()) == 0) {
         /* Child */
-        set_process_id_in_child_process_for_rock();  // for RedRock
+        set_process_id_in_child_process_for_rock();  // for RedRock rdb/aof service child process
+        close_unused_pipe_in_child_process_when_start();   // the above
 
         server.in_fork_child = purpose;
         setOOMScoreAdj(CONFIG_OOM_BGCHILD);
@@ -5964,6 +5971,8 @@ int redisFork(int purpose) {
         closeChildUnusedResourceAfterFork();        
     } else {
         /* Parent */
+        signal_child_process_already_running();     // let service thread start to work
+
         server.stat_total_forks++;
         server.stat_fork_time = ustime()-start;
         server.stat_fork_rate = (double) zmalloc_used_memory() * 1000000 / server.stat_fork_time / (1024*1024*1024); /* GB per second. */
