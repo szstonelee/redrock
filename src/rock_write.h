@@ -4,17 +4,15 @@
 #include "sds.h"
 #include "server.h"
 
+// NOTE: The less the ring_buffer_len, the more time need to evicition but less chance of time out of eviction  
+// #define RING_BUFFER_LEN  8       // In test, we can not evict to 100M (only 40M) for a long time
+#define RING_BUFFER_LEN  16         // In test, we can use tens of minutes to evict 100M
+// #define RING_BUFFER_LEN 2  // for dbug, NOTE: if setting 1, compiler will generate some warnings
+
 extern pthread_t rock_write_thread_id;
 
-
-void init_and_start_rock_write_thread();    // for server.c
-
-// for server cron
-// int space_in_write_ring_buffer();  
-
-// for server cron
-// int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids, const sds *try_keys, const int from_cron); 
-// int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids, const sds *try_keys, const sds *try_fields, const int from_cron);
+// for server.c
+void init_and_start_rock_write_thread();    
 
 // for command ROCKEVICT and ROCKEVICTHASH
 #define TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL     0
@@ -31,7 +29,7 @@ list* get_vals_from_write_ring_buf_first_for_hash(const int dbid, const list *ha
 sds get_key_val_str_from_write_ring_buf_first_in_redis_process(const int dbid, const sds key);
 sds get_field_val_str_from_write_ring_buf_first_in_redis_process(const int dbid, const sds hash_key, const sds field);
 
-// for flushdb or flushall commands
-// void on_empty_db_for_rock_write(const int dbnum);
+// for rock_rdb_aof.c
+void create_snapshot_of_ring_buf_for_child_process(sds *keys, sds *vals);
 
 #endif

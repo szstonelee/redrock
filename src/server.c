@@ -5962,8 +5962,7 @@ int redisFork(int purpose) {
     long long start = ustime();
     if ((childpid = fork()) == 0) {
         /* Child */
-        set_process_id_in_child_process_for_rock();  // for RedRock rdb/aof service child process
-        close_unused_pipe_in_child_process_when_start();   // the above
+        on_start_in_child_process();    // for RedRock rdb/aof service child process
 
         server.in_fork_child = purpose;
         setOOMScoreAdj(CONFIG_OOM_BGCHILD);

@@ -8,12 +8,6 @@
 // #include <stddef.h>
 // #include <assert.h>
 
-// NOTE: The less the ring_buffer_len, the more time need to evicition but less chance of time out of eviction  
-// #define RING_BUFFER_LEN  8       // In test, we can not evict to 100M (only 40M) for a long time
-#define RING_BUFFER_LEN  16         // In test, we can use tens of minutes to evict 100M
-// #define RING_BUFFER_LEN 2  // for dbug, NOTE: if setting 1, compiler will generate some warnings
-
-
 /* Write Spin Lock for Apple OS and Linux */
 #if defined(__APPLE__)
 
@@ -776,3 +770,44 @@ void init_and_start_rock_write_thread()
         serverPanic("Unable to create a rock write thread.");
 }
 
+/* Create a snapshot for ring buffer for child process.
+ * 
+ * NOTE:
+ * 1. We use write lock to guarantee the integrity of ring buffer
+ * 2. We duplicate the keys and vals in ring buffer to the output of keys and vals,
+ *    so the caller needs to reclaim the resource
+ * 3. After return (and unlcok), the caller can use a snapshot for RocksDB,
+ *    bcause everything check the duplicated keys and vals first, 
+ *    so the snapshot of RocksDB can have newer dataset which maybe from ring buffer after unlock.
+ * 4. unlike ring buffer, the newer data is lower index in keys
+ * 5. the caller guarantee that keys and vals must have the same size of RING_BUFFER_LEN
+ */
+void create_snapshot_of_ring_buf_for_child_process(sds *keys, sds *vals)
+{
+    rock_w_lock();
+
+    int index = rbuf_e_index - 1;
+    if (index == -1)
+        index = RING_BUFFER_LEN - 1;
+    int len = rbuf_len;
+
+    for (int i = 0; i < RING_BUFFER_LEN; ++i)
+    {
+        serverAssert(keys[i] == NULL && vals[i] == NULL);
+
+        if (len != 0)
+        {
+            serverAssert(rbuf_keys[index] != NULL && rbuf_vals[index] != NULL);
+                
+            keys[i] = sdsdup(rbuf_keys[index]);
+            vals[i] = sdsdup(rbuf_vals[index]);
+
+            --len;
+            --index;
+            if (index == 0)
+                index = RING_BUFFER_LEN - 1;
+        }
+    }
+
+    rock_w_unlock();
+}
