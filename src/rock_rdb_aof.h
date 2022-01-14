@@ -7,7 +7,7 @@
 void init_for_rdb_aof_service();
 
 int on_start_rdb_aof_process();
-void signal_child_process_already_running();
+void signal_child_process_already_running(const int child_pid);
 
 // for child process
 void on_start_in_child_process();

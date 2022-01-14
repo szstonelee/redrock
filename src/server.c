@@ -5955,9 +5955,11 @@ int redisFork(int purpose) {
         // becasue RocksDB does not support shared by process.
     serverAssert(!hasActiveChildProcess());
     if (!on_start_rdb_aof_process())
+    {
+        if (isMutuallyExclusiveChildType(purpose)) closeChildInfoPipe();
         return -1;
+    }
     
-
     int childpid;
     long long start = ustime();
     if ((childpid = fork()) == 0) {
@@ -5970,7 +5972,7 @@ int redisFork(int purpose) {
         closeChildUnusedResourceAfterFork();        
     } else {
         /* Parent */
-        signal_child_process_already_running();     // let service thread start to work
+        signal_child_process_already_running(childpid);     // let service thread start to work
 
         server.stat_total_forks++;
         server.stat_fork_time = ustime()-start;
