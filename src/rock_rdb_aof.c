@@ -143,55 +143,142 @@ static void set_process_id_in_child_process_for_rock()
     child_process_id = getpid();
 }
 
-/* Called in child process to send a request for dbid and key.
+/* Called in child process to send a request a whole key of dbid and key.
  * 
- * The encoding of request is like this:
- * The whole buf is composed of one byte of dbid and the key.
- * We need sene size_t header of the size of the buf.
- * Then send the buf.
+ * The encoding 
+ * 1. header: size_t of whole content 
+ * 2. and the content:
+ * 
+ * For 2, the content:
+ * is encoded of 
+ * 2-1) one byte of true indicating it is for whole key
+ * 2-2) one byte of dbid 
+ * 2-3) the key.
  * 
  * Return True(1) if sucess, otherwise false(0).
  */
-static int send_request_in_child_process(const int dbid, const sds key)
+static int send_request_for_whole_key_in_child_process(const int dbid, const sds key)
 {
     serverAssert(child_process_id != 0);
     serverAssert(dbid >= 0 && dbid < server.dbnum && key);
 
-    const size_t send_sz = 1 + sdslen(key);
+    const size_t send_sz = 2 + sdslen(key);
     ssize_t write_res;
 
-    // first, the size of buf
+    // first, header, the size of content
     write_res = write(pipe_request[1], &send_sz, sizeof(size_t));
     if (write_res < 0 || (size_t)write_res != sizeof(size_t))
     {
-        serverLog(LL_WARNING, "send request header fail in child process, write_res = %zu", write_res);
+        serverLog(LL_WARNING, "send whole key request header fail in child process, write_res = %zu", write_res);
         return 0;
     }
 
-    // then the dbid
+    // then 2-1), the first byte which is not zero to indicate it is for the whole key
+    const unsigned char is_whole_key = 1;
+    write_res = write(pipe_request[1], &is_whole_key, 1);
+    if (write_res != 1)
+    {
+        serverLog(LL_WARNING, "send whole key request is_whole_key fail in child process, write_res = %zu", write_res);
+        return 0;
+    }
+
+    // then 2-2), the second byte for the dbid
     unsigned char c_dbid = (unsigned char)dbid;
     write_res = write(pipe_request[1], &c_dbid, 1);
     if (write_res != 1)
     {
-        serverLog(LL_WARNING, "send request dbid fail in child process, write_res = %zu", write_res);
+        serverLog(LL_WARNING, "send whole key request dbid fail in child process, write_res = %zu", write_res);
         return 0;
     }
 
-    // last the key
+    // then, 2-3), the key
     write_res = write(pipe_request[1], key, sdslen(key));
     if (write_res < 0 || (size_t)write_res != sdslen(key))
     {
-        serverLog(LL_WARNING, "send request key fail in child process, write_res = %zu", write_res);
+        serverLog(LL_WARNING, "send whole request key fail in child process, write_res = %zu", write_res);
         return 0;
     }
 
     return 1;
 }
 
+/* Called in child process to send a request a field's value of dbid and key and field.
+ *
+ * The encoding 
+ * 1. header: size_t of whole content 
+ * 2. and the content:
+ * 
+ * For 2, the content:
+ * 2-1) is encoded of one byte of false indicating it is for one field
+ * 2-2) one byte of dbid 
+ * 2-3) size_t of key len
+ * 2-4) the key
+ * 2-5) size_t of field len
+ * 2-6) the field.
+ * 
+ * Return True(1) if sucess, otherwise false(0).
+ */
+static int send_request_for_field_in_child_process(const int dbid, const sds key, const sds field)
+{
+    sds content = sdsempty();
+    content = sdsMakeRoomFor(content, 1 + 1 + sizeof(size_t) + sdslen(key) + sizeof(size_t) + sdslen(field));
+
+    // 2-1
+    const unsigned char is_whole_key = 0;
+    content = sdscatlen(content, &is_whole_key, 1);
+
+    // 2-2
+    const unsigned char c_dbid = (unsigned char)dbid;
+    content = sdscatlen(content, &c_dbid, 1);
+
+    // 2-3
+    const size_t key_len = sdslen(key);
+    content = sdscatlen(content, &key_len, sizeof(size_t));
+
+    // 2-4
+    content = sdscatlen(content, key, key_len);
+
+    // 2-5
+    const size_t field_len = sdslen(field);
+    content = sdscatlen(content, &field_len, sizeof(size_t));
+
+    // 2-6
+    content = sdscatlen(content, field, field_len);
+
+    const size_t send_sz = sizeof(size_t) + sdslen(content);
+
+    ssize_t write_res;
+    // first send send_sz
+    write_res = write(pipe_request[1], &send_sz, sizeof(size_t));
+    if (write_res != sizeof(size_t))
+    {
+        serverLog(LL_WARNING, "send_request_for_field_in_child_process() header fail, write_res = %zu", write_res);
+        sdsfree(content);
+        return 0;
+    }
+    // then the content
+    write_res = write(pipe_request[1], content, sdslen(content));
+    if (write_res < 0 || (size_t)write_res != sdslen(content))
+    {
+        serverLog(LL_WARNING, "send_request_for_field_in_child_process() content fail, write_res = %zu", write_res);
+        sdsfree(content);
+        return 0;
+    }
+
+    sdsfree(content);
+    return 1;
+}
+
 /* Called in child process.
  *
  * After the chiild process send a request, it will wait the response.
- * return NULL if error, otherwise, the 
+ * return NULL if error, otherwise, the content of sds
+ * 
+ * It could be a response of whole key or field.
+ * 
+ * For whole key, the response is the serialized string for the robj.
+ * 
+ * For field, the response is the value for the field.
  */
 static sds receive_response_in_child_process()
 {
@@ -300,24 +387,6 @@ void on_start_in_child_process()
 {
     set_process_id_in_child_process_for_rock();
     close_unused_pipe_in_child_process_when_start();
-
-    // The following is for test
-    // sds request = sdsnew("keyisabc");
-    const unsigned char dbid = 5;
-    sds request_key = sdsempty();
-    for (int i = 0; i < 10000000; ++i)
-    {
-        request_key = sdscat(request_key, "a");
-    }
-    if (send_request_in_child_process(dbid, request_key))
-    {
-        // get response
-        sds response = receive_response_in_child_process();
-        serverLog(LL_WARNING, "on_start_in_child_process() debug, respoonse = %s", response);
-        sdsfree(response);
-    }
-    sdsfree(request_key);
-    sleep(5);
 }
 
 /* Two cases will call here to close the pipe 
@@ -646,6 +715,16 @@ static robj* read_from_disk_for_key_in_redis_process(const int dbid, const sds k
     }
 }
 
+/* This is for client/server mode in service thead in redis process for one whole key's value */
+static sds read_from_snapshot_for_whole_key_in_service_thread(const int dbid, const char *key, const size_t key_len)
+{
+    UNUSED(key);
+    UNUSED(dbid);
+    UNUSED(key_len);
+
+    return NULL;        // TODO
+}
+
 /* This is for read in sync mode in main thread in redis process 
  * For hash_key, some fields are in disk, we need create an object value for the whole key
  */
@@ -704,6 +783,16 @@ static robj* read_from_disk_for_whole_key_of_hash_in_redis_process(const int dbi
     return new_o;
 }
 
+/* This is for client/server mode in service thead in redis process for one field's value */
+static sds read_from_snapshot_for_hash_field_in_service_thread(const int dbid, const sds key, const sds field)
+{
+    UNUSED(dbid);
+    UNUSED(key);
+    UNUSED(field);
+
+    return NULL;    // TODO
+}
+
 /* This is for read in sync mode in main thread in redis process */
 static robj* read_from_disk_in_redis_process(const int have_field_in_disk, const int dbid, const sds key)
 {
@@ -719,16 +808,173 @@ static robj* read_from_disk_in_redis_process(const int have_field_in_disk, const
     }
 }
 
-/* This is run in child process */
-static robj* read_from_disk_in_child_process(const int have_field_in_disk, const int dbid, const sds key)
+
+/* Called in service thread when a request is totally received.
+ * 
+ * We need parse the reqeust to know 
+ * 1. it is for the whole key
+ * 2. or it is for one field
+ * 
+ * and then, we will get the data from snapshot
+ * For whole key, it is the serialized robj as sds
+ * For field, it is the value of the field as sds.
+ * 
+ * If failed, return NULL.
+ */
+static sds get_data_in_service_thread_for_child_process(const sds request)
+{
+    if (sdslen(request) < 1 + 1)
+    {
+        serverLog(LL_WARNING, "get_data_in_service_thread_for_child_process() len too small");
+        return NULL;
+    }
+
+    const int is_for_whole_key = request[0];
+    const int dbid = request[1];
+
+    char *p = request + 2;
+    size_t p_len = sdslen(request) - 2;
+
+    if (is_for_whole_key)
+    {
+        const sds data = read_from_snapshot_for_whole_key_in_service_thread(dbid, p, p_len);
+        return data;
+    }
+    else
+    {
+        sds key = NULL;
+        sds field = NULL;
+
+        // parse for key and field
+        if (p_len < sizeof(size_t))
+            goto err;
+
+        const size_t key_len = *((size_t*)p);
+        p += sizeof(size_t);
+        p_len -= sizeof(size_t);
+
+        if (p_len < key_len)
+            goto err;
+        
+        key = sdsnewlen(p, key_len);
+        p += key_len;
+        p_len -= key_len;
+
+        if (p_len < sizeof(size_t))
+            goto err;
+
+        const size_t field_len = *((size_t*)p);
+        p += sizeof(size_t);
+        p_len -= sizeof(size_t);
+
+        if (p_len != field_len)
+            goto err;
+
+        field = sdsnewlen(p, field_len);
+        
+        const sds data = read_from_snapshot_for_hash_field_in_service_thread(dbid, key, field);
+        sdsfree(key);
+        sdsfree(field);
+        return data;
+
+err:
+        serverLog(LL_WARNING, "get_data_in_service_thread_for_child_process() parse key and field failed!");
+        sdsfree(key);
+        sdsfree(field);
+        return NULL;        
+    }
+}
+
+
+/* This is run in child process.
+ * When child process need the value of a key and found 
+ * 1. the whole key's value is in disk
+ * 2. or some field's value are in disk
+ * 
+ * It weill call here to get the value (the return robj*)
+ * 
+ * We must use client/service mode by using a pipe to get the value.
+ * 
+ * If failed, return NULL which is impossible but the child process (caller) needs to exit.
+ */
+static robj* read_val_of_disk_in_child_process(const int have_field_in_disk, const int dbid, const sds key)
 {
     serverAssert(child_process_id != 0);
 
-    UNUSED(have_field_in_disk);
-    UNUSED(dbid);
-    UNUSED(key);
+    if (!have_field_in_disk)
+    {
+        // for whole key
+        if (!send_request_for_whole_key_in_child_process(dbid, key))
+            return NULL;
 
-    return NULL;
+        sds response = receive_response_in_child_process();
+        if (response == NULL)
+            return NULL;
+
+        robj *o = unmarshal_object(response);
+        sdsfree(response);
+        return o;
+    }
+    else
+    {
+        // We need find create a new hash from the source of the memory hash (in child process)
+        // For field's value in memory (in child proces) just copy them.
+        // For field's value in disk, use client/server mode to send to service thread
+        // one by one
+        redisDb *db = server.db + dbid;
+        dictEntry *de_db = dictFind(db->dict, key);
+        serverAssert(de_db);
+        robj *o_de = dictGetVal(de_db);
+        serverAssert(!is_rock_value(o_de));
+        serverAssert(o_de->type == OBJ_HASH && o_de->encoding == OBJ_ENCODING_HT);
+        dict *hash = o_de->ptr;
+
+        dict *new_hash = dictCreate(&hashDictType, NULL);
+        if (dictSize(hash) > DICT_HT_INITIAL_SIZE)
+            dictExpand(new_hash, dictSize(hash));
+        int all_fields_not_in_disk = 1;
+        dictIterator *di_hash = dictGetIterator(hash);
+        dictEntry *de_hash;
+        while ((de_hash = dictNext(di_hash)))
+        {
+            const sds val = dictGetVal(de_hash);
+            const sds field = dictGetKey(de_hash);
+            if (val != shared.hash_rock_val_for_field)
+            {
+                // real val in child process memory, just copy it to new_hash
+                const sds copy_field = sdsdup(field);
+                const sds copy_val = sdsdup(val);
+                dictAdd(new_hash, copy_field, copy_val);
+                continue;
+            }
+
+            // we need client/server mode to get the field's value 
+            // if the field's value is in disk by checking child process memory
+            all_fields_not_in_disk = 0;
+            if (!send_request_for_field_in_child_process(dbid, key, field))
+            {
+                dictRelease(new_hash);
+                dictReleaseIterator(di_hash);
+                return NULL;
+            }
+            const sds response = receive_response_in_child_process();
+            if (response == NULL)
+            {
+                dictRelease(new_hash);
+                dictReleaseIterator(di_hash);
+                return NULL;
+            }
+            const sds copy_field = sdsdup(field);
+            dictAdd(new_hash, copy_field, response);
+        }
+        dictReleaseIterator(di_hash);
+
+        serverAssert(!all_fields_not_in_disk);
+
+        robj *new_o = createObject(OBJ_HASH, new_hash);
+        new_o->encoding = OBJ_ENCODING_HT;
+        return new_o;
+    }
 }
 
 /* Check whether the value needs to get from RocksDB if the o is in RocksDB.
@@ -776,28 +1022,16 @@ robj* get_value_if_exist_in_rock_for_rdb_afo(const robj *o, const int dbid, cons
     }
     else
     {
-        o_disk = read_from_disk_in_child_process(have_field_in_disk, dbid, key);
+        o_disk = read_val_of_disk_in_child_process(have_field_in_disk, dbid, key);
+        if (o_disk == NULL)
+        {
+            serverLog(LL_WARNING, "child process get value by pipe failed, something wrong, must exit!");
+            exit(1);
+        }
     }
 
     serverAssert(o_disk != NULL);
     return o_disk;
-}
-
-/* Called in service thread.
- * 
- * It needs to get the serialized obj in child_ring_buf and snapshot.
- * If failed, return NULL.
- */
-static sds get_data_in_service_thread_for_child_process(const int dbid, const char* key, const size_t key_len)
-{
-    serverLog(LL_NOTICE, "prepare to response, dbid = %d, key_len = %zu, key = %s",
-                          dbid, key_len, key);
-
-    UNUSED(dbid);
-    UNUSED(key);
-    UNUSED(key_len);
-
-    return sdsnew("psuedo_data_for_child_process");
 }
 
 /* Called in service thread. 
@@ -838,23 +1072,11 @@ static int dealwith_request(const size_t request_len, char *buf, size_t buf_len)
     if (sdslen(request_for_service_thread) < request_len)
         return 0;       // need more data
 
+    // We got the request
     serverAssert(sdslen(request_for_service_thread) == request_len);
 
-    // the request is dbid(one byte) + key
-    if (request_len == 1)
-    {
-        serverLog(LL_WARNING, "key is empty");
-        goto cleanup;
-    }
-
-    const int dbid = *((unsigned char*)request_for_service_thread);
-    if (dbid < 0  || dbid >= server.dbnum)
-    {
-        serverLog(LL_WARNING, "dbid is illegal, dbid = %d", dbid);
-        goto cleanup;
-    }
-
-    response = get_data_in_service_thread_for_child_process(dbid, request_for_service_thread+1, request_len-1);
+    // We need parse the request_for_service_thread because it could be for the whole key or one field
+    response = get_data_in_service_thread_for_child_process(request_for_service_thread);
     if (response == NULL)
     {
         serverLog(LL_WARNING, "can not get response for chiild process in service thread!");
@@ -899,6 +1121,7 @@ cleanup:
 }   
 
 /* The main entrance for rdb/aof service thread
+ * as the server for child process by pipe communication.
  */
 static void* service_thread_main(void *arg)
 {

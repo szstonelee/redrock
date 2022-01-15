@@ -771,6 +771,7 @@ sds marshal_object(const robj* o)
     return s;
 }
 
+/* Must sucess, otherwise assert fail */
 robj* unmarshal_object(const sds v)
 {
     serverAssert(sdslen(v) >= MARSHAL_HEAD_SIZE);
