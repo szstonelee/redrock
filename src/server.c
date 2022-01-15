@@ -5946,13 +5946,22 @@ int redisFork(int purpose) {
         openChildInfoPipe();
     }
 
-    // if (purpose == CHILD_TYPE_RDB || purpose == CHILD_TYPE_AOF)
+    /* Currently we can not for a process to deal with Redis command
+     * other than RDB or AOF 
+     * becaause RocksDB can not shared by process.
+     * 
+     * For RDB/AOF we use special ways, i.e., service thread by pipe and snapshot
+     * for server/client mode to read data from disk.
+     * 
+     * Right now, it will affect Module RM_Fork() and LUa script debug feature.
+     */
+    if (!(purpose == CHILD_TYPE_RDB || purpose == CHILD_TYPE_AOF))
+    {
+        serverLog(LL_WARNING, "RedRock not support child process other than RDB/AOF.");
+        if (isMutuallyExclusiveChildType(purpose)) closeChildInfoPipe();
+        return -1;        
+    }
     
-        // When a child process start, we need create a service,
-        // i.e., a thread in redis process as server, 
-        //       and two pipes for communicatioon of redis process and child process, 
-        // for rdb/aof read when the key or field is in disk
-        // becasue RocksDB does not support shared by process.
     serverAssert(!hasActiveChildProcess());
     if (!on_start_rdb_aof_process())
     {
@@ -5962,6 +5971,7 @@ int redisFork(int purpose) {
     
     int childpid;
     long long start = ustime();
+
     if ((childpid = fork()) == 0) {
         /* Child */
         on_start_in_child_process();    // for RedRock rdb/aof service child process
@@ -5969,7 +5979,7 @@ int redisFork(int purpose) {
         server.in_fork_child = purpose;
         setOOMScoreAdj(CONFIG_OOM_BGCHILD);
         setupChildSignalHandlers();
-        closeChildUnusedResourceAfterFork();        
+        closeChildUnusedResourceAfterFork(); 
     } else {
         /* Parent */
         signal_child_process_already_running(childpid);     // let service thread start to work

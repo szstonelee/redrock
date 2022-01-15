@@ -1,9 +1,25 @@
+/* NOTE: if not use gcc ignored warning for -Warray-bounds
+ * service_thread_main() statement: request_len = *((size_t*)len_buf);
+ * will genearte warning (in sds.h)
+ * 
+ * the warning is like: 
+ * sds.h:88:28: warning: array subscript -1 is outside array bounds of ‘char[30]’ [-Warray-bounds]
+ * 
+ * I tried a lot of methods but it does not work
+ * It is strange that receive_response_in_child_process() use similiar code
+ * but does not generate warning.
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
 #include "rock_rdb_aof.h"
+#pragma GCC diagnostic pop
+
 #include "rock.h"
 #include "rock_write.h"
 #include "rock_marshal.h"
 
 #include <unistd.h>
+#include <pthread.h>
 
 // If in main redis proocess, it is zero. otherwise, it is the child process id
 // it is only accessed by main thread of redis process and child process
@@ -125,6 +141,154 @@ static void set_process_id_in_child_process_for_rock()
     child_process_id = getpid();
 }
 
+/* Called in child process to send a request for dbid and key.
+ * 
+ * The encoding of request is like this:
+ * The whole buf is composed of one byte of dbid and the key.
+ * We need sene size_t header of the size of the buf.
+ * Then send the buf.
+ * 
+ * Return True(1) if sucess, otherwise false(0).
+ */
+static int send_request_in_child_process(const int dbid, const sds key)
+{
+    serverAssert(child_process_id != 0);
+    serverAssert(dbid >= 0 && dbid < server.dbnum && key);
+
+    const size_t send_sz = 1 + sdslen(key);
+    ssize_t write_res;
+
+    // first, the size of buf
+    write_res = write(pipe_request[1], &send_sz, sizeof(size_t));
+    if (write_res < 0 || (size_t)write_res != sizeof(size_t))
+    {
+        serverLog(LL_WARNING, "send request header fail in child process, write_res = %zu", write_res);
+        return 0;
+    }
+
+    // then the dbid
+    unsigned char c_dbid = (unsigned char)dbid;
+    write_res = write(pipe_request[1], &c_dbid, 1);
+    if (write_res != 1)
+    {
+        serverLog(LL_WARNING, "send request dbid fail in child process, write_res = %zu", write_res);
+        return 0;
+    }
+
+    // last the key
+    write_res = write(pipe_request[1], key, sdslen(key));
+    if (write_res < 0 || (size_t)write_res != sdslen(key))
+    {
+        serverLog(LL_WARNING, "send request key fail in child process, write_res = %zu", write_res);
+        return 0;
+    }
+
+    return 1;
+}
+
+/* Called in child process.
+ *
+ * After the chiild process send a request, it will wait the response.
+ * return NULL if error, otherwise, the 
+ */
+static sds receive_response_in_child_process()
+{
+    serverAssert(child_process_id != 0);
+
+    // first read the length of size of size_t
+    #define PIPE_READ_BUF_LEN 64
+    char buf[PIPE_READ_BUF_LEN];
+    
+    char len_buf[sizeof(size_t)];
+    int len_index = 0;
+    ssize_t response_len = -1;
+
+    int error = 0;
+    sds response = NULL;
+
+    while (1)
+    {
+        const ssize_t read_res = read(pipe_response[0], buf, PIPE_READ_BUF_LEN);
+        if (read_res < 0)
+        {
+            serverLog(LL_WARNING, "read error from pipe in child process ");
+            error = 1;
+            break;
+        }
+        else if (read_res == 0)
+        {
+            serverLog(LL_WARNING, "read EOF from pipe in child process");
+            error = 1;
+            break;
+        }
+
+        // We really read something
+        char *data = buf;
+        size_t data_len = (size_t)read_res;
+
+        if (response_len == -1)
+        {
+            // first, we need read response_len
+            const int more_for_len = sizeof(size_t) - len_index;
+            serverAssert(more_for_len > 0 && more_for_len <= (int)sizeof(size_t));
+
+            if (read_res < (ssize_t)more_for_len)
+            {
+                // not enough for the response_len
+                memcpy(len_buf+len_index, buf, read_res);
+                len_index += read_res;
+            }
+            else
+            {
+                // we can get response_len
+                memcpy(len_buf+len_index, buf, more_for_len);
+                const size_t real_len = *((size_t*)len_buf);
+                serverAssert(real_len <= SSIZE_MAX); 
+                response_len = (ssize_t)real_len;
+
+                serverAssert(response == NULL);
+                response = sdsempty();
+                response = sdsMakeRoomFor(response, (size_t)response_len);
+
+                data += more_for_len;
+                data_len -= more_for_len;
+            }
+        }
+
+        if (response_len == 0)
+        {
+            serverAssert(data_len == 0);
+            break;  // no need to read more
+        }
+        else if (response_len > 0)
+        {
+            // read the response real content
+            if (data_len > (size_t)response_len || data_len + sdslen(response) > (size_t)response_len)
+            {
+                error = 1;
+                serverLog(LL_WARNING, "read too much data for response in child process, data_len = %zu, response_len = %zu, sds(response) = %zu",
+                                      data_len, response_len, sdslen(response));
+                break;
+            }
+
+            response = sdscatlen(response, data, data_len);
+            if (sdslen(response) == (size_t)response_len)
+                break;      // finish reading response
+        }
+    }
+
+    if (error)
+    {
+        sdsfree(response);
+        return NULL;
+    }
+    else
+    {
+        serverAssert(response != NULL);
+        return response;
+    }
+}
+
 /* Run in child process.
  * 
  * When the child process is forked, it first call here to init something,
@@ -143,16 +307,15 @@ void on_start_in_child_process()
     {
         request_key = sdscat(request_key, "a");
     }
-    size_t req_len = sdslen(request_key) + 1;
-    ssize_t ret;
-    ret = write(pipe_request[1], &req_len, sizeof(size_t));
-    serverAssert((size_t)ret == sizeof(size_t));
-    ret = write(pipe_request[1], &dbid, 1);
-    serverAssert(ret == 1);
-    ret = write(pipe_request[1], request_key, sdslen(request_key));
-    serverAssert((size_t)ret == sdslen(request_key));
-    sleep(10);
+    if (send_request_in_child_process(dbid, request_key))
+    {
+        // get response
+        sds response = receive_response_in_child_process();
+        serverLog(LL_WARNING, "on_start_in_child_process() debug, respoonse = %s", response);
+        sdsfree(response);
+    }
     sdsfree(request_key);
+    sleep(5);
 }
 
 /* Two cases will call here to close the pipe 
@@ -267,13 +430,18 @@ static int start_service_thread()
  * 
  * The caller guarantee in lock.
  */
-static void terminate_service_thread()
+static void terminate_service_thread(const char *reason)
 {
+    serverAssert(snapshot == NULL);
+    serverAssert(child_ringbuf_keys[0] == NULL);
+
     atomicSet(cancel_service_thread, 1);        // signal service thread to abort
 
     serverAssert(pthread_join(*service_thread, NULL) == 0);
 
     clear_all_resource_of_pipe();
+
+    serverLog(LL_WARNING, "We need terminate the service thread for RDB/AOF bgsave because reason = %s.", reason);
 }
 
 /* Called in main thread of redis process before a rdb child process launch.
@@ -302,12 +470,12 @@ int on_start_rdb_aof_process()
 
         if (!create_pipe())
         {
-            terminate_service_thread();
+            terminate_service_thread("can not create pipe");
             serverAssert(pthread_mutex_unlock(&mutex_main_and_service) == 0);
             return 0;
         }
 
-        // NOTE: mutex_main_and_servicej will be locked 
+        // NOTE: mutex_main_and_service will be locked 
         // until signal_child_process_already_running() is called
         // which guarantee that service thread work after the child process have been forked()
 
@@ -334,7 +502,7 @@ int on_start_rdb_aof_process()
 
         if (!create_pipe())
         {
-            terminate_service_thread();
+            terminate_service_thread("can not create pipe");
             serverAssert(pthread_mutex_unlock(&mutex_main_and_service) == 0);
             return 0;
         }
@@ -368,7 +536,7 @@ void signal_child_process_already_running(const int child_pid)
 {
     if (child_pid == -1)
     {
-        terminate_service_thread();
+        terminate_service_thread("child process can not start");
         serverAssert(pthread_mutex_unlock(&mutex_main_and_service) == 0);
         return;
     }
@@ -627,7 +795,7 @@ static sds get_data_in_service_thread_for_child_process(const int dbid, const ch
     UNUSED(key);
     UNUSED(key_len);
 
-    return NULL;
+    return "psuedo_data_for_child_process";
 }
 
 /* Called in service thread. 
@@ -646,6 +814,9 @@ static sds get_data_in_service_thread_for_child_process(const int dbid, const ch
  */
 static int dealwith_request(const size_t request_len, char *buf, size_t buf_len)
 {
+    int ret = -1;
+    sds response = NULL;
+
     if (request_for_service_thread == NULL)
     {
         request_for_service_thread = sdsempty();
@@ -655,10 +826,11 @@ static int dealwith_request(const size_t request_len, char *buf, size_t buf_len)
     if (buf_len > request_len || sdslen(request_for_service_thread) + buf_len > request_len)
     {
         serverLog(LL_WARNING, "read too much data for a reqeust");
-        return -1;
+        goto cleanup;
     }
 
     if (buf_len != 0)
+        // NOTE: buf_len could be zero
         request_for_service_thread = sdscatlen(request_for_service_thread, buf, buf_len);
 
     if (sdslen(request_for_service_thread) < request_len)
@@ -670,32 +842,58 @@ static int dealwith_request(const size_t request_len, char *buf, size_t buf_len)
     if (request_len == 1)
     {
         serverLog(LL_WARNING, "key is empty");
-        return -1;
+        goto cleanup;
     }
 
-    const int dbid = (int)request_for_service_thread[0];
+    const int dbid = *((unsigned char*)request_for_service_thread);
     if (dbid < 0  || dbid >= server.dbnum)
     {
         serverLog(LL_WARNING, "dbid is illegal, dbid = %d", dbid);
-        return -1;
+        goto cleanup;
     }
 
-    sds response = get_data_in_service_thread_for_child_process(dbid, request_for_service_thread+1, request_len-1);
+    response = get_data_in_service_thread_for_child_process(dbid, request_for_service_thread+1, request_len-1);
     if (response == NULL)
     {
         serverLog(LL_WARNING, "can not get response for chiild process in service thread!");
-        return -1;
+        goto cleanup;
     }
 
-    /* We use pipe to send back the response */
-    // TODO
+    // send back the response to child process by writing to pipe write end of response
+    ssize_t write_res;
 
+    const size_t response_len = sdslen(response);
+    serverAssert(response_len <= SSIZE_MAX);
+    write_res = write(pipe_response[1], &response_len, sizeof(size_t));
+    if (write_res < 0 || (size_t)write_res != sizeof(size_t))
+    {
+        serverLog(LL_WARNING, "write response head(size) failed, write_res = %zu", write_res);
+        goto cleanup;
+    }
+
+    if (response_len == 0)
+    {
+        ret = 1;        // no need to write the content. It is sucessful.
+        goto cleanup;
+    }
+
+    write_res = write(pipe_response[1], response, response_len);
+    if (write_res < 0 || (size_t)write_res != response_len)
+    {
+        serverLog(LL_WARNING, "write response content failed, write_res = %zu", write_res);
+        goto cleanup;
+    }
+
+    ret = 1;    // it is sucessful
+
+cleanup:
     sdsfree(response);
 
     // for next request
     sdsfree(request_for_service_thread);
     request_for_service_thread = NULL; 
-    return 1;
+
+    return ret;
 }   
 
 /* The main entrance for rdb/aof service thread
@@ -720,6 +918,7 @@ static void* service_thread_main(void *arg)
         if (check == 0)
         {   
             // we can get lock, it means service thread can go on to work
+            // with the sync of the pipes and snapshots
             serverAssert(pthread_mutex_unlock(&mutex_main_and_service) == 0);
             break;
         }
@@ -739,17 +938,19 @@ static void* service_thread_main(void *arg)
     // then we guarantee that the sync of snapshots are ready
     serverAssert(snapshot != NULL);
 
-    // we can close unusedd pipe here 
+    // we can close unused pipe here 
     serverAssert(pthread_mutex_lock(&mutex_main_and_service) == 0);
     close_not_used_pipe_in_service_thread();
     serverAssert(pthread_mutex_unlock(&mutex_main_and_service) == 0);
 
-    serverLog(LL_NOTICE, "we start a rdb/aof thread service with read-only snapshot for child process!");
+    serverLog(LL_NOTICE, "service thread starts to work (with snapshots) for child process!");
 
     #define PIPE_READ_BUF_LEN 64
     char buf[PIPE_READ_BUF_LEN];
     
-    char len_buf[sizeof(size_t)];
+    // char len_buf[sizeof(size_t)];
+    char tmp[256+sizeof(size_t)];
+    char *len_buf = tmp+256;
     int len_index = 0;
 
     size_t request_len = 0;
@@ -770,7 +971,7 @@ static void* service_thread_main(void *arg)
 
         // We really read something
         char *data = buf;
-        size_t data_len = read_res;
+        size_t data_len = (size_t)read_res;
 
         if (request_len == 0)
         {
@@ -782,14 +983,19 @@ static void* service_thread_main(void *arg)
             {
                 // not enough for the request_len
                 memcpy(len_buf+len_index, buf, read_res);
-                len_index += read_res;
+                len_index += (int)read_res;
             }
             else
             {
                 // we can get request_len
                 memcpy(len_buf+len_index, buf, more_for_len);
                 request_len = *((size_t*)len_buf);
-                serverAssert(request_len != 0);
+                
+                if (request_len == 0)
+                {
+                    serverLog(LL_WARNING, "service thread read request_len == 0!");
+                    break;
+                }
 
                 len_index = 0;  // for next request_len
 
@@ -823,11 +1029,12 @@ static void* service_thread_main(void *arg)
 
     // reclaim all resource before service threa exit
     // NOTE: need lock to guarantee the sync
+    sdsfree(request_for_service_thread);
+    request_for_service_thread = NULL;
+
     serverAssert(pthread_mutex_lock(&mutex_main_and_service) == 0);
     rocksdb_release_snapshot(rockdb, snapshot);
     snapshot = NULL;
-    sdsfree(request_for_service_thread);
-    request_for_service_thread = NULL;
     clear_all_resource_of_pipe();
     clear_snapshot_of_ring_buffer();
     serverAssert(pthread_mutex_unlock(&mutex_main_and_service) == 0);

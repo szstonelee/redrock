@@ -1058,3 +1058,7 @@ static void clear_when_service_thread_exit()
     service_thread_is_running = 0;
 
 }
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#pragma GCC diagnostic pop
