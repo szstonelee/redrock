@@ -5,9 +5,11 @@
  * the warning is like: 
  * sds.h:88:28: warning: array subscript -1 is outside array bounds of ‘char[30]’ [-Warray-bounds]
  * 
- * I tried a lot of methods but it does not work
- * It is strange that receive_response_in_child_process() use similiar code
+ * I tried a lot of methods but it does not work.
+ * It is wiered that receive_response_in_child_process() use similiar code
  * but does not generate warning.
+ * And before add receive_response_in_child_process() no warning.
+ * And the warning only for -O2 and above, I compile -O0, it is OK.
  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
@@ -795,7 +797,7 @@ static sds get_data_in_service_thread_for_child_process(const int dbid, const ch
     UNUSED(key);
     UNUSED(key_len);
 
-    return "psuedo_data_for_child_process";
+    return sdsnew("psuedo_data_for_child_process");
 }
 
 /* Called in service thread. 
