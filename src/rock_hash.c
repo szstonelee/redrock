@@ -373,6 +373,9 @@ void on_hash_key_del_field(const int dbid, const sds redis_key, const sds field)
  */
 void on_visit_field_of_hash_for_readonly(const int dbid, const sds redis_key, const sds field)
 {
+    if (hasActiveChildProcess())
+        return;     // If backup, we temporary disable update lru clock
+
     redisDb *db = server.db + dbid;
     dictEntry *de_db = dictFind(db->dict, redis_key);
     serverAssert(de_db);
@@ -417,6 +420,9 @@ void on_visit_field_of_hash_for_readonly(const int dbid, const sds redis_key, co
  */
 void on_visit_all_fields_of_hash_for_readonly(const int dbid, const sds redis_key)
 {
+    if (hasActiveChildProcess())
+        return;     // If backup, we temporary disable update lru clock
+
     redisDb *db = server.db + dbid;
     dictEntry *de_db = dictFind(db->dict, redis_key);
     serverAssert(de_db);

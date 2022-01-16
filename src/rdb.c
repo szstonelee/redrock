@@ -2663,6 +2663,10 @@ int rdbLoad(char *filename, rdbSaveInfo *rsi, int rdbflags) {
     retval = rdbLoadRio(&rdb,rdbflags,rsi);
     fclose(fp);
     stopLoading(retval==C_OK);
+
+    if (retval == C_OK)
+        on_after_load_rdb_backup();     // for RedRock
+
     return retval;
 }
 

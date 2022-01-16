@@ -6515,10 +6515,6 @@ int main(int argc, char **argv) {
     redisSetCpuAffinity(server.server_cpulist);
     setOOMScoreAdj(-1);
 
-    init_rock_hash_before_enter_event_loop();  
-    // NOTE: must follow init_rock_hash_before_enter_event_loop()
-    init_rock_evict_before_enter_event_loop();  
-
     aeMain(server.el);
     aeDeleteEventLoop(server.el);
     return 0;

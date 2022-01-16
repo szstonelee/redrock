@@ -19,6 +19,8 @@
 #include "rock.h"
 #include "rock_write.h"
 #include "rock_marshal.h"
+#include "rock_hash.h"
+#include "rock_evict.h"
 
 #include <unistd.h>
 #include <pthread.h>
@@ -1400,4 +1402,20 @@ static void* service_thread_main(void *arg)
     reclaim_resource_in_service_thread();
 
     return NULL;    // exit service thread normally
+}
+
+/* When redis server starts, it loads rdb file in two ways.
+ * 1. is directly from rdb file
+ * 2. is from aof file which has part of rdb content
+ * 
+ * After the loading, we need call here to init the rock_hash and rock_evict
+ * 
+ * For the left of aof file which is one command executed one by one, 
+ * it does not need call here but we need prepare for it (by calling here)
+ */
+void on_after_load_rdb_backup()
+{
+    init_rock_hash_before_enter_event_loop();  
+    // NOTE: must follow init_rock_hash_before_enter_event_loop()
+    init_rock_evict_before_enter_event_loop();  
 }

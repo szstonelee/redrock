@@ -801,6 +801,8 @@ int loadAppendOnlyFile(char *filename) {
         } else {
             serverLog(LL_NOTICE,"Reading the remaining AOF tail...");
         }
+
+        on_after_load_rdb_backup();     // call for RedRock
     }
 
     /* Read the actual AOF file, in REPL format, command by command. */
