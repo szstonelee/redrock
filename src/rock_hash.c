@@ -777,8 +777,8 @@ void init_rock_hash_before_enter_event_loop()
                 if (dictSize(hash) > threshold)
                 {
                     sds internal_redis_key = dictGetKey(de);
-                    serverLog(LL_WARNING, "init_rock_hash_before_enter_event_loop(), add whole key = %s, rock_hash_size = %zu", 
-                             internal_redis_key, dictSize(db->rock_hash));
+                    // serverLog(LL_WARNING, "init_rock_hash_before_enter_event_loop(), add whole key = %s, rock_hash_size = %zu", 
+                    //         internal_redis_key, dictSize(db->rock_hash));
                     add_whole_redis_hash_to_rock_hash(i, internal_redis_key);
                 }
             }
