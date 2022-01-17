@@ -2614,12 +2614,12 @@ standardConfig configs[] = {
     createLongLongConfig("leastfreemem", NULL, MODIFIABLE_CONFIG, -1, LLONG_MAX, server.leastfreemem, -1, INTEGER_CONFIG, NULL, update_least_free_mem),
 
     /* Unsigned Long Long configs */
-    createULongLongConfig("maxmemory", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.maxmemory, 0, MEMORY_CONFIG, NULL, updateMaxmemory),
+    createULongLongConfig("maxmemory", NULL, IMMUTABLE_CONFIG, 0, ULLONG_MAX, server.maxmemory, 0, MEMORY_CONFIG, NULL, updateMaxmemory),
     createULongLongConfig("maxrockmem", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.maxrockmem, 0, MEMORY_CONFIG, NULL, NULL),
 
     /* Size_t configs */
-    createSizeTConfig("hash-max-ziplist-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_ziplist_entries, 2, INTEGER_CONFIG, NULL, update_hash_max_ziplist_entries),
-    createSizeTConfig("hash-max-rock-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_rock_entries, 4, INTEGER_CONFIG, is_hash_max_rock_entries_valid, update_hash_max_rock_entries),    
+    createSizeTConfig("hash-max-ziplist-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_ziplist_entries, 64, INTEGER_CONFIG, NULL, update_hash_max_ziplist_entries),
+    createSizeTConfig("hash-max-rock-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_rock_entries, 0, INTEGER_CONFIG, is_hash_max_rock_entries_valid, update_hash_max_rock_entries),    
     createSizeTConfig("set-max-intset-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.set_max_intset_entries, 512, INTEGER_CONFIG, NULL, NULL),
     createSizeTConfig("zset-max-ziplist-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.zset_max_ziplist_entries, 128, INTEGER_CONFIG, NULL, NULL),
     createSizeTConfig("active-defrag-ignore-bytes", NULL, MODIFIABLE_CONFIG, 1, LLONG_MAX, server.active_defrag_ignore_bytes, 100<<20, MEMORY_CONFIG, NULL, NULL), /* Default: don't defrag if frag overhead is below 100mb */
