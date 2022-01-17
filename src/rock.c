@@ -1360,7 +1360,8 @@ void rock_stat(client *c)
     // line 1 : memory
     s = sdsempty();
     char hmem[64];
-    bytesToHuman(hmem, zmalloc_used_memory());
+    const size_t redis_used_mem = zmalloc_used_memory();
+    bytesToHuman(hmem, redis_used_mem);
     char total_system_hmem[64];
     bytesToHuman(total_system_hmem, server.system_memory_size);
     char peak_hmem[64];
@@ -1379,8 +1380,19 @@ void rock_stat(client *c)
     }
     char max_rock_hmem[64];
     bytesToHuman(max_rock_hmem, get_max_rock_mem_of_os());
-    s = sdscatprintf(s, "used_human = %s, used_peak_human = %s, sys_human = %s, free_hmem = %s, least_free_hmem = %s, max_rock_hmem = %s", 
-                     hmem, peak_hmem, total_system_hmem, free_hmem, least_free_hmem, max_rock_hmem);
+    char used_memory_rss_hmem[64];
+    const size_t rss_mem = server.cron_malloc_stats.process_rss;
+    bytesToHuman(used_memory_rss_hmem, rss_mem);
+    const size_t rocksdb_mem = rss_mem > redis_used_mem ? rss_mem - redis_used_mem : 0;
+    char rocksdb_hmem[64];
+    bytesToHuman(rocksdb_hmem, rocksdb_mem);
+    s = sdscatprintf(s, 
+                    "used_human = %s, used_peak_human = %s, sys_human = %s, "
+                    "free_hmem = %s, least_free_hmem = %s, max_rock_hmem = %s, "
+                    "rss_hmem = %s, rocksdb(and other) = %s", 
+                    hmem, peak_hmem, total_system_hmem, 
+                    free_hmem, least_free_hmem, max_rock_hmem,
+                    used_memory_rss_hmem, rocksdb_hmem);
     addReplyBulkCString(c, s);
     sdsfree(s);
 
@@ -1579,7 +1591,7 @@ static void rock_all_for_evict_for_db_by_one_percentage(client *c, const int dbi
     }
     else
     {
-        s = sdscatprintf(s, "key evict %d%%, scope = %zu, time = (long long unsigned)%llu (ms)", 
+        s = sdscatprintf(s, "key evict %d%%, scope = %zu, time = %llu (ms)", 
                             p_index, scope, (long long unsigned)elapsedMs(timer));
     }
     addReplyBulkCString(c, s);
