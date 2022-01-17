@@ -196,7 +196,8 @@ void init_rocksdb(const char* folder_original_path)
 }
 
 
-/* For debug command, i.e. debugrock ... */
+/* For debug command, i.e. debugrock ... Only enable when you want debug RedRock */
+#if 0
 void debug_rock(client *c)
 {
     sds flag = c->argv[1]->ptr;
@@ -235,6 +236,7 @@ void debug_rock(client *c)
 
     addReplyBulk(c,c->argv[0]);
 }
+#endif
 
 /* Encode the dbid with the input key for db.
  *

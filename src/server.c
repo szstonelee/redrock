@@ -1115,28 +1115,30 @@ struct redisCommand redisCommandTable[] = {
      "admin no-script ok-stale",
      0,NULL,0,0,0,0,0,0},
 
+/*
     {"debugrock", NULL, debug_rock,-2,
      "read-only random",
      0,NULL,0,0,0,0,0,0},
+*/
 
     {"rockevict", NULL, rock_evict,-2,
-     "read-only random @keyspace",
+     "admin no-script ok-stale read-only fast no-monitor no-slowlog",
      0,NULL,0,0,0,0,0,0},
 
     {"rockevicthash", NULL, rock_evict_hash,-3,
-     "read-only random @keyspace",
+     "admin no-script ok-stale read-only fast no-monitor no-slowlog",
      0,NULL,0,0,0,0,0,0},
 
     {"rockstat", NULL, rock_stat,1,
-     "read-only fast",
+     "admin no-script ok-stale read-only fast ok-loading",
      0,NULL,0,0,0,0,0,0},
 
     {"rockall", NULL, rock_all,1,
-     "read-only fast",
+     "admin no-script ok-stale read-only no-monitor no-slowlog",
      0,NULL,0,0,0,0,0,0},
 
     {"rockmem", NULL, rock_mem,-2,
-     "read-only fast",
+     "admin no-script ok-stale read-only no-monitor no-slowlog random",
      0,NULL,0,0,0,0,0,0}
 };
 

@@ -13,7 +13,7 @@ def insert_first(val: str):
     fail_cnt = 0
     sleep_secs = 6
     warning_threshold = 10
-    for i in range(1, 100001):
+    for i in range(1, 1000001):
         str_cnt = str_cnt + 1
         key = "key" + str(str_cnt)
         while True:
@@ -82,9 +82,9 @@ def loop_read(str_cnt: int, hash_cnt: int, val: str):
 
 
 def _main():
-    #r.execute_command("config set hash-max-ziplist-entries 2")
-    #r.execute_command("config set hash-max-rock-entries 4")
-    #r.execute_command("config set maxrockmem 100000000")
+    r.execute_command("config set hash-max-ziplist-entries 2")
+    r.execute_command("config set hash-max-rock-entries 4")
+    r.execute_command("config set maxrockmem 100000000")
     val = "v" * 1000
     str_cnt, hash_cnt = insert_first(val)
     loop_read(int(str_cnt/3), int(hash_cnt/3), val)
