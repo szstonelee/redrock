@@ -834,7 +834,7 @@ static sds read_from_snapshot_of_ring_buffer(const sds rock_key)
             break;
         }
     }
-    return found;
+    return found == NULL ? NULL : sdsdup(found);       // NOTE: return duplication because caller will free it
 }
 
 /* This is called in service thread to find the value in snapshot 
@@ -859,7 +859,9 @@ static sds read_from_snapshot_of_rocksdb(const sds rock_key)
         // NOT FOUND, but it is illegal, but we make the caller deal with that
         return NULL;
     
-    return sdsnewlen(db_val, db_val_len);
+    const sds read = sdsnewlen(db_val, db_val_len);
+    rocksdb_free(db_val);
+    return read;
 }
 
 static sds read_from_snapshot_first_ringbuf_then_rocksdb(const sds rock_key)
