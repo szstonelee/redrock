@@ -1,10 +1,14 @@
 // macros for nftw()
+#ifdef __APPLE__
+// nothing
+#else       // linux
 #define _XOPEN_SOURCE 700
 #ifndef USE_FDS
 #define USE_FDS 15
 #endif
 #define _LARGEFILE64_SOURCE
 #define _FILE_OFFSET_BITS 64
+#endif
 
 #include "rock.h"
 // #include "server.h"
@@ -1562,13 +1566,13 @@ static void rock_all_for_evict_for_db_by_one_percentage(client *c, const int dbi
     sds s = sdsempty();
     if (EVICT_OUTPUT_PERCENTTAGE != 100)
     {
-        s = sdscatprintf(s, "key evict %d (1/%d), scope = %zu, time = %zu (ms)", 
-                            p_index, EVICT_OUTPUT_PERCENTTAGE, scope, elapsedMs(timer));
+        s = sdscatprintf(s, "key evict %d (1/%d), scope = %zu, time = %llu (ms)", 
+                            p_index, EVICT_OUTPUT_PERCENTTAGE, scope, (long long unsigned)elapsedMs(timer));
     }
     else
     {
-        s = sdscatprintf(s, "key evict %d%%, scope = %zu, time = %zu (ms)", 
-                            p_index, scope, elapsedMs(timer));
+        s = sdscatprintf(s, "key evict %d%%, scope = %zu, time = (long long unsigned)%llu (ms)", 
+                            p_index, scope, (long long unsigned)elapsedMs(timer));
     }
     addReplyBulkCString(c, s);
     sdsfree(s);
@@ -1596,13 +1600,13 @@ static void rock_all_for_hash_for_db_by_one_percentage(client *c, const int dbid
     sds s = sdsempty();
     if (EVICT_OUTPUT_PERCENTTAGE != 100)
     {
-        s = sdscatprintf(s, "field evict %d (1/%d), scope = %zu, time = %zu (ms)", 
-                            p_index, EVICT_OUTPUT_PERCENTTAGE, scope, elapsedMs(timer));
+        s = sdscatprintf(s, "field evict %d (1/%d), scope = %zu, time = %llu (ms)", 
+                            p_index, EVICT_OUTPUT_PERCENTTAGE, scope, (long long unsigned)elapsedMs(timer));
     }
     else
     {
-        s = sdscatprintf(s, "field evict %d%%, scope = %zu, time = %zu (ms)", 
-                            p_index, scope, elapsedMs(timer));
+        s = sdscatprintf(s, "field evict %d%%, scope = %zu, time = %llu (ms)", 
+                            p_index, scope, (long long unsigned)elapsedMs(timer));
     }
     addReplyBulkCString(c, s);
     sdsfree(s);

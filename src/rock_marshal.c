@@ -899,4 +899,3 @@ int debug_check_type(const sds recover_val, const robj *shared_obj)
 
     return 0;
 }
-

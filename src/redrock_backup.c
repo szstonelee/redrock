@@ -1062,3 +1062,56 @@ static void clear_when_service_thread_exit()
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
 #pragma GCC diagnostic pop
+
+
+/* Apple MacOS does not support pthread_timedjoin_np(),
+ * so we provide a compatable way to do it.
+ * check https://stackoverflow.com/questions/11551188/alternative-to-pthread-timedjoin-np
+ */
+
+
+struct args {
+    int joined;
+    pthread_t td;
+    pthread_mutex_t mtx;
+    pthread_cond_t cond;
+    void **res;
+};
+
+static void *waiter(void *ap)
+{
+    struct args *args = ap;
+    pthread_join(args->td, args->res);
+    pthread_mutex_lock(&args->mtx);
+    args->joined = 1;
+    pthread_mutex_unlock(&args->mtx);
+    pthread_cond_signal(&args->cond);
+    return 0;
+}
+
+int pthread_timedjoin_np(pthread_t td, void **res, struct timespec *ts)
+{
+    pthread_t tmp;
+    int ret;
+    struct args args = { .td = td, .res = res };
+
+    pthread_mutex_init(&args.mtx, 0);
+    pthread_cond_init(&args.cond, 0);
+    pthread_mutex_lock(&args.mtx);
+
+    ret = pthread_create(&tmp, 0, waiter, &args);
+    if (ret) goto done;
+
+    do ret = pthread_cond_timedwait(&args.cond, &args.mtx, ts);
+    while (!args.joined && ret != ETIMEDOUT);
+
+    pthread_mutex_unlock(&args.mtx);
+
+    pthread_cancel(tmp);
+    pthread_join(tmp, 0);
+
+    pthread_cond_destroy(&args.cond);
+    pthread_mutex_destroy(&args.mtx);
+
+    return args.joined ? 0 : ret;
+}

@@ -9,7 +9,7 @@
 // #include <assert.h>
 
 /* Write Spin Lock for Apple OS and Linux */
-#if defined(__APPLE__)
+#ifdef __APPLE__
 
     #include <os/lock.h>
     static os_unfair_lock w_lock;

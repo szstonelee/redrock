@@ -561,6 +561,58 @@ static void terminate_service_thread(const char *reason)
     serverLog(LL_WARNING, "We need terminate the service thread for RDB/AOF bgsave because reason = %s.", reason);
 }
 
+#ifdef __APPLE__
+/* Apple MacOS does not support pthread_timedjoin_np(),
+ * so we provide a compatable way to do it.
+ * check https://stackoverflow.com/questions/11551188/alternative-to-pthread-timedjoin-np
+ */
+
+struct args {
+    int joined;
+    pthread_t td;
+    pthread_mutex_t mtx;
+    pthread_cond_t cond;
+    void **res;
+};
+
+static void *waiter(void *ap)
+{
+    struct args *args = ap;
+    pthread_join(args->td, args->res);
+    pthread_mutex_lock(&args->mtx);
+    args->joined = 1;
+    pthread_mutex_unlock(&args->mtx);
+    pthread_cond_signal(&args->cond);
+    return 0;
+}
+
+int pthread_timedjoin_np(pthread_t td, void **res, struct timespec *ts)
+{
+    pthread_t tmp;
+    int ret;
+    struct args args = { .td = td, .res = res };
+
+    pthread_mutex_init(&args.mtx, 0);
+    pthread_cond_init(&args.cond, 0);
+    pthread_mutex_lock(&args.mtx);
+
+    serverAssert(pthread_create(&tmp, 0, waiter, &args) == 0);
+
+    do ret = pthread_cond_timedwait(&args.cond, &args.mtx, ts);
+    while (!args.joined && ret != ETIMEDOUT);
+
+    pthread_mutex_unlock(&args.mtx);
+
+    pthread_cancel(tmp);
+    pthread_join(tmp, 0);
+
+    pthread_cond_destroy(&args.cond);
+    pthread_mutex_destroy(&args.mtx);
+
+    return args.joined ? 0 : ret;
+}
+#endif
+
 /* Called in main thread of redis process before a rdb child process launch.
  * return 1 to tell the caller that the child process can start.
  * return 0 to tell the caller it can not start a child processs for the following reasons.
@@ -601,7 +653,14 @@ int on_start_rdb_aof_process()
     else
     {
         // we need check whether the service thread is actually running
+        #ifdef __APPLE__
+        struct timespec to;
+        clock_gettime(CLOCK_MONOTONIC, &to);
+        to.tv_sec += 1;
+        const int check = pthread_timedjoin_np(*service_thread, NULL, &to);
+        #else
         const int check = pthread_tryjoin_np(*service_thread, NULL);  // non-blocking call
+        #endif
         if (check != 0)
         {
             serverAssert(check == EBUSY);
@@ -1050,27 +1109,28 @@ static robj* read_val_of_disk_in_child_process(const int have_field_in_disk, con
                 const sds copy_field = sdsdup(field);
                 const sds copy_val = sdsdup(val);
                 dictAdd(new_hash, copy_field, copy_val);
-                continue;
             }
-
-            // we need client/server mode to get the field's value 
-            // if the field's value is in disk by checking child process memory
-            all_fields_not_in_disk = 0;
-            if (!send_request_for_field_in_child_process(dbid, key, field))
+            else
             {
-                dictRelease(new_hash);
-                dictReleaseIterator(di_hash);
-                return NULL;
+                // we need client/server mode to get the field's value 
+                // if the field's value is in disk by checking child process memory
+                all_fields_not_in_disk = 0;
+                if (!send_request_for_field_in_child_process(dbid, key, field))
+                {
+                    dictRelease(new_hash);
+                    dictReleaseIterator(di_hash);
+                    return NULL;
+                }
+                const sds response = receive_response_in_child_process();
+                if (response == NULL)
+                {
+                    dictRelease(new_hash);
+                    dictReleaseIterator(di_hash);
+                    return NULL;
+                }
+                const sds copy_field = sdsdup(field);
+                dictAdd(new_hash, copy_field, response);
             }
-            const sds response = receive_response_in_child_process();
-            if (response == NULL)
-            {
-                dictRelease(new_hash);
-                dictReleaseIterator(di_hash);
-                return NULL;
-            }
-            const sds copy_field = sdsdup(field);
-            dictAdd(new_hash, copy_field, response);
         }
         dictReleaseIterator(di_hash);
 
@@ -1085,7 +1145,7 @@ static robj* read_val_of_disk_in_child_process(const int have_field_in_disk, con
 /* Check whether the value needs to get from RocksDB if the o is in RocksDB.
  * If o is not roock value or not in rock_hash, 
  *    we return the input o, 
- * otherwise, we return the value from disk.
+ * otherwise, we return the value from disk, i.e, the o_disk.
  *
  * It can be in main process of Redis (in main thread which is sync way) 
  * or child process for rdb or aof.
@@ -1233,6 +1293,7 @@ cleanup:
 
     return ret;
 }   
+
 
 /* Called in service thread.
  * It will wait the main thread unlok mutex_main_and_service
