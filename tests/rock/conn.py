@@ -1,5 +1,6 @@
 import redis
 
+#redis_ip = "127.0.0.1"
 redis_ip = "192.168.64.4"
 redis_port = 6379
 

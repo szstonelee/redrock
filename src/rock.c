@@ -1351,7 +1351,7 @@ void rock_stat(client *c)
 {
     void bytesToHuman(char *s, unsigned long long n);   // declaration in server.c
 
-    addReplyArrayLen(c, 2);
+    addReplyArrayLen(c, 3);
 
     sds s; 
 
@@ -1396,8 +1396,14 @@ void rock_stat(client *c)
                   &total_rock_hash_num, &total_rock_hash_field_num, &total_field_in_disk_num);
 
     s = sdscatprintf(s, "no_zero_dbnum = %d, key_num = %zu, evict_key_num = %zu, key_in_disk_num = %zu, evict_hash_num = %zu, evict_field_num = %zu, field_in_disk_num = %zu",
-                     no_zero_dbnum, total_key_num, total_rock_evict_num, total_key_in_disk_num, total_rock_hash_num, total_rock_hash_field_num, total_field_in_disk_num);
-    
+                     no_zero_dbnum, total_key_num, total_rock_evict_num, total_key_in_disk_num, total_rock_hash_num, total_rock_hash_field_num, total_field_in_disk_num);    
+    addReplyBulkCString(c, s);
+    sdsfree(s);
+
+    // line 3: 
+    s = sdsempty();
+    s = sdscatprintf(s, "hash-max-ziplist-entries = %zu, hash-max-rock-entries = %zu",
+                     server.hash_max_ziplist_entries, server.hash_max_rock_entries);
     addReplyBulkCString(c, s);
     sdsfree(s);
 }

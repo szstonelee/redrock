@@ -663,7 +663,9 @@ int on_start_rdb_aof_process()
         #endif
         if (check != 0)
         {
+            #ifndef __APPLE__
             serverAssert(check == EBUSY);
+            #endif
             return 0;       // service thread is busy
         }
 

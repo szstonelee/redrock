@@ -1131,7 +1131,7 @@ struct redisCommand redisCommandTable[] = {
      "read-only fast",
      0,NULL,0,0,0,0,0,0},
 
-    {"rockall", NULL, rock_all,-1,
+    {"rockall", NULL, rock_all,1,
      "read-only fast",
      0,NULL,0,0,0,0,0,0},
 

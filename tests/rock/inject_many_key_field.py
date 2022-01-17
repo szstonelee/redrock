@@ -82,12 +82,12 @@ def loop_read(str_cnt: int, hash_cnt: int, val: str):
 
 
 def _main():
-    r.execute_command("config set hash-max-ziplist-entries 2")
-    r.execute_command("config set hash-max-rock-entries 4")
-    r.execute_command("config set maxrockmem 100000000")
+    #r.execute_command("config set hash-max-ziplist-entries 2")
+    #r.execute_command("config set hash-max-rock-entries 4")
+    #r.execute_command("config set maxrockmem 100000000")
     val = "v" * 1000
     str_cnt, hash_cnt = insert_first(val)
-    #loop_read(int(str_cnt/3), int(hash_cnt/3), val)
+    loop_read(int(str_cnt/3), int(hash_cnt/3), val)
 
 
 if __name__ == '__main__':
