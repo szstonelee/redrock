@@ -22,10 +22,36 @@
 #include <ftw.h>
 #include <unistd.h>
 
+/* Control when read thread and write thread should exit loop */ 
 redisAtomic int rock_threads_loop_forever;
 
 /* Global rocksdb handler for rock_read.c and rock_write.c */
 rocksdb_t* rockdb = NULL;
+
+/* For Rock visit total */
+static long long stat_key_total;
+static long long stat_key_rock;
+static long long stat_field_total;
+static long long stat_field_rock;
+
+void init_stat_rock_key_and_field()
+{
+    stat_key_total = 0;
+    stat_key_rock = 0;
+    stat_field_total = 0;
+    stat_field_rock = 0;
+}
+
+/*
+void get_stat_rock_key_and_field(long long *key_total, long long *key_rock,
+                                 long long *field_total, long long *field_rock)
+{
+    *key_total = stat_key_total;
+    *key_rock = stat_key_rock;
+    *field_total = stat_field_total;
+    *field_rock = stat_field_rock;
+}
+*/
 
 static int unlink_cb(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf)
 {
@@ -533,12 +559,15 @@ list* generic_get_one_key_for_rock(const client *c, const int index)
     if (de == NULL)
         return NULL;
 
+    ++stat_key_total;
+
     robj *o = dictGetVal(de);
     if (!is_rock_value(o))
         return NULL;
 
     list *keys = listCreate();
     listAddNodeTail(keys, key);
+    ++stat_key_rock;
     return keys;
 }
 
@@ -557,6 +586,11 @@ void generic_get_one_field_for_rock(const client *c, const sds key, const int in
     const robj *o = dictGetVal(de_db);
     if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
         return;
+
+    /* We treat it as field stat, not key stat */
+    serverAssert(stat_key_total > 0);
+    --stat_key_total;
+    ++stat_field_total;
 
     serverAssert(!is_rock_value(o));
 
@@ -584,6 +618,7 @@ void generic_get_one_field_for_rock(const client *c, const sds key, const int in
     
     listAddNodeTail(join_keys, key);
     listAddNodeTail(join_fields, field);
+    ++stat_field_rock;
 
     *hash_keys = join_keys;
     *hash_fields = join_fields;
@@ -605,6 +640,10 @@ void generic_get_multi_fields_for_rock(const client *c, const sds key, const int
     if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
         return;
 
+    /* We treat it as file stat not key stat */
+    serverAssert(stat_key_total > 0);
+    --stat_key_total;
+
     dict *hash = o->ptr;
 
     list *join_keys = *hash_keys;
@@ -612,6 +651,8 @@ void generic_get_multi_fields_for_rock(const client *c, const sds key, const int
 
     for (int i = index; i < c->argc; i += step)
     {
+        ++stat_field_total;
+
         const sds field = c->argv[i]->ptr;
 
         dictEntry *de_hash = dictFind(hash, field);
@@ -632,6 +673,7 @@ void generic_get_multi_fields_for_rock(const client *c, const sds key, const int
         
         listAddNodeTail(join_keys, key);
         listAddNodeTail(join_fields, field);
+        ++stat_field_rock;
     }
 
     *hash_keys = join_keys;
@@ -650,6 +692,10 @@ void generic_get_all_fields_for_rock(const client *c, const sds key, list **hash
     if (!(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT))
         return;
 
+    /* We treat it as field stat, not key stat */
+    serverAssert(stat_key_total > 0);
+    --stat_key_total;
+
     dict *hash = o->ptr;
 
     list *join_keys = *hash_keys;
@@ -661,6 +707,8 @@ void generic_get_all_fields_for_rock(const client *c, const sds key, list **hash
     {
         const sds field = dictGetKey(de);
         const sds val = dictGetVal(de);
+
+        ++stat_field_total;
 
         if (val == shared.hash_rock_val_for_field)
         {
@@ -674,6 +722,7 @@ void generic_get_all_fields_for_rock(const client *c, const sds key, list **hash
 
             listAddNodeTail(join_keys, key);
             listAddNodeTail(join_fields, field);
+            ++stat_field_rock;
         }
     }
     dictReleaseIterator(di);
@@ -701,6 +750,8 @@ list* generic_get_multi_keys_for_rock_in_range(const client *c, const int start,
         dictEntry *de = dictFind(db->dict, key);
         if (de == NULL)
             continue;
+
+        ++stat_key_total;
         
         robj *o = dictGetVal(de);
         if (!is_rock_value(o))
@@ -710,6 +761,7 @@ list* generic_get_multi_keys_for_rock_in_range(const client *c, const int start,
             keys = listCreate();
 
         listAddNodeTail(keys, key);
+        ++stat_key_rock;
     }
     return keys;
 }
@@ -739,6 +791,8 @@ list* generic_get_multi_keys_for_rock_exclude_tails(const client *c, const int i
         if (de == NULL)
             continue;
         
+        ++stat_key_total;
+
         robj *o = dictGetVal(de);
         if (!is_rock_value(o))
             continue;
@@ -747,6 +801,7 @@ list* generic_get_multi_keys_for_rock_exclude_tails(const client *c, const int i
             keys = listCreate();
 
         listAddNodeTail(keys, key);
+        ++stat_key_rock;
     }
     return keys;
 }
@@ -783,11 +838,13 @@ list* generic_get_zset_num_for_rock(const client *c, const int have_dest)
         dictEntry *de = dictFind(db->dict, dest);
         if (de)
         {
+            ++stat_key_total;
             robj *val = dictGetVal(de);
             if (is_rock_value(val))
             {
                 keys = listCreate();
                 listAddNodeTail(keys, dest);
+                ++stat_key_rock;
             }
         }
     }
@@ -809,6 +866,8 @@ list* generic_get_zset_num_for_rock(const client *c, const int have_dest)
         if (de == NULL)
             continue;
 
+        ++stat_key_total;
+
         robj *o = dictGetVal(de);
         if (!is_rock_value(o))
             continue;
@@ -817,6 +876,7 @@ list* generic_get_zset_num_for_rock(const client *c, const int have_dest)
             keys = listCreate();
 
         listAddNodeTail(keys, key);
+        ++stat_key_rock;
     }
 
     return keys;
@@ -1353,7 +1413,7 @@ void rock_stat(client *c)
 {
     void bytesToHuman(char *s, unsigned long long n);   // declaration in server.c
 
-    addReplyArrayLen(c, 3);
+    addReplyArrayLen(c, 4);
 
     sds s; 
 
@@ -1409,15 +1469,28 @@ void rock_stat(client *c)
                   &total_rock_evict_num, &total_key_in_disk_num, 
                   &total_rock_hash_num, &total_rock_hash_field_num, &total_field_in_disk_num);
 
-    s = sdscatprintf(s, "no_zero_dbnum = %d, key_num = %zu, evict_key_num = %zu, key_in_disk_num = %zu, evict_hash_num = %zu, evict_field_num = %zu, field_in_disk_num = %zu",
-                     no_zero_dbnum, total_key_num, total_rock_evict_num, total_key_in_disk_num, total_rock_hash_num, total_rock_hash_field_num, total_field_in_disk_num);    
+    s = sdscatprintf(s, 
+                     "no_zero_dbnum = %d, key_num = %zu, evict_key_num = %zu, key_in_disk_num = %zu, "
+                     "evict_hash_num = %zu, evict_field_num = %zu, field_in_disk_num = %zu",
+                     no_zero_dbnum, total_key_num, total_rock_evict_num, total_key_in_disk_num, 
+                     total_rock_hash_num, total_rock_hash_field_num, total_field_in_disk_num);    
     addReplyBulkCString(c, s);
     sdsfree(s);
 
-    // line 3: 
+    // line 3: config
     s = sdsempty();
     s = sdscatprintf(s, "hash-max-ziplist-entries = %zu, hash-max-rock-entries = %zu",
                      server.hash_max_ziplist_entries, server.hash_max_rock_entries);
+    addReplyBulkCString(c, s);
+    sdsfree(s);
+
+    // line 4: rock stat for key and field
+    s = sdsempty();
+    s = sdscatprintf(s, 
+                     "stat_key_total = %lld, stat_key_rock = %lld, key_percent = %d(%%), "
+                     "stat_field_total = %lld, stat_field_rock = %lld, field_percent = %d(%%)",
+                     stat_key_total, stat_key_rock, stat_key_total == 0 ? 0 : (int)(100*stat_key_rock/stat_key_total),
+                     stat_field_total, stat_field_rock, stat_field_total == 0 ? 0 : (int)(100*stat_field_rock/stat_field_total));
     addReplyBulkCString(c, s);
     sdsfree(s);
 }

@@ -3162,6 +3162,9 @@ void resetServerStats(void) {
     server.stat_total_error_replies = 0;
     server.stat_dump_payload_sanitizations = 0;
     server.aof_delayed_fsync = 0;
+
+    /* Add one more for rock stat */
+    init_stat_rock_key_and_field();
 }
 
 /* Make the thread killable at any time, so that kill threads functions

@@ -32,6 +32,8 @@ client* lookup_client_from_id(const uint64_t client_id);
 void on_add_a_new_client(client* const c);
 void on_del_a_destroy_client(const client* const c);
 
+void init_stat_rock_key_and_field();
+
 void rock_evict(client *c);
 void rock_evict_hash(client *c);
 
@@ -125,7 +127,7 @@ inline int is_client_in_waiting_rock_value_state(const client *c)
 
 // Redis Commands for Rock API
 
-// generic API
+// generic API for key or field for the following data structures
 list* generic_get_one_key_for_rock(const client *c, const int index);
 list* generic_get_multi_keys_for_rock(const client *c, const int index, const int step);
 list* generic_get_multi_keys_for_rock_exclude_tails(const client *c, const int index, 
