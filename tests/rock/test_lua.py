@@ -1,4 +1,4 @@
-from conn import r, rock_evict
+from conn import r, rock_evict, rock_evict_hash
 
 key = "test_lua"
 
@@ -12,7 +12,8 @@ def init():
     r.execute_command("del", k2)
     r.execute_command("hmset", k1, "f1", "v1", "f2", "v2", "f3", "v3", "f4", "v4", "f5", "v5")
     r.execute_command("set", k2, "val")
-    r.execute_command("rockevicthash", k1, "f2")
+    rock_evict(k2)
+    rock_evict_hash(k1, "f2")
 
 
 def lua():
