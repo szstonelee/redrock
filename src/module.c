@@ -56,6 +56,9 @@
 #include "slowlog.h"
 #include "rdb.h"
 #include "monotonic.h"
+
+#include "rock.h"
+
 #include <dlfcn.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -4187,7 +4190,10 @@ RedisModuleCallReply *RM_Call(RedisModuleCtx *ctx, const char *cmdname, const ch
         if (!(flags & REDISMODULE_ARGV_NO_REPLICAS))
             call_flags |= CMD_CALL_PROPAGATE_REPL;
     }
-    call(c,call_flags);
+
+    if (check_and_recover_rock_value_in_sync_mode(c))
+        call(c,call_flags);
+
     server.replication_allowed = prev_replication_allowed;
 
     serverAssert((c->flags & CLIENT_BLOCKED) == 0);

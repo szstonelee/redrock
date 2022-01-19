@@ -42,3 +42,6 @@ redrock
 .github/*
 .DS_Store
 tests/rock/__pycache__/*
+src/*.rdb
+src/*.aof
+tests/rock/.idea/

@@ -492,9 +492,6 @@ static list* get_keys_in_rock_for_command(const client *c, list **hash_keys, lis
  * 
  * CHECK_ROCK_CMD_FAIL: the specific command check for argument failed and has replied to the client 
  *
- * If return 1, indicating NOT going into call() because the client trap in rock state.
- * Otherwise, return 0, meaning the client is OK for call() for current command.
- * 
  * NOTE: This function could be called by one client serveral times in aysnc mode
  *       for just processing ONE command 
  *       (e.g., mget <key1> <key2>, time 1: key1 is rock value but key2 is not, 
@@ -514,7 +511,7 @@ int check_and_set_rock_status_in_processCommand(client *c)
     if (redis_keys == shared.rock_cmd_fail)
     {
         // The command specific checking (by copying the checking code from the specific command), 
-        // is not passed and ther is an error reply for the user.
+        // is not passed and there is an error reply for the user.
         // The caller does not need to call() (otherwise, there are double error reply)
         // and just go on for the socket buffer
         if (hash_keys) listRelease(hash_keys);
@@ -523,6 +520,7 @@ int check_and_set_rock_status_in_processCommand(client *c)
     }
 
     // MUST deal with redis_keys first
+    // because c.rock_key_num =
     if (redis_keys)
     {
         serverAssert(listLength(redis_keys) > 0);
@@ -531,6 +529,7 @@ int check_and_set_rock_status_in_processCommand(client *c)
     }
 
     // then deal with hash_keys and hash_fields
+    // becausse c.rock_key_num +=
     if (hash_keys)
     {
         serverAssert(listLength(hash_keys) > 0);
@@ -541,6 +540,55 @@ int check_and_set_rock_status_in_processCommand(client *c)
     }
 
     return is_client_in_waiting_rock_value_state(c) ? CHECK_ROCK_ASYNC_WAIT : CHECK_ROCK_GO_ON_TO_CALL;
+}
+
+/* For script and module. Before the call(), we need check the command's rock value 
+ * and recover them in sync mode (as soon as possible). So the call() can not fail for rock value.
+ *
+ * We use sync mode because the call() in script is part of atomic operation (like MULTI ... EXEC)
+ * 
+ * return 1 means should go on for call(). otherwise(0), means skip call()
+ */
+int check_and_recover_rock_value_in_sync_mode(client *c)
+{
+    // NOTE: we need disable c multi state if have,  e.g. more than one redis scommand in scripts
+    //       for get_keys_in_rock_for_command()
+    const int have_multi_state = c->flags & CLIENT_MULTI;
+    if (have_multi_state)
+        c->flags &= ~CLIENT_MULTI;
+
+    list *hash_keys = NULL;
+    list *hash_fields = NULL;
+    list *redis_keys = get_keys_in_rock_for_command(c, &hash_keys, &hash_fields);
+
+    if (redis_keys == shared.rock_cmd_fail)
+    {
+        // check the above
+        if (hash_keys) listRelease(hash_keys);
+        if (hash_fields) listRelease(hash_fields);
+        if (have_multi_state)
+            c->flags |= CLIENT_MULTI;       // recover multi state if have
+        return 0;
+    }
+
+    // NOTE: unlike the above, if (redis_keys) and if (hash_keys) can has any order
+
+    if (redis_keys)
+    {
+        on_client_need_rock_keys_for_db_in_sync_mode(c, redis_keys);
+        listRelease(redis_keys);
+    }
+
+    if (hash_keys)
+    {
+        on_client_need_rock_fields_for_hash_in_sync_mode(c, hash_keys, hash_fields);
+        listRelease(hash_keys);
+        listRelease(hash_fields);
+    }
+
+    if (have_multi_state)
+        c->flags |= CLIENT_MULTI;       // recover
+    return 1;
 }
 
 /* Get one key from client's argv. 

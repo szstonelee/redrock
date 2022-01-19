@@ -32,6 +32,8 @@
 #include "rand.h"
 #include "cluster.h"
 
+#include "rock.h"
+
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
@@ -732,7 +734,10 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
         if (server.lua_repl & PROPAGATE_REPL)
             call_flags |= CMD_CALL_PROPAGATE_REPL;
     }
-    call(c,call_flags);
+
+    if (check_and_recover_rock_value_in_sync_mode(c))
+        call(c,call_flags);
+
     serverAssert((c->flags & CLIENT_BLOCKED) == 0);
 
     /* Convert the result of the Redis command into a suitable Lua type.

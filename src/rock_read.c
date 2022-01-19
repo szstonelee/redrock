@@ -8,7 +8,7 @@
 #include "rock_evict.h"
 
 /* Write Spin Lock for Apple OS and Linux */
-#if defined(__APPLE__)
+#ifdef __APPLE__
 
     #include <os/lock.h>
     static os_unfair_lock r_lock;
@@ -721,6 +721,61 @@ static void go_on_need_rock_keys_from_rocksdb(const uint64_t client_id,
     rock_r_unlock();
 }
 
+/* From redis_keys, direct read from RocksDB and recoover them in redis db in sync moode */
+static void direct_recover_rock_keys_from_rocksdb(const int dbid, const list *redis_keys)
+{
+    serverAssert(listLength(redis_keys) > 0);
+
+    redisDb *db = server.db + dbid;
+
+    listIter li;
+    listNode *ln;
+    listRewind((list*)redis_keys, &li);
+
+    while ((ln = listNext(&li)))
+    {
+        const sds redis_key = listNodeValue(ln);
+
+        sds rock_key = sdsdup(redis_key);
+        rock_key = encode_rock_key_for_db(dbid, rock_key);
+
+        size_t db_val_len;
+        char *err = NULL;
+        rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
+        char *db_val = rocksdb_get(rockdb, readoptions, rock_key, sdslen(rock_key), &db_val_len, &err);
+        rocksdb_readoptions_destroy(readoptions);
+
+        if (err)
+            serverPanic("direct_recover_rock_keys_from_rocksdb(), err = %s", err);
+
+        if (db_val == NULL)
+            // NOT FOUND, it is illegal
+            serverPanic("direct_recover_rock_keys_from_rocksdb(), not found, redis_key = %s", redis_key);
+
+        sds recover_val = sdsnewlen(db_val, db_val_len);
+        rocksdb_free(db_val);
+
+        robj *recover_o = unmarshal_object(recover_val);
+        sdsfree(recover_val);
+
+        dictEntry *de_db = dictFind(db->dict, redis_key);
+        serverAssert(de_db);
+        if (is_rock_value(dictGetVal(de_db)))
+        {
+            // NOTE: same redis_key could be repeated in redis_keys
+            // First one win the recover
+            dictGetVal(de_db) = recover_o;
+            on_recover_key_for_rock_evict(dbid, dictGetKey(de_db));
+        }
+        else
+        {
+            decrRefCount(recover_o);
+        }
+
+        sdsfree(rock_key);
+    }
+}
+
 /* Called in main thread.
  * After the check for ring buffer for hash,
  * it goes on to recover value from RocksDB in async way.
@@ -776,6 +831,71 @@ static void go_on_need_rock_hashes_from_rocksdb(const uint64_t client_id, const 
 
     rock_r_unlock();
 }
+
+/* From hash_keys & hash_fields, direct read from RocksDB and recoover them in redis db in sync moode */
+static void direct_recover_rock_fields_from_rocksdb(const int dbid, const list *hash_keys, const list *hash_fields)
+{
+    serverAssert(listLength(hash_keys) > 0 && listLength(hash_keys) == listLength(hash_fields));
+
+    redisDb *db = server.db + dbid;
+
+    listIter li_key;
+    listNode *ln_key;
+    listIter li_field;
+    listNode *ln_field;
+    listRewind((list*)hash_keys, &li_key);
+    listRewind((list*)hash_fields, &li_field);
+
+    while ((ln_key = listNext(&li_key)))
+    {
+        ln_field = listNext(&li_field);
+
+        const sds hash_key = listNodeValue(ln_key);
+        const sds hash_field = listNodeValue(ln_field);
+
+        sds rock_key = sdsdup(hash_key);
+        rock_key = encode_rock_key_for_hash(dbid, rock_key, hash_field);
+
+        size_t db_val_len;
+        char *err = NULL;
+        rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
+        char *db_val = rocksdb_get(rockdb, readoptions, rock_key, sdslen(rock_key), &db_val_len, &err);
+        rocksdb_readoptions_destroy(readoptions);
+
+        if (err)
+            serverPanic("direct_recover_rock_fields_from_rocksdb(), err = %s", err);
+
+        if (db_val == NULL)
+            // NOT FOUND, it is illegal
+            serverPanic("direct_recover_rock_fields_from_rocksdb(), not found, hash_key = %s, hash_field = %s", 
+                        hash_key, hash_field);
+
+        sds recover_val = sdsnewlen(db_val, db_val_len);
+        rocksdb_free(db_val);
+
+        dictEntry *de_db = dictFind(db->dict, hash_key);
+        serverAssert(de_db);
+        robj *o_db = dictGetVal(de_db);
+        serverAssert(o_db->type == OBJ_HASH && o_db->encoding == OBJ_ENCODING_HT);
+        dict *hash = o_db->ptr;
+        dictEntry *de_hash = dictFind(hash, hash_field);
+        serverAssert(de_hash);
+        if (dictGetVal(de_hash) == shared.hash_rock_val_for_field)
+        {
+            // NOTE: same hash_key and hash_field could be repeated in the input
+            // First one win the recover
+            dictGetVal(de_hash) = recover_val;
+            on_recover_field_of_hash(dbid, hash_key, hash_field);
+        }
+        else
+        {
+            sdsfree(recover_val);
+        }
+
+        sdsfree(rock_key);
+    }
+}
+
 
 /* If some key already in ring buf, recover them in Redis DB.
  * Return a list for un-recovered keys (may be empty if all redis_keys in ring buffer)
@@ -1062,6 +1182,33 @@ int on_client_need_rock_keys_for_db(client *c, const list *redis_keys)
     return sync_mode_for_db;
 }
 
+/* Like the above, but do not set rock_key_num because we use sync mode */
+void on_client_need_rock_keys_for_db_in_sync_mode(client *c, const list *redis_keys)
+{
+    const int dbid = c->db->id;
+
+    list *left = check_ring_buf_first_and_recover_for_db(dbid, redis_keys);
+
+    if (left == NULL)
+    {
+        // nothing found in ring buffer
+        // deal with the total redis_keys from rocksDB directly in sync mode
+        direct_recover_rock_keys_from_rocksdb(dbid, redis_keys);
+    }
+    else if (listLength(left) == 0)
+    {
+        // all found in ring buffer
+    }
+    else
+    {
+        // deal with the left by reading from RocksdB diretly in sync mode
+        direct_recover_rock_keys_from_rocksdb(dbid, left);
+    }
+
+    if (left)
+        listRelease(left);
+}
+
 /* Called in main thread when a client finds it needs some hash keys 
  * and hash fields to continue for a command because the field's value is in RocksDB.
  * The caller guarantee not using read lock.
@@ -1134,6 +1281,38 @@ int on_client_need_rock_fields_for_hashes(client *c, const list *hash_keys, cons
     }
 
     return sync_mode_for_hash;
+}
+
+/* Like the above, but do not set rock_key_num because we use sync mode */
+void on_client_need_rock_fields_for_hash_in_sync_mode(client *c, const list *hash_keys, const list *hash_fields)
+{
+    const int dbid = c->db->id;
+
+    list *left_keys = NULL;
+    list *left_fields = NULL;
+    check_ring_buf_first_and_recover_for_hash(dbid, hash_keys, hash_fields, &left_keys, &left_fields);
+
+    if (left_keys == NULL)
+    {
+        // nothing found in ring buffer
+        // deal with the total hash_keys and hash_fields from RocksDB directly in sync mode
+        direct_recover_rock_fields_from_rocksdb(dbid, hash_keys, hash_fields);
+    }
+    else if (listLength(left_keys) == 0)
+    {
+        // all found in ring buffer        
+    }
+    else
+    {
+        // deal with the left by reading from RocksdB diretly in sync mode
+        direct_recover_rock_fields_from_rocksdb(dbid, left_keys, left_fields);
+    }
+
+    if (left_keys)
+    {
+        listRelease(left_keys);
+        listRelease(left_fields);
+    }
 }
 
 /* API for rock_write.c for checking whether the key is in candidates

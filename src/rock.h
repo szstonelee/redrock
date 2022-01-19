@@ -72,6 +72,9 @@ int check_valid_evict_of_key_for_hash(const int dbid, const sds hash_key, const 
 #define CHECK_ROCK_CMD_FAIL         2
 int check_and_set_rock_status_in_processCommand(client *c);
 
+/* return 1 or 0 */
+int check_and_recover_rock_value_in_sync_mode(client *c);
+
 /* Check whether o is a rock value.
  * Return 1 if it is. Otherwise return 0.
  */

@@ -1,4 +1,4 @@
-import test_str, test_set, test_hash, test_list, test_zset, test_bitmap, test_geo, test_hyperloglog, test_multi
+import test_set, test_hash, test_list, test_zset, test_bitmap, test_geo, test_hyperloglog, test_lua
 
 
 def _main():
@@ -13,6 +13,7 @@ def _main():
         test_geo.test_all()
         test_hyperloglog.test_all()
         #test_multi.test_all()
+        test_lua.test_all()
         cnt = cnt + 1
         if cnt % 100 == 0:
             print(f"test loop for set, list, hash, zset, bitmap, geo, hyperloglog OK cnt = {cnt}")
