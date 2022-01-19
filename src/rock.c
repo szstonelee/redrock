@@ -1346,7 +1346,11 @@ size_t get_free_mem_of_os()
 
 static void exit_for_not_enough_free_mem_when_startup(const size_t mem)
 {
-    serverLog(LL_WARNING, "free mem is too low, for this machine at least %zu", mem);
+    void bytesToHuman(char *s, unsigned long long n);   // declaration in server.c
+    
+    char hmem[64];
+    bytesToHuman(hmem, mem);
+    serverLog(LL_WARNING, "free mem is too low, for this machine at least %s. You can 'sync; echo 1 > /proc/sys/vm/drop_caches' to flush page cache of os to make more free memory and try again!", hmem);
     exit(1);
 }
 
