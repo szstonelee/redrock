@@ -46,4 +46,3 @@ src/*.rdb
 src/*.aof
 tests/rock/.idea/
 tests/rock/mass*.txt
-tests/rock/mass_2.txt
