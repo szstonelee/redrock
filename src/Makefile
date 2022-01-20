@@ -353,7 +353,7 @@ $(REDIS_SERVER_NAME): $(REDIS_SERVER_OBJ)
 
 # redis-sentinel
 $(REDIS_SENTINEL_NAME): $(REDIS_SERVER_NAME)
-	$(REDIS_INSTALL) $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME)
+#	$(REDIS_INSTALL) $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME)
 
 # redis-check-rdb
 $(REDIS_CHECK_RDB_NAME): $(REDIS_SERVER_NAME)
@@ -392,11 +392,11 @@ distclean: clean
 
 .PHONY: distclean
 
-test: $(REDIS_SERVER_NAME) $(REDIS_CHECK_AOF_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME)
-	@(cd ..; ./runtest)
+#test: $(REDIS_SERVER_NAME) $(REDIS_CHECK_AOF_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME)
+#	@(cd ..; ./runtest)
 
-test-sentinel: $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME)
-	@(cd ..; ./runtest-sentinel)
+#test-sentinel: $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME)
+#	@(cd ..; ./runtest-sentinel)
 
 check: test
 
@@ -411,11 +411,11 @@ lcov:
 bench: $(REDIS_BENCHMARK_NAME)
 	./$(REDIS_BENCHMARK_NAME)
 
-32bit:
-	@echo ""
-	@echo "WARNING: if it fails under Linux you probably need to install libc6-dev-i386"
-	@echo ""
-	$(MAKE) CFLAGS="-m32" LDFLAGS="-m32"
+#32bit:
+#	@echo ""
+#	@echo "WARNING: if it fails under Linux you probably need to install libc6-dev-i386"
+#	@echo ""
+#	$(MAKE) CFLAGS="-m32" LDFLAGS="-m32"
 
 gcov:
 	$(MAKE) REDIS_CFLAGS="-fprofile-arcs -ftest-coverage -DCOVERAGE_TEST" REDIS_LDFLAGS="-fprofile-arcs -ftest-coverage"
@@ -439,7 +439,7 @@ install: all
 	$(call MAKE_INSTALL,$(REDIS_CLI_NAME),$(INSTALL_BIN))
 	@ln -sf $(REDIS_SERVER_NAME) $(INSTALL_BIN)/$(REDIS_CHECK_RDB_NAME)
 	@ln -sf $(REDIS_SERVER_NAME) $(INSTALL_BIN)/$(REDIS_CHECK_AOF_NAME)
-	@ln -sf $(REDIS_SERVER_NAME) $(INSTALL_BIN)/$(REDIS_SENTINEL_NAME)
+#	@ln -sf $(REDIS_SERVER_NAME) $(INSTALL_BIN)/$(REDIS_SENTINEL_NAME)
 
 uninstall:
 	rm -f $(INSTALL_BIN)/{$(REDIS_SERVER_NAME),$(REDIS_BENCHMARK_NAME),$(REDIS_CLI_NAME),$(REDIS_CHECK_RDB_NAME),$(REDIS_CHECK_AOF_NAME),$(REDIS_SENTINEL_NAME)}
