@@ -46,3 +46,4 @@ src/*.rdb
 src/*.aof
 tests/rock/.idea/
 tests/rock/mass*.txt
+src/node*.conf
