@@ -1719,7 +1719,10 @@ static void rock_all_for_evict_for_db_by_one_percentage(client *c, const int dbi
         s = sdscatprintf(s, "key evict %d%%, scope = %zu, time = %llu (ms)", 
                             p_index, scope, (long long unsigned)elapsedMs(timer));
     }
-    addReplyBulkCString(c, s);
+
+    if (!server.cluster_enabled)
+        addReplyBulkCString(c, s);
+
     sdsfree(s);
 }
 
@@ -1753,7 +1756,10 @@ static void rock_all_for_hash_for_db_by_one_percentage(client *c, const int dbid
         s = sdscatprintf(s, "field evict %d%%, scope = %zu, time = %llu (ms)", 
                             p_index, scope, (long long unsigned)elapsedMs(timer));
     }
-    addReplyBulkCString(c, s);
+
+    if (!server.cluster_enabled)
+        addReplyBulkCString(c, s);
+
     sdsfree(s);
 }
 
@@ -1873,7 +1879,10 @@ static void rock_all_for_evict(client *c)
         // This db head line for this db
         sds s = sdsempty();
         s = sdscatprintf(s, "key evict for dbid = %d, number = %zu", i, num);
-        addReplyBulkCString(c, s);
+
+        if (!server.cluster_enabled)
+            addReplyBulkCString(c, s);
+
         sdsfree(s);
 
         if (num < EVICT_OUTPUT_PERCENTTAGE)
@@ -1892,7 +1901,10 @@ static void rock_all_for_evict(client *c)
     {
         sds s = sdsempty();
         s = sdscatprintf(s, "All db key eviction are empty!");
-        addReplyBulkCString(c, s);
+
+        if (!server.cluster_enabled)
+            addReplyBulkCString(c, s);
+
         sdsfree(s);
     }
 }
@@ -1913,7 +1925,10 @@ static void rock_all_for_hash(client *c)
         // This db head line for this db
         sds s = sdsempty();
         s = sdscatprintf(s, "field evict for dbid = %d, number = %zu", i, num);
-        addReplyBulkCString(c, s);
+
+        if (!server.cluster_enabled)
+            addReplyBulkCString(c, s);
+
         sdsfree(s);
 
         if (num < EVICT_OUTPUT_PERCENTTAGE)
@@ -1932,7 +1947,10 @@ static void rock_all_for_hash(client *c)
     {
         sds s = sdsempty();
         s = sdscatprintf(s, "All db field eviction are empty!");
-        addReplyBulkCString(c, s);
+
+        if (!server.cluster_enabled)
+            addReplyBulkCString(c, s);
+            
         sdsfree(s);
     }
 }
@@ -1944,10 +1962,14 @@ void rock_all(client *c)
     total += cal_rock_all_for_evict();
     total += cal_rock_all_for_hash();
 
-    addReplyArrayLen(c, total);
+    if (!server.cluster_enabled)
+        addReplyArrayLen(c, total);
 
     rock_all_for_evict(c);
     rock_all_for_hash(c);
+
+    if (server.cluster_enabled)
+        addReply(c, shared.ok);
 }
 
 /* Check current free memory is OK for continue the command.

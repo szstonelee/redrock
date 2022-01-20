@@ -1,0 +1,1 @@
+./redrock --port 7000 --cluster-enabled yes --cluster-config-file node7000.conf --cluster-node-timeout 5000 --save 0
