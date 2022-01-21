@@ -34,6 +34,15 @@ static long long stat_key_rock;
 static long long stat_field_total;
 static long long stat_field_rock;
 
+void get_visit_stat_for_rock(size_t *key_total_visits, size_t *key_rock_visits,
+                             size_t *field_total_visits, size_t *field_rock_visits)
+{
+    *key_total_visits = stat_key_total > 0 ? (size_t)stat_key_total : 0;
+    *key_rock_visits = stat_key_rock > 0 ? (size_t)stat_key_rock : 0;
+    *field_total_visits = stat_field_total > 0 ? (size_t)stat_field_total : 0;
+    *field_rock_visits = stat_field_rock > 0 ? (size_t)stat_field_rock : 0;
+}
+
 void init_stat_rock_key_and_field()
 {
     stat_key_total = 0;
@@ -1297,13 +1306,13 @@ void rock_evict_hash(client *c)
     }    
 }
 
-static void get_rock_info(int *no_zero_dbnum,
-                          size_t *total_key_num, 
-                          size_t *total_rock_evict_num, 
-                          size_t *total_key_in_disk_num,
-                          size_t *total_rock_hash_num,
-                          size_t *total_rock_hash_field_num,
-                          size_t *total_field_in_disk_num)
+void get_rock_info(int *no_zero_dbnum,
+                   size_t *total_key_num, 
+                   size_t *total_rock_evict_num, 
+                   size_t *total_key_in_disk_num,
+                   size_t *total_rock_hash_num,
+                   size_t *total_rock_hash_field_num,
+                   size_t *total_field_in_disk_num)
 {
     for (int i = 0; i < server.dbnum; ++i)
     {
@@ -1344,13 +1353,18 @@ size_t get_free_mem_of_os()
 #endif    
 }
 
-static void exit_for_not_enough_free_mem_when_startup(const size_t mem)
+static void exit_for_not_enough_free_mem_when_startup(const size_t need_mem, const size_t current_mem)
 {
     void bytesToHuman(char *s, unsigned long long n);   // declaration in server.c
     
-    char hmem[64];
-    bytesToHuman(hmem, mem);
-    serverLog(LL_WARNING, "free mem is too low, for this machine at least %s. You can 'sync; echo 1 > /proc/sys/vm/drop_caches' to flush page cache of os to make more free memory and try again!", hmem);
+    char need_hmem[64];
+    char current_hmem[64];
+    bytesToHuman(need_hmem, need_mem);
+    bytesToHuman(current_hmem, current_mem);
+    serverLog(LL_WARNING, "free mem is too low, for this machine at least %s, current is %s. "
+                          "You can 'sync; echo 1 > /proc/sys/vm/drop_caches' "
+                          "to flush page cache of OS to make more free memory and try again!", 
+                          need_hmem, current_hmem);
     exit(1);
 }
 
@@ -1359,37 +1373,45 @@ void check_mem_requirement_on_startup()
     const size_t sys_mem = server.system_memory_size;
     if (sys_mem < (4ULL<<30))
     {
-        serverLog(LL_WARNING, "Your system memory is too low (at least 4G), system memory for this machine only = %zu",
+        serverLog(LL_WARNING, "Your system memory is too low (at least 4G), " 
+                              "system memory for this machine only = %zu",
                               sys_mem); 
         exit(1);
     }
 
     const size_t free_mem = get_free_mem_of_os();       // MacOS is SIZE_MAX
 
+    size_t need_free_mem = 0;
+
     if (sys_mem <= (5ULL<<30))
     {
-        if (free_mem < (2ULL<<30))
-            exit_for_not_enough_free_mem_when_startup(2ULL<<30);
+        need_free_mem = 2ULL<<30;
+        if (free_mem < need_free_mem)
+            exit_for_not_enough_free_mem_when_startup(need_free_mem, free_mem);
     }
     else if (sys_mem <= (7ULL<<30))
     {
-        if (free_mem < (3ULL<<30))
-            exit_for_not_enough_free_mem_when_startup(5ULL<<30);        
+        need_free_mem = 3ULL<<30;
+        if (free_mem < need_free_mem)
+            exit_for_not_enough_free_mem_when_startup(need_free_mem, free_mem);        
     }
     else if (sys_mem <= (15ULL<<30))
     {
-        if (free_mem < (4ULL<<30))
-            exit_for_not_enough_free_mem_when_startup(10ULL<<30);
+        need_free_mem = 4ULL<<30;
+        if (free_mem < need_free_mem)
+            exit_for_not_enough_free_mem_when_startup(need_free_mem, free_mem);
     }
     else if (sys_mem <= (31ULL<<30))
     {
-        if (free_mem < (5ULL<<30))
-            exit_for_not_enough_free_mem_when_startup(20ULL<<30);
+        need_free_mem = 5ULL<<30;
+        if (free_mem < need_free_mem)
+            exit_for_not_enough_free_mem_when_startup(need_free_mem, free_mem);
     }
     else
     {
-        if (free_mem < (6ULL<<30))
-            exit_for_not_enough_free_mem_when_startup(40ULL<<30);
+        need_free_mem = 6ULL<<30;
+        if (free_mem < need_free_mem)
+            exit_for_not_enough_free_mem_when_startup(need_free_mem, free_mem);
     }
 }
 
@@ -1950,7 +1972,7 @@ static void rock_all_for_hash(client *c)
 
         if (!server.cluster_enabled)
             addReplyBulkCString(c, s);
-            
+
         sdsfree(s);
     }
 }

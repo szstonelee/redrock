@@ -42,6 +42,7 @@
 #include "rock_hash.h"
 #include "rock_evict.h"
 #include "rock_rdb_aof.h"
+#include "rock_statsd.h"
 
 #include <time.h>
 #include <signal.h>
@@ -2297,7 +2298,9 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                           0,
                           &ei);
 
+    // We add the following features for RedRock
     perform_rock_eviction_in_cron();
+    send_metrics_to_statsd();
 
     server.cronloops++;
     return 1000/server.hz;
@@ -3190,6 +3193,8 @@ static void init_redrock()
     evict_pool_init();      // init evcition pool
 
     init_for_rdb_aof_service();     // init the pipes (set to -1) for rdb/aof service
+
+    init_statsd();
 }
 
 void initServer(void) {

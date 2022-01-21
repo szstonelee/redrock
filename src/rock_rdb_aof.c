@@ -1382,7 +1382,7 @@ static void* service_thread_main(void *arg)
     
     init_resource_in_service_thread();
 
-    serverLog(LL_NOTICE, "service thread starts to work (with snapshots) for child process!");
+    // serverLog(LL_NOTICE, "service thread starts to work (with snapshots) for child process!");
 
     #define PIPE_READ_BUF_LEN 64
     char buf[PIPE_READ_BUF_LEN];
@@ -1403,7 +1403,7 @@ static void* service_thread_main(void *arg)
 
         if (read_res == 0)
         {
-            serverLog(LL_WARNING, "read EOF from pipe in service thread, normal exit.");
+            // serverLog(LL_WARNING, "read EOF from pipe in service thread, normal exit.");
             break;
         } 
 

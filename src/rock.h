@@ -44,7 +44,17 @@ void rock_mem(client *c);
 
 int check_free_mem_for_command(const client *c, const int is_denyoom_command);
 unsigned long long get_max_rock_mem_of_os();    // for rock_evict.c
-size_t get_free_mem_of_os();       // for server.c and rock.c
+size_t get_free_mem_of_os();       // for server.c and rock.c and rock_statsd.c
+
+void get_rock_info(int *no_zero_dbnum,
+                   size_t *total_key_num, 
+                   size_t *total_rock_evict_num, 
+                   size_t *total_key_in_disk_num,
+                   size_t *total_rock_hash_num,
+                   size_t *total_rock_hash_field_num,
+                   size_t *total_field_in_disk_num);
+void get_visit_stat_for_rock(size_t *key_total_visits, size_t *key_rock_visits,
+                             size_t *field_total_visits, size_t *field_rock_visits);
 
 #define CHECK_EVICT_OK                                          0
 #define CHECK_EVICT_EXPIRED                                     1
