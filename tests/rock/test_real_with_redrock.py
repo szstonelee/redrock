@@ -6,6 +6,7 @@ import redis
 import random
 import string
 import time
+import sys
 
 
 r1: redis.StrictRedis   # redrock
@@ -562,12 +563,18 @@ def list_cmd_table():
     return cmds
 
 
-
-def init_cmd_table():
-    str_cmds: dict = string_cmd_table()
-    list_cmds: dict = list_cmd_table()
-    return {**str_cmds, **list_cmds}
-    #return list_cmds
+def init_cmd_table(table: str):
+    if table == "str":
+        return string_cmd_table()
+    elif table == "list":
+        return list_cmd_table()
+    elif table == "all":
+        str_cmds = string_cmd_table()
+        list_cmds = list_cmd_table()
+        return {**str_cmds, **list_cmds}
+    else:
+        print("un-recognize table, select one from all, str, list")
+        return {}
 
 
 def _main():
@@ -575,8 +582,11 @@ def _main():
     r1, r2 = init_redis_clients()
     r1.execute_command("flushall")
     r2.execute_command("flushall")
-    init_redrock(r1)
-    cmds:list = list(init_cmd_table().items())
+    # init_redrock(r1)
+    cmd_table = sys.argv[1]
+    cmds:list = list(init_cmd_table(cmd_table).items())
+    if not cmds:
+        exit(1)
     cnt = 0
 
     while True:
