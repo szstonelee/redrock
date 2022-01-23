@@ -1115,3 +1115,23 @@ int pthread_timedjoin_np(pthread_t td, void **res, struct timespec *ts)
 
     return args.joined ? 0 : ret;
 }
+
+/* Called in service thread to init including
+ * 1. close unused pipe
+ * 2. create snapshots of ring buffer and RocksDB
+ */
+static void init_resource_in_service_thread()
+{
+    serverAssert(pthread_mutex_lock(&mutex_main_and_service) == 0);
+    // we can close unused pipe here 
+    close_not_used_pipe_in_service_thread();
+    // creatation of snapshot
+    // NOTE: we need call ring buffer first, because write thread will 
+    //       change ring buffer, we must guarantee no data loss for snapshot
+    serverAssert(snapshot == NULL);
+    serverAssert(child_ringbuf_keys[0] == NULL);
+    create_snapshot_of_ring_buf_for_child_process(child_ringbuf_keys, child_ringbuf_vals);
+    snapshot = rocksdb_create_snapshot(rockdb);
+    serverAssert(snapshot != NULL);
+    serverAssert(pthread_mutex_unlock(&mutex_main_and_service) == 0);
+}

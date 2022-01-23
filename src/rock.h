@@ -6,6 +6,7 @@
 
 // #define RED_ROCK_DEBUG      // run debug code if defined this macro. In release build, comment this line
 // #define RED_ROCK_EVICT_INFO     // for debug of eviction, please commont in release version
+#define RED_ROCK_MUTEX_DEBUG    // run for debug or mutex
 
 #define ROCK_KEY_FOR_DB     0
 #define ROCK_KEY_FOR_HASH   1

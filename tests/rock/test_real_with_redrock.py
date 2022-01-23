@@ -37,7 +37,7 @@ def init_redis_clients():
 def init_redrock(r: redis.StrictRedis):
     r.execute_command("config set hash-max-ziplist-entries 2")
     r.execute_command("config set hash-max-rock-entries 4")
-    r.execute_command("config set maxrockmem 20000000")
+    r.execute_command("config set maxrockmem 5000000")  # 5M
     #r.execute_command("config set save '3600 1 300 100 60 10000'")
     r.execute_command("config set appendonly yes")
 

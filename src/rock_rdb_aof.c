@@ -81,7 +81,12 @@ static pthread_t *service_thread = NULL;
  *    So the service thread get the lcok and know it can go on to work, 
  *    like closing unused pipes (in redis process).
  */
-static pthread_mutex_t mutex_main_and_service;     
+#ifdef RED_ROCK_MUTEX_DEBUG
+static pthread_mutexattr_t mattr_main_and_service;
+static pthread_mutex_t mutex_main_and_service;
+#else
+static pthread_mutex_t mutex_main_and_service = PTHREAD_MUTEX_INITIALIZER;     
+#endif
 
 /* The following three variables are snapshots for ring buffer and RockksDB,
  * They are only needed and modified (except first time initialization) by service thread.
@@ -111,9 +116,13 @@ static redisAtomic int cancel_service_thread;
  */
 void init_for_rdb_aof_service()
 {
-    atomicSet(cancel_service_thread, 0);
+#ifdef RED_ROCK_MUTEX_DEBUG
+    serverAssert(pthread_mutexattr_init(&mattr_main_and_service) == 0);
+    serverAssert(pthread_mutexattr_settype(&mattr_main_and_service, PTHREAD_MUTEX_ERRORCHECK) == 0);
+    serverAssert(pthread_mutex_init(&mutex_main_and_service, &mattr_main_and_service) == 0);
+#endif
 
-    serverAssert(pthread_mutex_init(&mutex_main_and_service, NULL) == 0);
+    atomicSet(cancel_service_thread, 0);
 
     serverAssert(pthread_mutex_lock(&mutex_main_and_service) == 0);
 
@@ -696,6 +705,8 @@ int on_start_rdb_aof_process()
 /* Called in main thread when it guarantees that the child process has been runninng
  * or completely failed (i.e., child_pid == -1)
  *
+ * The logic guarantee in lock mode.
+ * 
  * If child_pid == -1, we need terminate the service thread and release resource
  * like pipe and the lock.
  * 
@@ -719,6 +730,14 @@ void signal_child_process_already_running(const int child_pid)
         return;
     }
 
+    // creatation of snapshot
+    // NOTE: we need call ring buffer first, because write thread will 
+    //       change ring buffer, we must guarantee no data loss for snapshot
+    serverAssert(snapshot == NULL);
+    serverAssert(child_ringbuf_keys[0] == NULL);
+    create_snapshot_of_ring_buf_for_child_process(child_ringbuf_keys, child_ringbuf_vals);
+    snapshot = rocksdb_create_snapshot(rockdb);
+    serverAssert(snapshot != NULL);
 
     // signal service thread to work
     serverAssert(pthread_mutex_unlock(&mutex_main_and_service) == 0);
@@ -1335,26 +1354,6 @@ static int service_thread_wait_until_can_work()
     return 1;   // can go on to work
 }
 
-/* Called in service thread to init including
- * 1. close unused pipe
- * 2. create snapshots of ring buffer and RocksDB
- */
-static void init_resource_in_service_thread()
-{
-    serverAssert(pthread_mutex_lock(&mutex_main_and_service) == 0);
-    // we can close unused pipe here 
-    close_not_used_pipe_in_service_thread();
-    // creatation of snapshot
-    // NOTE: we need call ring buffer first, because write thread will 
-    //       change ring buffer, we must guarantee no data loss for snapshot
-    serverAssert(snapshot == NULL);
-    serverAssert(child_ringbuf_keys[0] == NULL);
-    create_snapshot_of_ring_buf_for_child_process(child_ringbuf_keys, child_ringbuf_vals);
-    snapshot = rocksdb_create_snapshot(rockdb);
-    serverAssert(snapshot != NULL);
-    serverAssert(pthread_mutex_unlock(&mutex_main_and_service) == 0);
-}
-
 /* Called in service thread before normal exit
  * to recaim the above resource */
 static void reclaim_resource_in_service_thread()
@@ -1380,9 +1379,13 @@ static void* service_thread_main(void *arg)
     if (service_thread_wait_until_can_work() == 0)
         return NULL;    // exit service thread by abortion
     
-    init_resource_in_service_thread();
-
     // serverLog(LL_NOTICE, "service thread starts to work (with snapshots) for child process!");
+
+    serverAssert(pthread_mutex_lock(&mutex_main_and_service) == 0);
+    // we can close unused pipe here 
+    close_not_used_pipe_in_service_thread();
+    serverAssert(snapshot !=  NULL);
+    serverAssert(pthread_mutex_unlock(&mutex_main_and_service) == 0);
 
     #define PIPE_READ_BUF_LEN 64
     char buf[PIPE_READ_BUF_LEN];
