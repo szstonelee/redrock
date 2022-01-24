@@ -945,28 +945,9 @@ void wait_rock_threads_exit()
     // signal rock threads to exit
     atomicSet(rock_threads_loop_forever, 0);
 
-    int s;
-    void *res;
+    join_write_thread();
 
-    s = pthread_join(rock_write_thread_id, &res);
-    if (s != 0)
-    {
-        serverLog(LL_WARNING, "rock write thread join failure!");
-    }
-    else
-    {
-        serverLog(LL_NOTICE, "rock write thread exit and join successfully.");
-    }
-    
-    s = pthread_join(rock_read_thread_id, &res);
-    if (s != 0)
-    {
-        serverLog(LL_WARNING, "rock read thread join failure");
-    }
-    else
-    {
-        serverLog(LL_NOTICE, "rock read thread exit and join successfully.");
-    }
+    join_read_thread();
 
     if (rockdb)
         rocksdb_close(rockdb);

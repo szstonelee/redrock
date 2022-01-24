@@ -5,7 +5,8 @@
 #include "adlist.h"
 #include "server.h"
 
-extern pthread_t rock_read_thread_id;
+// extern pthread_t rock_read_thread_id;
+void join_read_thread();
 
 void init_and_start_rock_read_thread();
 

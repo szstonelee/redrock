@@ -9,7 +9,8 @@
 #define RING_BUFFER_LEN  16         // In test, we can use tens of minutes to evict 100M
 // #define RING_BUFFER_LEN 2  // for dbug, NOTE: if setting 1, compiler will generate some warnings
 
-extern pthread_t rock_write_thread_id;
+// extern pthread_t rock_write_thread_id;
+void join_write_thread();
 
 // for server.c
 void init_and_start_rock_write_thread();    

@@ -53,7 +53,7 @@
 
 #endif
 
-pthread_t rock_write_thread_id;
+static pthread_t rock_write_thread_id;
 
 /* 
  * Ring Buffer as a write queue to RocksDB
@@ -768,6 +768,23 @@ void init_and_start_rock_write_thread()
 
     if (pthread_create(&rock_write_thread_id, NULL, rock_write_main, NULL) != 0) 
         serverPanic("Unable to create a rock write thread.");
+}
+
+/* Called in main thread for rock.c when main thread will exit */
+void join_write_thread()
+{
+    int s;
+    void *res;
+
+    s = pthread_join(rock_write_thread_id, &res);
+    if (s != 0)
+    {
+        serverLog(LL_WARNING, "rock write thread join failure! err = %d", s);
+    }
+    else
+    {
+        serverLog(LL_NOTICE, "rock write thread exit and join successfully.");
+    }
 }
 
 /* Create a snapshot for ring buffer for child process.

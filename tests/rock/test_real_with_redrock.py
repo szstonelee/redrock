@@ -38,7 +38,7 @@ def init_redis_clients():
 def init_redrock(r: redis.StrictRedis):
     r.execute_command("config set hash-max-ziplist-entries 2")
     r.execute_command("config set hash-max-rock-entries 4")
-    r.execute_command("config set maxrockmem 5000000")  # 5M
+    r.execute_command("config set maxrockmem 50000000")  # 50M
     #r.execute_command("config set save '3600 1 300 100 60 10000'")
     r.execute_command("config set appendonly yes")
 
@@ -595,7 +595,7 @@ def _main():
         cmd_func: callable = dice[1]
         if cmd_name == "setex":
             # sleep in setex(), so dice2
-            if random.randint(0, 100) == 0:
+            if random.randint(0, 1) == 0:
                 cmd_func(cmd_name)
                 cnt = cnt + 1
         else:

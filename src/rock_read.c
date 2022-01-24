@@ -1363,3 +1363,20 @@ void init_and_start_rock_read_thread()
     if (pthread_create(&rock_read_thread_id, NULL, rock_read_main, NULL) != 0) 
         serverPanic("Unable to create a rock read thread.");
 }
+
+/* Called in main thread for rock.c when main thread will exit */
+void join_read_thread()
+{
+    int s;
+    void *res;
+    
+    s = pthread_join(rock_read_thread_id, &res);
+    if (s != 0)
+    {
+        serverLog(LL_WARNING, "rock read thread join failure. err = %d", s);
+    }
+    else
+    {
+        serverLog(LL_NOTICE, "rock read thread exit and join successfully.");
+    }
+}
