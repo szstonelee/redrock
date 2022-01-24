@@ -1135,3 +1135,115 @@ static void init_resource_in_service_thread()
     serverAssert(snapshot != NULL);
     serverAssert(pthread_mutex_unlock(&mutex_main_and_service) == 0);
 }
+
+/* Write Spin Lock for Apple OS and Linux */
+#ifdef __APPLE__
+
+    #include <os/lock.h>
+    static os_unfair_lock w_lock;
+
+    static void init_write_spin_lock() 
+    {
+        w_lock = OS_UNFAIR_LOCK_INIT;
+    }
+
+    inline static void rock_w_lock() 
+    {
+        os_unfair_lock_lock(&w_lock);
+    }
+
+    inline static void rock_w_unlock() 
+    {
+        os_unfair_lock_unlock(&w_lock);
+    }
+
+#else   // Linux
+
+    #include <pthread.h>
+    static pthread_spinlock_t w_lock;
+
+    static void init_write_spin_lock() 
+    {
+        pthread_spin_init(&w_lock, 0);
+    }    
+
+    inline static void rock_w_lock() 
+    {
+        int ret = pthread_spin_lock(&w_lock);
+        serverAssert(ret == 0);
+    }
+   
+    inline static void rock_w_unlock() 
+    {
+        int ret = pthread_spin_unlock(&w_lock);
+        serverAssert(ret == 0);
+    }
+
+#endif
+
+
+/* Write Spin Lock for Apple OS and Linux */
+#ifdef __APPLE__
+
+    #include <os/lock.h>
+    static os_unfair_lock r_lock;
+
+    static void init_read_spin_lock() 
+    {
+        r_lock = OS_UNFAIR_LOCK_INIT;
+    }
+
+    inline static void rock_r_lock() 
+    {
+        os_unfair_lock_lock(&r_lock);
+    }
+
+    inline static void rock_r_unlock() 
+    {
+        os_unfair_lock_unlock(&r_lock);
+    }
+
+#else   // Linux
+
+    #include <pthread.h>
+    static pthread_spinlock_t r_lock;
+
+    static void init_read_spin_lock() 
+    {
+        pthread_spin_init(&r_lock, 0);
+    }    
+
+    inline static void rock_r_lock() 
+    {
+        int ret = pthread_spin_lock(&r_lock);
+        serverAssert(ret == 0);
+    }
+   
+    inline static void rock_r_unlock() 
+    {
+        int ret = pthread_spin_unlock(&r_lock);
+        serverAssert(ret == 0);
+    }
+
+#endif
+
+
+/* NOTE: Call only once in main thread and before the read thread starts
+ */
+static void init_rock_read()
+{
+    init_read_spin_lock();
+
+    rock_r_lock();
+    read_rock_key_candidates = dictCreate(&readCandidatesDictType, NULL);
+    task_status = READ_RETURN_TASK;
+    for (int i = 0; i < READ_TOTAL_LEN; ++i)
+    {
+        read_key_tasks[i] = NULL;
+        read_return_vals[i] = NULL;
+    }
+    rock_r_unlock();
+
+    init_rock_pipe();
+}
+

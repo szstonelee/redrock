@@ -7,50 +7,23 @@
 #include "rock_hash.h"
 #include "rock_evict.h"
 
-/* Write Spin Lock for Apple OS and Linux */
-#ifdef __APPLE__
 
-    #include <os/lock.h>
-    static os_unfair_lock r_lock;
-
-    static void init_read_spin_lock() 
-    {
-        r_lock = OS_UNFAIR_LOCK_INIT;
-    }
-
-    inline static void rock_r_lock() 
-    {
-        os_unfair_lock_lock(&r_lock);
-    }
-
-    inline static void rock_r_unlock() 
-    {
-        os_unfair_lock_unlock(&r_lock);
-    }
-
-#else   // Linux
-
-    #include <pthread.h>
-    static pthread_spinlock_t r_lock;
-
-    static void init_read_spin_lock() 
-    {
-        pthread_spin_init(&r_lock, 0);
-    }    
-
-    inline static void rock_r_lock() 
-    {
-        int ret = pthread_spin_lock(&r_lock);
-        serverAssert(ret == 0);
-    }
-   
-    inline static void rock_r_unlock() 
-    {
-        int ret = pthread_spin_unlock(&r_lock);
-        serverAssert(ret == 0);
-    }
-
+#ifdef RED_ROCK_MUTEX_DEBUG
+static pthread_mutexattr_t mattr_read;
+static pthread_mutex_t mutex_read;
+#else
+static pthread_mutex_t mutex_read = PTHREAD_MUTEX_INITIALIZER;     
 #endif
+
+inline static void rock_r_lock() 
+{
+    serverAssert(pthread_mutex_lock(&mutex_read) == 0);
+}
+   
+inline static void rock_r_unlock() 
+{
+    serverAssert(pthread_mutex_unlock(&mutex_read) == 0);
+}
 
 pthread_t rock_read_thread_id;
 
@@ -143,7 +116,6 @@ static int rock_pipe_write = 0;
 static void on_recover_data(struct aeEventLoop *eventLoop, int fd, void *clientData, int mask);
 static void init_rock_pipe()
 {
-
     int pipefds[2];
 
     if (pipe(pipefds) == -1) 
@@ -156,26 +128,6 @@ static void init_rock_pipe()
                           AE_READABLE, on_recover_data, NULL) == AE_ERR) 
         serverPanic("Unrecoverable error creating server.rock_pipe file event.");
 }
-
-/* NOTE: Call only once in main thread and before the read thread starts
- */
-static void init_rock_read()
-{
-    init_read_spin_lock();
-
-    rock_r_lock();
-    read_rock_key_candidates = dictCreate(&readCandidatesDictType, NULL);
-    task_status = READ_RETURN_TASK;
-    for (int i = 0; i < READ_TOTAL_LEN; ++i)
-    {
-        read_key_tasks[i] = NULL;
-        read_return_vals[i] = NULL;
-    }
-    rock_r_unlock();
-
-    init_rock_pipe();
-}
-
 
 /* Called in read thread to pick read tasks 
  * by copyinng the keys (but not duplicating).
@@ -1355,10 +1307,28 @@ int already_in_candidates_for_hash(const int dbid, const sds redis_key, const sd
     return exist;
 }
 
-/* the API for start the read thread */
+/* the API for start the read thread 
+ * Call only once in main thread and before the read thread starts
+ */
 void init_and_start_rock_read_thread()
 {
-    init_rock_read();
+#ifdef RED_ROCK_MUTEX_DEBUG
+    serverAssert(pthread_mutexattr_init(&mattr_read) == 0);
+    serverAssert(pthread_mutexattr_settype(&mattr_read, PTHREAD_MUTEX_ERRORCHECK) == 0);
+    serverAssert(pthread_mutex_init(&mutex_read, &mattr_read) == 0);
+#endif
+
+    rock_r_lock();
+    read_rock_key_candidates = dictCreate(&readCandidatesDictType, NULL);
+    task_status = READ_RETURN_TASK;
+    for (int i = 0; i < READ_TOTAL_LEN; ++i)
+    {
+        read_key_tasks[i] = NULL;
+        read_return_vals[i] = NULL;
+    }
+    rock_r_unlock();
+
+    init_rock_pipe();
 
     if (pthread_create(&rock_read_thread_id, NULL, rock_read_main, NULL) != 0) 
         serverPanic("Unable to create a rock read thread.");

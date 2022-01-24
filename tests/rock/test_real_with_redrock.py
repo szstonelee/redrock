@@ -15,7 +15,7 @@ r2: redis.StrictRedis   # real redis 6.2.2
 
 def init_redis_clients():
     r1_ip = "192.168.64.4"
-    r2_ip = r1_ip
+    r2_ip = "192.168.64.4"
     r1_port = 6379
     r2_port = 6380
     pool1 = redis.ConnectionPool(host=r1_ip,
@@ -582,7 +582,7 @@ def _main():
     r1, r2 = init_redis_clients()
     r1.execute_command("flushall")
     r2.execute_command("flushall")
-    # init_redrock(r1)
+    init_redrock(r1)
     cmd_table = sys.argv[1]
     cmds:list = list(init_cmd_table(cmd_table).items())
     if not cmds:

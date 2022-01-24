@@ -5,53 +5,26 @@
 #include "rock_hash.h"
 #include "rock_evict.h"
 
-// #include <stddef.h>
-// #include <assert.h>
-
-/* Write Spin Lock for Apple OS and Linux */
-#ifdef __APPLE__
-
-    #include <os/lock.h>
-    static os_unfair_lock w_lock;
-
-    static void init_write_spin_lock() 
-    {
-        w_lock = OS_UNFAIR_LOCK_INIT;
-    }
-
-    inline static void rock_w_lock() 
-    {
-        os_unfair_lock_lock(&w_lock);
-    }
-
-    inline static void rock_w_unlock() 
-    {
-        os_unfair_lock_unlock(&w_lock);
-    }
-
-#else   // Linux
-
-    #include <pthread.h>
-    static pthread_spinlock_t w_lock;
-
-    static void init_write_spin_lock() 
-    {
-        pthread_spin_init(&w_lock, 0);
-    }    
-
-    inline static void rock_w_lock() 
-    {
-        int ret = pthread_spin_lock(&w_lock);
-        serverAssert(ret == 0);
-    }
-   
-    inline static void rock_w_unlock() 
-    {
-        int ret = pthread_spin_unlock(&w_lock);
-        serverAssert(ret == 0);
-    }
-
+/* We use mutex to replace spinlock because spinlock could switch out 
+ * by OS scheuler while holding lock and the other threads may be busy spiinlocking.
+ * And for Linux, mutex uses futex for fast path which is similiar to spinlock.
+ */
+#ifdef RED_ROCK_MUTEX_DEBUG
+static pthread_mutexattr_t mattr_write;
+static pthread_mutex_t mutex_write;
+#else
+static pthread_mutex_t mutex_write = PTHREAD_MUTEX_INITIALIZER;     
 #endif
+
+inline static void rock_w_lock() 
+{
+    serverAssert(pthread_mutex_lock(&mutex_write) == 0);
+}
+   
+inline static void rock_w_unlock() 
+{
+    serverAssert(pthread_mutex_unlock(&mutex_write) == 0);
+}
 
 static pthread_t rock_write_thread_id;
 
@@ -761,8 +734,11 @@ sds get_field_val_str_from_write_ring_buf_first_in_redis_process(const int dbid,
 /* Called in main thread */
 void init_and_start_rock_write_thread()
 {
-    // Write spin lock must be inited before initiation of ring buffer
-    init_write_spin_lock();
+#ifdef RED_ROCK_MUTEX_DEBUG
+    serverAssert(pthread_mutexattr_init(&mattr_write) == 0);
+    serverAssert(pthread_mutexattr_settype(&mattr_write, PTHREAD_MUTEX_ERRORCHECK) == 0);
+    serverAssert(pthread_mutex_init(&mutex_write, &mattr_write) == 0);
+#endif
 
     init_write_ring_buffer();
 
