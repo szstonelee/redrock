@@ -373,6 +373,21 @@ void evict_pool_init()
     evict_hash_pool_alloc();
 }
 
+
+/* For just key addresss comparsion and array of pool with limited size, it is quick
+ * to exclude some duplicated key where dictGetSomeKeys not guarantee
+ * or repeated dictGetSomeKeys() could pick the same key
+ */
+static int same_key_in_evict_pool(const sds key, struct evictKeyPoolEntry *pool, const int pool_size)
+{
+    for (int i = 0; i < pool_size; ++i)
+    {
+        if (key == pool[i].key)
+            return 1;
+    }
+    return 0;
+}
+
 /* Check evcit.c evictionPoolPopulate() for more details.
  * We use the similiar algorithm for eviction so it needs to populate
  * the eviction pool and use some tricks for optimization of cached sds.
@@ -390,7 +405,7 @@ static size_t evict_key_pool_populate(const int dbid)
     dictEntry* sample_des[SAMPLE_KEY_NUMBER];
     const unsigned int count = dictGetSomeKeys(db->rock_evict, sample_des, SAMPLE_KEY_NUMBER);
     if (count == 0)
-        return 0;       // NOTE dictGetSomeKeys could return zero if dict size is very slow
+        return 0;       // NOTE dictGetSomeKeys could return zero if dict size is very low
 
     size_t insert_cnt = 0;
     struct evictKeyPoolEntry *pool = evict_key_pool;
@@ -403,6 +418,9 @@ static size_t evict_key_pool_populate(const int dbid)
         dictEntry *de_db = dictFind(db->dict, key);
         serverAssert(de_db);
         robj *o = dictGetVal(de_db);
+
+        if (same_key_in_evict_pool(dictGetKey(de_db), pool, EVPOOL_SIZE))
+            continue;
         
         unsigned long long idle = server.maxmemory_policy & MAXMEMORY_FLAG_LFU ? 
                                   255 - (o->lru & 255) : estimateObjectIdleTime(o);
@@ -478,6 +496,21 @@ static size_t evict_key_pool_populate(const int dbid)
 }
 #undef SAMPLE_KEY_NUMBER
 
+/* For just key addresss comparsion and array of pool with limited size, it is quick
+ * to exclude some duplicated field(with hash_key) where dictGetSomeKeys not guarantee
+ * or repeated dictGetSomeKeys() could pick the same field(with hash_key)
+ */
+static int same_fieldin_evict_pool(const sds hash_key, const sds field,
+                                   struct evictHashPoolEntry *pool, const int pool_size)
+{
+    for (int i = 0; i < pool_size; ++i)
+    {
+        if (hash_key == pool[i].hash_key && field == pool[i].field)
+            return 1;
+    }
+    return 0;
+}
+
 /* Check the above evict_key_pool_populate() for more details.
  * The algorithm is similiar. 
  */
@@ -536,6 +569,9 @@ static size_t evict_hash_pool_populate(const int dbid)
         dictEntry *de_field = sample_field_des[j];
         const sds field = dictGetKey(de_field);
         const unsigned int lru = (uint64_t)dictGetVal(de_field);
+
+        if (same_fieldin_evict_pool(hash_key, field, pool, EVPOOL_SIZE))
+            continue;
 
         #if defined RED_ROCK_DEBUG
         dictEntry *de_db = dictFind(db->dict, hash_key);
@@ -634,6 +670,7 @@ static size_t evict_hash_pool_populate(const int dbid)
 
     return insert_cnt;
 }
+#undef SAMPLE_HASH_KEY_NUMBER
 #undef SAMPLE_HASH_FIELD_NUMBER
 
 /* From the key pool, find the right key to be evicted.
@@ -649,7 +686,8 @@ static void pick_best_key_from_key_pool(int *best_dbid, sds *best_key)
     struct evictKeyPoolEntry *pool = evict_key_pool;
 
     /* Go backward from best to worst element to evict. */
-    for (int k = EVPOOL_SIZE-1; k >= 0; k--) {
+    for (int k = EVPOOL_SIZE-1; k >= 0; k--) 
+    {
         if (pool[k].key == NULL) continue;
 
         const int dbid = pool[k].dbid;
@@ -671,12 +709,14 @@ static void pick_best_key_from_key_pool(int *best_dbid, sds *best_key)
          *           or even be evicted to RocksDB by command rockevict
          *           or even changed to rock hash
          */
-        if (de) {
+        if (de) 
+        {
             const sds internal_key = dictGetKey(de);
 
             // NOTE: which one can be evicted is very complicated,
             //       so we call check_valid_evict_of_key_for_db()
-            if (check_valid_evict_of_key_for_db(dbid, internal_key) == CHECK_EVICT_OK)
+            const int check_res = check_valid_evict_of_key_for_db(dbid, internal_key);
+            if (check_res == CHECK_EVICT_OK)
             {
                 // We found the best key
                 *best_dbid = dbid;
@@ -787,9 +827,12 @@ static size_t try_to_perform_one_key_eviction()
     pick_best_key_from_key_pool(&best_dbid, &best_key);
     if (best_key == NULL)
     {
-        // In theory, we can not get this condition
-        // but return zero is safe for this abnormal condition
-        serverLog(LL_WARNING, "best_key == NULL for key eviction");
+        // This is rare situation but could happend
+        // e.g., a key in eviction pool, and then overwrite, 
+        // and a new key (same content but different address) 
+        // generated and later be evicted to disk
+        // When it comes to the old key in th pool, the best_key is NULL
+        // serverLog(LL_WARNING, "best_key == NULL for key eviction");
         return 0;
     }
 
@@ -912,7 +955,9 @@ static size_t perform_key_eviction(const size_t want_to_free, const unsigned int
             #endif
             // In theory, it means no key avaiable for eviction
             // while the memory is not enough
-            serverLog(LL_WARNING, "No available keys for eviction!");
+            // It could due to user config maxrockmem too low 
+            // for can not have engouh room for one keyss' value 
+            serverLog(LL_WARNING, "No available keys for eviction! Maybe you set maxrockmem too low or all values in disk.");
             break;
         }
 

@@ -1247,3 +1247,39 @@ static void init_rock_read()
     init_rock_pipe();
 }
 
+
+/* From sample pool des with size of cnt, 
+ * we return the distinct de in the pool of des (start index from zero).
+ * Becasue the pool size is very small (no greater than 5, check the caller),
+ * even it is O(N*N), it is very quick algorithm.
+ */
+static unsigned int filter_duplicated_samples(const unsigned int cnt, dictEntry **des)
+{
+    serverAssert(cnt > 0);
+
+    unsigned int end = 0;    // [0, end] is distinct
+
+    for (unsigned int cur = 1; cur < cnt; ++cur)
+    {
+        dictEntry* de = des[cur];
+
+        int found_same = 0;
+        for (unsigned int i = 0; i <= end; ++i)
+        {
+            if (des[i] == de)
+            {
+                found_same = 1;
+                break;
+            }
+        }
+
+        if (!found_same)
+        {
+            ++end;
+            if (end != cur)
+                des[end] = des[cur];
+        }
+    }
+
+    return end + 1;
+}
