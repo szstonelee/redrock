@@ -51,4 +51,7 @@ void on_client_need_rock_fields_for_hash_in_sync_mode(client *c, const list *has
 int already_in_candidates_for_db(const int dbid, const sds redis_key);
 int already_in_candidates_for_hash(const int dbid, const sds redis_key, const sds field);
 
+// for rock.c
+void rock_r_signal_cond();
+
 #endif

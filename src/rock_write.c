@@ -45,6 +45,7 @@ static pthread_mutex_t mutex_write;
 #else
 static pthread_mutex_t mutex_write = PTHREAD_MUTEX_INITIALIZER;     
 #endif
+static pthread_cond_t cv;
 
 inline static void rock_w_lock() 
 {
@@ -54,6 +55,16 @@ inline static void rock_w_lock()
 inline static void rock_w_unlock() 
 {
     serverAssert(pthread_mutex_unlock(&mutex_write) == 0);
+}
+
+inline static void rock_w_wait_cond()
+{
+    serverAssert(pthread_cond_wait(&cv, &mutex_write) == 0);
+}
+
+void rock_w_signal_cond()
+{
+    serverAssert(pthread_cond_signal(&cv) == 0);
 }
 
 static pthread_t rock_write_thread_id;
@@ -167,6 +178,7 @@ static void write_batch_for_db_and_abandon(const int len, const int *dbids, sds 
     rock_w_lock();
     serverAssert(rbuf_len + len <= RING_BUFFER_LEN);
     batch_append_to_ringbuf(len, keys, vals);
+    rock_w_signal_cond();
     rock_w_unlock();
 
     // release objs
@@ -193,6 +205,7 @@ static void write_batch_for_hash_and_abandon(const int len, const int *dbids, sd
     rock_w_lock();
     serverAssert(rbuf_len + len <= RING_BUFFER_LEN);
     batch_append_to_ringbuf(len, keys, vals);
+    rock_w_signal_cond();
     rock_w_unlock();
 
     // release fields
@@ -252,7 +265,9 @@ static int try_evict_to_rocksdb_for_db(const int try_len, const int *try_dbids,
         const sds try_key = try_keys[i];
 
         // check NOTE 3
+        #ifdef RED_ROCK_DEBUG
         serverAssert(!is_in_rock_hash(dbid, try_key));
+        #endif
 
         // the rock_read.c API. Keys in candidates means they are in async mode
         // and can removed from candidates later by main thread.
@@ -338,10 +353,14 @@ static int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids
         const sds try_field = try_fields[i];
 
         // check NOTE 3
+        #ifdef RED_ROCK_DEBUG
         serverAssert(is_in_rock_hash(dbid, try_key));
+        #endif
 
-        // // the rock_read.c API and check NOTE 4
+        // the rock_read.c API and check NOTE 4
+        #ifdef RED_ROCK_DEBUG
         serverAssert(!already_in_candidates_for_hash(dbid, try_key, try_field));
+        #endif
 
         // check NOTE 5
         redisDb *db = server.db + dbid;
@@ -392,7 +411,7 @@ static int try_evict_to_rocksdb_for_hash(const int try_len, const int *try_dbids
  * 
  * If ring buffer is full right now, return TRY_EVICT_ONE_FAIL_FOR_RING_BUFFER_FULL.
  * The caller can try again because the write thread is busy working 
- * and has not finished the wrintg jobs.
+ * and has not finished the writing jobs.
  * 
  */
 int try_evict_one_key_to_rocksdb(const int dbid, const sds key, size_t *mem)
@@ -480,8 +499,8 @@ static int write_to_rocksdb()
 /*
  * The main entry for the thread of RocksDB write
  */
-#define MIN_SLEEP_MICRO     16
-#define MAX_SLEEP_MICRO     1024            // max sleep for 1 ms
+// #define MIN_SLEEP_MICRO     16
+// #define MAX_SLEEP_MICRO     1024            // max sleep for 1 ms
 static void* rock_write_main(void* arg)
 {
     UNUSED(arg);
@@ -490,9 +509,10 @@ static void* rock_write_main(void* arg)
     while (loop == 0)
         atomicGet(rock_threads_loop_forever, loop);
         
-    unsigned int sleep_us = MIN_SLEEP_MICRO;
+    // unsigned int sleep_us = MIN_SLEEP_MICRO;
     while(loop)
-    {        
+    {
+    /*        
         if (write_to_rocksdb() != 0)
         {
             sleep_us = MIN_SLEEP_MICRO;     // if task is coming, short the sleep time
@@ -506,6 +526,19 @@ static void* rock_write_main(void* arg)
             sleep_us = MAX_SLEEP_MICRO;
 
         atomicGet(rock_threads_loop_forever, loop);
+    */
+
+        rock_w_lock();
+        while(loop && rbuf_len == 0)
+        {
+            rock_w_wait_cond();
+            atomicGet(rock_threads_loop_forever, loop);
+            // serverLog(LL_WARNING, "return from rock_w_wait_cond()...");
+        }            
+        rock_w_unlock();
+        
+        if (loop)
+            write_to_rocksdb();
     }
 
     return NULL;
@@ -769,6 +802,7 @@ void init_and_start_rock_write_thread()
     serverAssert(pthread_mutexattr_settype(&mattr_write, PTHREAD_MUTEX_ERRORCHECK) == 0);
     serverAssert(pthread_mutex_init(&mutex_write, &mattr_write) == 0);
 #endif
+    serverAssert(pthread_cond_init(&cv, NULL) == 0);
 
     init_write_ring_buffer();
 

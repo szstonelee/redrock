@@ -44,6 +44,7 @@ static pthread_mutex_t mutex_read;
 #else
 static pthread_mutex_t mutex_read = PTHREAD_MUTEX_INITIALIZER;     
 #endif
+static pthread_cond_t cv;
 
 inline static void rock_r_lock() 
 {
@@ -53,6 +54,16 @@ inline static void rock_r_lock()
 inline static void rock_r_unlock() 
 {
     serverAssert(pthread_mutex_unlock(&mutex_read) == 0);
+}
+
+inline static void rock_r_wait_cond()
+{
+    serverAssert(pthread_cond_wait(&cv, &mutex_read) == 0);
+}
+
+void rock_r_signal_cond()
+{
+    serverAssert(pthread_cond_signal(&cv) == 0);
 }
 
 pthread_t rock_read_thread_id;
@@ -281,8 +292,8 @@ static int do_tasks()
 /*
  * The main entry for the read thread
  */
-#define MIN_SLEEP_MICRO     16
-#define MAX_SLEEP_MICRO     1024            // max sleep for 1 ms
+// #define MIN_SLEEP_MICRO     16
+// #define MAX_SLEEP_MICRO     1024            // max sleep for 1 ms
 static void* rock_read_main(void* arg)
 {
     UNUSED(arg);
@@ -291,9 +302,21 @@ static void* rock_read_main(void* arg)
     while (loop == 0)
         atomicGet(rock_threads_loop_forever, loop);
         
-    unsigned int sleep_us = MIN_SLEEP_MICRO;
+    // unsigned int sleep_us = MIN_SLEEP_MICRO;
     while(loop)
     {
+        rock_r_lock();
+        while(loop && task_status == READ_RETURN_TASK)
+        {
+            rock_r_wait_cond();
+            atomicGet(rock_threads_loop_forever, loop);
+        }
+        rock_r_unlock();
+
+        if (loop)
+            do_tasks();
+
+    /*
         if (do_tasks() != 0)
         {
             sleep_us = MIN_SLEEP_MICRO;     // if we have task, shorten the sleep time
@@ -307,6 +330,8 @@ static void* rock_read_main(void* arg)
             sleep_us = MAX_SLEEP_MICRO;
 
         atomicGet(rock_threads_loop_forever, loop);
+    */
+
     }
 
     return NULL;
@@ -370,7 +395,10 @@ static void try_assign_tasks()
     sds tasks[READ_TOTAL_LEN];
     const int avail = get_keys_from_candidates_before_assignment(tasks);
     if (avail != 0)
+    {
         assign_tasks(avail, tasks);    // change task_status to READ_START_TASK
+        rock_r_signal_cond();
+    }
     // else{}, need to keep task_status to READ_RETURN_TASK
 }
 
@@ -1347,6 +1375,7 @@ void init_and_start_rock_read_thread()
     serverAssert(pthread_mutexattr_settype(&mattr_read, PTHREAD_MUTEX_ERRORCHECK) == 0);
     serverAssert(pthread_mutex_init(&mutex_read, &mattr_read) == 0);
 #endif
+    serverAssert(pthread_cond_init(&cv, NULL) == 0);
 
     rock_r_lock();
     read_rock_key_candidates = dictCreate(&readCandidatesDictType, NULL);

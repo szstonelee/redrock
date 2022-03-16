@@ -974,6 +974,8 @@ void wait_rock_threads_exit()
 {
     // signal rock threads to exit
     atomicSet(rock_threads_loop_forever, 0);
+    rock_w_signal_cond();
+    rock_r_signal_cond();
 
     join_write_thread();
 

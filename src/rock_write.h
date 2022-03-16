@@ -63,4 +63,7 @@ sds get_field_val_str_from_write_ring_buf_first_in_redis_process(const int dbid,
 // for rock_rdb_aof.c
 void create_snapshot_of_ring_buf_for_child_process(sds *keys, sds *vals);
 
+// for rock.c
+void rock_w_signal_cond();
+
 #endif
