@@ -496,6 +496,56 @@ static int write_to_rocksdb()
     return written;
 }
 
+/* When RedRock start, it may need to write the key and value dircectly to RocksDB
+ * in the process of loading RDB or AOF
+ * The caller guarantee in main thread and in init phase, i.e., no cron job in serverCron()
+ */
+void write_to_rocksdb_in_main_for_key_when_load(redisDb *db, const sds redis_key, const robj *redis_val)
+{    
+    sds rock_key = sdsdup(redis_key);
+    rock_key = encode_rock_key_for_db(db->id, rock_key);
+    sds rock_val = marshal_object(redis_val);
+
+    rocksdb_writebatch_t *batch = rocksdb_writebatch_create();
+    rocksdb_writeoptions_t *writeoptions = rocksdb_writeoptions_create();
+    rocksdb_writeoptions_disable_WAL(writeoptions, 1);      // disable WAL
+
+    rocksdb_writebatch_put(batch, rock_key, sdslen(rock_key), rock_val, sdslen(rock_val));
+    char *err = NULL;
+    rocksdb_write(rockdb, writeoptions, batch, &err);    
+    if (err) 
+        serverPanic("write_to_rocksdb_in_main_for_key_when_load() failed reason = %s", err);
+
+    rocksdb_writeoptions_destroy(writeoptions);
+    rocksdb_writebatch_destroy(batch);
+
+    sdsfree(rock_key);
+    sdsfree(rock_val);
+}
+
+/* See above
+ */
+void write_to_rocksdb_in_main_for_hash_when_load(redisDb *db, const sds redis_key, const sds field, const sds field_val)
+{
+    sds rock_key = sdsdup(redis_key);
+    rock_key = encode_rock_key_for_hash(db->id, rock_key, field);
+
+    rocksdb_writebatch_t *batch = rocksdb_writebatch_create();
+    rocksdb_writeoptions_t *writeoptions = rocksdb_writeoptions_create();
+    rocksdb_writeoptions_disable_WAL(writeoptions, 1);      // disable WAL
+
+    rocksdb_writebatch_put(batch, rock_key, sdslen(rock_key), field_val, sdslen(field_val));
+    char *err = NULL;
+    rocksdb_write(rockdb, writeoptions, batch, &err);    
+    if (err) 
+        serverPanic("write_to_rocksdb_in_main_for_hash_when_load() failed reason = %s", err);
+
+    rocksdb_writeoptions_destroy(writeoptions);
+    rocksdb_writebatch_destroy(batch);
+
+    sdsfree(rock_key);
+}
+
 /*
  * The main entry for the thread of RocksDB write
  */

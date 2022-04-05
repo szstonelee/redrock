@@ -22,38 +22,70 @@ def init_redis_clients():
                                  port=r1_port,
                                  db=0,
                                  decode_responses=True,
-                                 encoding='utf-8',
+                                 encoding='latin1',
                                  socket_connect_timeout=2)
     pool2 = redis.ConnectionPool(host=r2_ip,
                                  port=r2_port,
                                  db=0,
                                  decode_responses=True,
-                                 encoding='utf-8',
+                                 encoding='latin1',
                                  socket_connect_timeout=2)
     r1: redis.StrictRedis = redis.StrictRedis(connection_pool=pool1)
     r2: redis.StrictRedis = redis.StrictRedis(connection_pool=pool2)
     return r1, r2
 
 
+def insert_50K_keys_for_redrock():
+    print("starting insert 50k keys to RedRock so RedRock will use disk for this test...")
+    for i in range(0, 25_000):
+        if i % 1000 == 0:
+            print(f"insert_50K_keys_for_redrock(), i = {i}")
+        # string first
+        k = "init_for_redrock_hash_" + str(i)
+        field_v = "fv" * 500
+        cmd = f"hmset {k} f1 {field_v} f2 {field_v} f3 {field_v} f4 {field_v} f5 {field_v}"
+        r1.execute_command(cmd)
+        r2.execute_command(cmd)
+        # then hash
+        k = "init_for_redrcok_str_" + str(i)
+        v = "v" * 1000
+        cmd = f"set {k} {v}"
+        r1.execute_command(cmd)
+        r2.execute_command(cmd)
+
+    print("insert_50K_keys_for_redrock finished!!!!")
+
+
 def init_redrock(r: redis.StrictRedis):
     r.execute_command("config set hash-max-ziplist-entries 2")
     r.execute_command("config set hash-max-rock-entries 4")
     r.execute_command("config set maxrockmem 50000000")  # 50M
-    #r.execute_command("config set save '3600 1 300 100 60 10000'")
     r.execute_command("config set appendonly yes")
+    dbsize = r.execute_command("dbsize")
+    print(f"dbsize = {dbsize}")
+    if dbsize < 40_000:
+        insert_50K_keys_for_redrock()
+    #r.execute_command("config set save '3600 1 300 100 60 10000'")
 
 
-def get_str_key():
-    key = "strkey_"
+def get_key(key_prefix: str):
+    key = key_prefix
     for _ in range(0, random.randint(1, 100)):
         key = key + random.choice(string.digits)
     return key
 
 
-def get_str_keys():
+def get_fields(field_prefix: str):
+    fields = []
+    for _ in range(0, 100):
+        fields.append(field_prefix + str(random.randint(1, 1000)))
+    return fields
+
+
+def get_keys(key_prefix: str):
     keys = []
     for _ in range(0, random.randint(1, 10)):
-        key = "strkey_"
+        key = key_prefix
         for _ in range(0, random.randint(1, 100)):
             key = key + random.choice(string.digits)
         keys.append(key)
@@ -82,8 +114,27 @@ def check(res1, res2, cmd_name, cmd):
         raise Exception(f"cmd_name = {cmd_name}, cmd = {cmd}")
 
 
+def check_same(key: str, caller: str):
+    cmd = f"exists {key}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    if res1 != res2:
+        msg = f"check_compare fail for {key} exist. caller = {caller}"
+        print(msg)
+        raise Exception(msg)
+    if not res1:
+        return
+    cmd = f"dump {key}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    if res1 != res2:
+        msg = f"check_compare fail for {key} dump. caller = {caller}"
+        print(msg)
+        raise Exception(msg)
+
+
 def set(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     v = get_val()
     cmd = f"set {k} {v}"
     res1 = r1.execute_command(cmd)
@@ -92,7 +143,7 @@ def set(name: str):
 
 
 def strlen(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     cmd = f"strlen {k}"
     res1 = r1.execute_command(cmd)
     res2 = r2.execute_command(cmd)
@@ -100,7 +151,7 @@ def strlen(name: str):
 
 
 def append(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     exist = r2.execute_command(f"exists {k}")
     if not exist:
         return
@@ -112,7 +163,7 @@ def append(name: str):
 
 
 def decr(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     v = get_int()
     cmd = f"set {k} {v}"
     r1.execute_command(cmd)
@@ -124,7 +175,7 @@ def decr(name: str):
 
 
 def incr(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     v = get_int()
     cmd = f"set {k} {v}"
     r1.execute_command(cmd)
@@ -136,7 +187,7 @@ def incr(name: str):
 
 
 def decrby(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     v1 = get_int()
     cmd = f"set {k} {v1}"
     r1.execute_command(cmd)
@@ -149,7 +200,7 @@ def decrby(name: str):
 
 
 def incrby(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     v1 = get_int()
     cmd = f"set {k} {v1}"
     r1.execute_command(cmd)
@@ -162,7 +213,7 @@ def incrby(name: str):
 
 
 def incrbyfloat(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     v1 = get_float()
     cmd = f"set {k} {v1}"
     r1.execute_command(cmd)
@@ -175,7 +226,7 @@ def incrbyfloat(name: str):
 
 
 def get(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     cmd = f"get {k}"
     res1 = r1.execute_command(cmd)
     res2 = r2.execute_command(cmd)
@@ -183,7 +234,7 @@ def get(name: str):
 
 
 def getdel(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     cmd = f"getdel {k}"
     res1 = r1.execute_command(cmd)
     res2 = r2.execute_command(cmd)
@@ -191,7 +242,7 @@ def getdel(name: str):
 
 
 def getex(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     cmd = f"getex {k} px 5"     # NOTE: if 10, maybe not correct, because of time accuracy
     res1 = r1.execute_command(cmd)
     res2 = r2.execute_command(cmd)
@@ -204,7 +255,7 @@ def getex(name: str):
 
 
 def getrange(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     start = random.randint(0, 10)
     end = start + random.randint(0, 1000)
     cmd = f"getrange {k} {start} {end}"
@@ -214,7 +265,7 @@ def getrange(name: str):
 
 
 def getset(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     v = get_val()
     cmd = f"getset {k} {v}"
     res1 = r1.execute_command(cmd)
@@ -223,7 +274,7 @@ def getset(name: str):
 
 
 def mget(name: str):
-    ks = get_str_keys()
+    ks = get_keys("strkey")
     cmd = f"mget "
     for k in ks:
         cmd = cmd + " " + k
@@ -233,7 +284,7 @@ def mget(name: str):
 
 
 def mset(name: str):
-    ks = get_str_keys()
+    ks = get_keys("strkey")
     cmd = f"mset "
     for k in ks:
         cmd = cmd + " " + k
@@ -245,7 +296,7 @@ def mset(name: str):
 
 
 def msetnx(name: str):
-    ks = get_str_keys()
+    ks = get_keys("strkey")
     cmd = f"msetnx "
     for k in ks:
         cmd = cmd + " " + k
@@ -257,7 +308,7 @@ def msetnx(name: str):
 
 
 def psetex(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     v = get_val()
     cmd = f"psetex {k} 5 {v}"
     r1.execute_command(cmd)
@@ -270,7 +321,7 @@ def psetex(name: str):
 
 
 def setex(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     v = get_val()
     cmd = f"setex {k} 1 {v}"
     res1 = r1.execute_command(cmd)
@@ -284,7 +335,7 @@ def setex(name: str):
 
 
 def setnx(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     v = get_val()
     cmd = f"setnx {k} {v}"
     res1 = r1.execute_command(cmd)
@@ -293,7 +344,7 @@ def setnx(name: str):
 
 
 def setrange(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     offset = random.randint(1, 100)
     v = get_val()
     cmd = f"setrange {k} {offset} {v}"
@@ -303,7 +354,7 @@ def setrange(name: str):
 
 
 def substr(name: str):
-    k = get_str_key()
+    k = get_key("strkey")
     start = random.randint(1, 100)
     end = start + random.randint(1, 1000)
     cmd = f"substr {k} {start} {end}"
@@ -338,15 +389,8 @@ def string_cmd_table():
     return cmds
 
 
-def get_list_key():
-    key = "listkey_"
-    for _ in range(0, random.randint(1, 100)):
-        key = key + random.choice(string.digits)
-    return key
-
-
 def lindex(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     for _ in range(0, random.randint(1, 100)):
         v = random.randint(0, 9999999)
         cmd = f"lpush {k} {v}"
@@ -360,7 +404,7 @@ def lindex(name: str):
 
 
 def linsert(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     for _ in range(0, random.randint(1, 1000)):
         v = random.randint(0, 999999)
         cmd = f"rpush {k} {v}"
@@ -375,7 +419,7 @@ def linsert(name: str):
 
 
 def llen(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     cmd = f"llen {k}"
     res1 = r1.execute_command(cmd)
     res2 = r2.execute_command(cmd)
@@ -383,8 +427,8 @@ def llen(name: str):
 
 
 def lmove(name: str):
-    src = get_list_key()
-    dst = get_list_key()
+    src = get_key("listkey")
+    dst = get_key("listkey")
     cmd = f"lmove {src} {dst} right left"
     res1 = r1.execute_command(cmd)
     res2 = r2.execute_command(cmd)
@@ -392,7 +436,7 @@ def lmove(name: str):
 
 
 def lpop(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     for _ in range(0, random.randint(1, 1000)):
         v = random.randint(0, 999999)
         cmd = f"rpush {k} {v}"
@@ -406,7 +450,7 @@ def lpop(name: str):
 
 
 def rpop(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     for _ in range(0, random.randint(1, 1000)):
         v = random.randint(0, 999999)
         cmd = f"rpush {k} {v}"
@@ -419,9 +463,8 @@ def rpop(name: str):
     check(res1, res2, name, cmd)
 
 
-
 def lpos(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     for _ in range(0, random.randint(1, 1000)):
         v = random.randint(0, 999999)
         cmd = f"rpush {k} {v}"
@@ -435,7 +478,7 @@ def lpos(name: str):
 
 
 def lpush(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     for _ in range(0, random.randint(1, 1000)):
         v = random.randint(0, 999999)
         cmd = f"lpush {k} {v}"
@@ -445,7 +488,7 @@ def lpush(name: str):
 
 
 def rpush(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     for _ in range(0, random.randint(1, 1000)):
         v = random.randint(0, 999999)
         cmd = f"rpush {k} {v}"
@@ -455,7 +498,7 @@ def rpush(name: str):
 
 
 def lpushx(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     cmd = f"lpushx {k}"
     for _ in range(0, random.randint(1, 1000)):
         v = random.randint(0, 999999)
@@ -466,7 +509,7 @@ def lpushx(name: str):
 
 
 def rpushx(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     cmd = f"rpushx {k}"
     for _ in range(0, random.randint(1, 1000)):
         v = random.randint(0, 999999)
@@ -477,7 +520,7 @@ def rpushx(name: str):
 
 
 def lrange(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     start = random.randint(0, 10)
     end = start + random.randint(5, 100)
     cmd = f"lrange {k} {start} {end}"
@@ -487,7 +530,7 @@ def lrange(name: str):
 
 
 def lrem(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     element = random.randint(1, 999)
     cmd = f"lrem {k} -2 {element}"
     res1 = r1.execute_command(cmd)
@@ -496,7 +539,7 @@ def lrem(name: str):
 
 
 def lset(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     cmd = f"lpush {k}"
     len_v = random.randint(1, 1000)
     for _ in range(0, len_v):
@@ -517,7 +560,7 @@ def lset(name: str):
 
 
 def ltrim(name: str):
-    k = get_list_key()
+    k = get_key("listkey")
     cmd = f"lpush {k}"
     len = random.randint(1, 1000)
     for _ in range(0, len):
@@ -534,8 +577,8 @@ def ltrim(name: str):
 
 
 def rpoplpush(name: str):
-    src = get_list_key()
-    dst = get_list_key()
+    src = get_key("listkey")
+    dst = get_key("listkey")
     cmd = f"rpoplpush {src} {dst}"
     res1 = r1.execute_command(cmd)
     res2 = r2.execute_command(cmd)
@@ -563,11 +606,158 @@ def list_cmd_table():
     return cmds
 
 
+def bitcount(name: str):
+    k = get_key("bckey")
+    v = get_val()
+    cmd = f"set {k} {v}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    start = random.randint(-100, 100)
+    end = random.randint(-100, 100)
+    cmd = f"bitcount {k} {start} {end}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def bitfield(name: str):
+    k = get_key("bckey")
+    v = get_val()
+    cmd = f"set {k} {v}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"BITFIELD {k} INCRBY i5 100 1 GET u4 0"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"BITFIELD {k} SET i8 #0 100 SET i8 #1 200"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    check_same(k, "bitfield")
+
+
+def bitfield_ro(name: str):
+    k = get_key("bckey")
+    v = get_val()
+    cmd = f"set {k} {v}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"bitfield_ro {k} GET i8 16"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    check_same(k, "bitfield_ro")
+
+
+def bitop(name: str):
+    k1 = get_key("bckey1")
+    v1 = get_val()
+    k2 = get_key("bckey2")
+    v2 = get_val()
+    dst = get_key("bckeydest")
+    cmd = f"bitop AND {dst} {k1} {k2}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(dst, "bitop_AND")
+    cmd = f"bitop OR {dst} {k1} {k2}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(dst, "bitop_OR")
+    cmd = f"bitop XOR {dst} {k1} {k2}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(dst, "bitop_XOR")
+    cmd = f"bitop NOT {dst} {k1}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(dst, "bitop_NOT")
+
+
+def bitpos(name: str):
+    k = get_key("bckey")
+    v = get_val()
+    cmd = f"set {k} {v}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    start = random.randint(-100, 100)
+    end = random.randint(-100, 100)
+    cmd = f"bitpos {k} 1 {start} {end}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def getbit(name: str):
+    k = get_key("bckey")
+    v = get_val()
+    cmd = f"set {k} {v}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    offset = random.randint(0, 100)
+    cmd = f"getbit {k} {offset}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def setbit(name:str):
+    k = get_key("bckey")
+    v = get_val()
+    cmd = f"set {k} {v}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    offset = random.randint(0, 100)
+    cmd = f"setbit {k} {offset} 0"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(k, "setbit")
+
+
+def bitmap_cmd_table():
+    cmds: dict = {"bitcount": bitcount,
+                  "bitfield": bitfield,
+                  "bitfield_ro": bitfield_ro,
+                  "bitop": bitop,
+                  "bitpos": bitpos,
+                  "getbit": getbit,
+                  "setbit": setbit,
+                  }
+    return cmds
+
+
+def hdel(name: str):
+    k = get_key("hashkey")
+    fs = get_fields("f")
+    for f in fs:
+        v = get_val()
+        cmd = f"hset {k} {f} {v}"
+        r1.execute_command(cmd)
+        r2.execute_command(cmd)
+    f1 = random.choice(fs)
+    f2 = random.choice(fs)
+    f3 = random.choice(fs)
+    cmd = f"hdel {k} {f1} {f2} {f3}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def hash_cmd_table():
+    cmds: dict = {"hdel": hdel,
+                  }
+    return cmds
+
+
 def init_cmd_table(table: str):
     if table == "str":
         return string_cmd_table()
     elif table == "list":
         return list_cmd_table()
+    elif table == "bitcount":
+        return bitmap_cmd_table()
+    elif table == "hash":
+        return hash_cmd_table()
     elif table == "all":
         str_cmds = string_cmd_table()
         list_cmds = list_cmd_table()
@@ -580,30 +770,37 @@ def init_cmd_table(table: str):
 def _main():
     global r1, r2
     r1, r2 = init_redis_clients()
-    r1.execute_command("flushall")
-    r2.execute_command("flushall")
-    init_redrock(r1)
     cmd_table = sys.argv[1]
-    cmds:list = list(init_cmd_table(cmd_table).items())
-    if not cmds:
-        exit(1)
-    cnt = 0
 
-    while True:
-        dice = random.choice(cmds)
-        cmd_name: str = dice[0]
-        cmd_func: callable = dice[1]
-        if cmd_name == "setex":
-            # sleep in setex(), so dice2
-            if random.randint(0, 1) == 0:
+    if cmd_table == "flushall":
+        r1.execute_command("flushall")
+        r2.execute_command("flushall")
+        print("flush all for redrock and real redis")
+    elif cmd_table == "inject":
+        init_redrock(r1)
+        print("inject finished!")
+    else:
+        init_redrock(r1)
+        cmds:list = list(init_cmd_table(cmd_table).items())
+        if not cmds:
+            exit(1)
+        cnt = 0
+
+        while True:
+            dice = random.choice(cmds)
+            cmd_name: str = dice[0]
+            cmd_func: callable = dice[1]
+            if cmd_name == "setex":
+                # sleep in setex(), so dice2
+                if random.randint(0, 1) == 0:
+                    cmd_func(cmd_name)
+                    cnt = cnt + 1
+            else:
                 cmd_func(cmd_name)
                 cnt = cnt + 1
-        else:
-            cmd_func(cmd_name)
-            cnt = cnt + 1
 
-        if cnt % 1000 == 0:
-            print(f"cnt = {cnt}, time = {time.time()}")
+            if cnt % 1000 == 0:
+                print(f"cnt = {cnt}, time = {time.time()}")
 
 
 if __name__ == '__main__':

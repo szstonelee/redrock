@@ -425,6 +425,17 @@ static size_t cal_room_hash_ht(const robj *o)
     return room;
 }
 
+/* Please reference rock_marshal.c unmarshal_hash_ht() */
+robj* create_pure_empty_hash_object(const size_t future_size)
+{
+    dict *dict_internal = dictCreate(&hashDictType, NULL);
+    if (future_size > DICT_HT_INITIAL_SIZE)
+        dictExpand(dict_internal, future_size);
+    robj *o = createObject(OBJ_HASH, dict_internal);
+    o->encoding = OBJ_ENCODING_HT;
+    return o;
+}
+
 static robj* unmarshal_hash_ht(const char *buf, const size_t sz)
 {
     char *s = (char*)buf;
@@ -434,9 +445,8 @@ static robj* unmarshal_hash_ht(const char *buf, const size_t sz)
     s += sizeof(size_t);
     len -= sizeof(size_t);
 
-    dict *dict_internal = dictCreate(&hashDictType, NULL);
-    if (count > DICT_HT_INITIAL_SIZE)
-        dictExpand(dict_internal, count);
+    robj *o = create_pure_empty_hash_object(count);
+    dict *dict_internal = o->ptr;
 
     while (count--)
     {
@@ -459,9 +469,6 @@ static robj* unmarshal_hash_ht(const char *buf, const size_t sz)
     }
 
     serverAssert(len == 0);
-
-    robj *o = createObject(OBJ_HASH, dict_internal);
-    o->encoding = OBJ_ENCODING_HT;
 
     return o;
 }

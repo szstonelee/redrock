@@ -34,6 +34,7 @@
 #include "stream.h"
 
 #include "rock_rdb_aof.h"
+#include "rock.h"
 
 #include <math.h>
 #include <fcntl.h>
@@ -2574,20 +2575,36 @@ int rdbLoadRio(rio *rdb, int rdbflags, rdbSaveInfo *rsi) {
             robj keyobj;
             initStaticStringObject(keyobj,key);
 
-            /* Add the new object in the hash table */
-            int added = dbAddRDBLoad(db,key,val);
-            if (!added) {
-                if (rdbflags & RDBFLAGS_ALLOW_DUP) {
-                    /* This flag is useful for DEBUG RELOAD special modes.
-                     * When it's set we allow new keys to replace the current
-                     * keys with the same name. */
-                    dbSyncDelete(db,&keyobj);
-                    dbAddRDBLoad(db,key,val);
-                } else {
-                    serverLog(LL_WARNING,
-                        "RDB has duplicated key '%s' in DB %d",key,db->id);
-                    serverPanic("Duplicated key found in RDB file");
+            robj *replaced_val = NULL;
+            if (zmalloc_used_memory() > get_max_rock_mem_of_os())
+            {
+                // If free mem of OS is not enough, we need add the val as rock value
+                replaced_val = db_add_rockval_when_load_rdb(db, key, val, rdbflags, &keyobj);
+                // serverLog(LL_WARNING, "add to disk when load rdb, key = %s", key);
+            }
+
+            if (replaced_val == NULL)
+            {
+                /* Add the new object in the hash table */
+                int added = dbAddRDBLoad(db,key,val);
+                if (!added) {
+                    if (rdbflags & RDBFLAGS_ALLOW_DUP) {
+                        /* This flag is useful for DEBUG RELOAD special modes.
+                        * When it's set we allow new keys to replace the current
+                        * keys with the same name. */
+                        dbSyncDelete(db,&keyobj);
+                        dbAddRDBLoad(db,key,val);
+                    } else {
+                        serverLog(LL_WARNING,
+                            "RDB has duplicated key '%s' in DB %d",key,db->id);
+                        serverPanic("Duplicated key found in RDB file");
+                    }
                 }
+            }
+            else
+            {
+                if (server.cluster_enabled) 
+                    slotToKeyAdd(key);
             }
 
             /* Set the expire time if needed */
@@ -2596,10 +2613,25 @@ int rdbLoadRio(rio *rdb, int rdbflags, rdbSaveInfo *rsi) {
             }
 
             /* Set usage information (for eviction). */
-            objectSetLRUOrLFU(val,lfu_freq,lru_idle,lru_clock,1000);
+            if (replaced_val == NULL)
+            {
+                objectSetLRUOrLFU(val,lfu_freq,lru_idle,lru_clock,1000);
+            }
+            else
+            {
+                if (!is_rock_value(replaced_val))
+                {
+                    serverAssert(replaced_val->type == OBJ_HASH && replaced_val->encoding == OBJ_ENCODING_HT);
+                    objectSetLRUOrLFU(replaced_val, lfu_freq, lru_idle, lru_clock, 1000);
+                }
+                // else {}  // We do not need to set LRU(LFU) for shared value
+            }
 
             /* call key space notification on key loaded for modules only */
             moduleNotifyKeyspaceEvent(NOTIFY_LOADED, "loaded", &keyobj, db->id);
+
+            if (replaced_val != NULL)
+                decrRefCount(val);      // reclaim val because it is replaced in redis
         }
 
         /* Loading the database more slowly is useful in order to test

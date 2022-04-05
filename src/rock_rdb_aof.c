@@ -1503,8 +1503,11 @@ static void* service_thread_main(void *arg)
 }
 
 /* When redis server starts, it loads rdb file in two ways.
- * 1. is directly from rdb file
- * 2. is from aof file which has part of rdb content
+ * 1. directly from a rdb file
+ * 2. from aof file which has part of rdb content
+ * 
+ * And after the load, some values are replaced with rock value if needed.
+ * Check rdbLoadRio() for details.
  * 
  * After the loading, we need call here to init the rock_hash and rock_evict
  * 
@@ -1513,7 +1516,8 @@ static void* service_thread_main(void *arg)
  */
 void on_after_load_rdb_backup()
 {
-    init_rock_hash_before_enter_event_loop();  
+    init_rock_hash_before_enter_event_loop(); 
+
     // NOTE: must follow init_rock_hash_before_enter_event_loop()
     init_rock_evict_before_enter_event_loop();  
 }

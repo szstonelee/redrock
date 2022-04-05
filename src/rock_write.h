@@ -52,6 +52,10 @@ void init_and_start_rock_write_thread();
 int try_evict_one_key_to_rocksdb(const int dbid, const sds key, size_t *mem);
 int try_evict_one_field_to_rocksdb(const int dbid, const sds key, const sds field, size_t *mem);
 
+// for main thread when loading
+void write_to_rocksdb_in_main_for_key_when_load(redisDb *db, const sds redis_key, const robj *redis_val);
+void write_to_rocksdb_in_main_for_hash_when_load(redisDb *db, const sds redis_key, const sds field, const sds field_val);
+
 // for rock_read.c
 list* get_vals_from_write_ring_buf_first_for_db(const int dbid, const list *redis_keys);
 list* get_vals_from_write_ring_buf_first_for_hash(const int dbid, const list *hash_keys, const list *fields);

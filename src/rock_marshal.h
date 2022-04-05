@@ -37,5 +37,6 @@ sds marshal_object(const robj* o);
 robj* unmarshal_object(const sds v);
 int debug_check_type(const sds recover_val, const robj *shared_obj);
 robj* get_match_rock_value(const robj *o);
+robj* create_pure_empty_hash_object(const size_t future_size);
 
 #endif

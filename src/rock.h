@@ -77,6 +77,8 @@ int check_free_mem_for_command(const client *c, const int is_denyoom_command);
 unsigned long long get_max_rock_mem_of_os();    // for rock_evict.c
 size_t get_free_mem_of_os();       // for server.c and rock.c and rock_statsd.c
 
+robj* db_add_rockval_when_load_rdb(redisDb *db, sds key, robj *val, int rdbflags, robj *key_if_need_delete);     // for rdb.c
+
 void get_rock_info(int *no_zero_dbnum,
                    size_t *total_key_num, 
                    size_t *total_rock_evict_num, 

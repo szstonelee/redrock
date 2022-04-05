@@ -76,9 +76,11 @@ dict* init_rock_evict_dict(const int dbid)
 /* When redis server start and finish loading RDB/AOF,
  * we need to add the matched key to rock evict.
  * 
- * NOTE: 1. We need exclude those keys not approciatte, like stream or shared object.
- *       2. We need exclude those keys in rock hash, so init_rock_hash_before_enter_event_loop()
- *          must be executed before init_rock_evict_before_enter_event_loop()
+ * NOTE1: 1. We need exclude those keys not approciatte, like stream or shared object.
+ *        2. We need exclude those keys in rock hash, so init_rock_hash_before_enter_event_loop()
+ *           must be executed before init_rock_evict_before_enter_event_loop()
+ * 
+ * NOTE2: Some value may be already set to rock value. Check rdbLoadRio() for details.
  */
 void init_rock_evict_before_enter_event_loop()
 {
@@ -98,6 +100,14 @@ void init_rock_evict_before_enter_event_loop()
 
             if (!is_rock_type(o))
                 continue;
+
+            if (is_rock_value(o))
+                // actually is_shared_value() will be true first, but
+                // here we give the idea that the o may be rock value after rdb loading
+            {
+                ++db->rock_key_in_disk_cnt;
+                continue;          
+            }             
 
             if (is_shared_value(o))
                 continue;

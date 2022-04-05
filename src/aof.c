@@ -32,6 +32,7 @@
 #include "rio.h"
 
 #include "rock_rdb_aof.h"
+#include "rock_evict.h"
 
 #include <signal.h>
 #include <fcntl.h>
@@ -904,6 +905,10 @@ int loadAppendOnlyFile(char *filename) {
         if (server.aof_load_truncated) valid_up_to = ftello(fp);
         if (server.key_load_delay)
             debugDelay(server.key_load_delay);
+
+        // when finiish a command from AOF when loading AOF, 
+        // we need do eviction like in serverCron()
+        perform_rock_eviction_in_cron();
     }
 
     /* This point can only be reached when EOF is reached without errors.

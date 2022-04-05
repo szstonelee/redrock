@@ -387,7 +387,8 @@ int hashTypeDelete(const int dbid, const sds key, robj *o, sds field) {
         }
     } else if (o->encoding == OBJ_ENCODING_HT) {
         // NOTE: always before dictDelete() because the field may be freed there
-        on_hash_key_del_field(dbid, key, field);
+        if (dictFind((dict*)o->ptr, field))
+            on_hash_key_del_field(dbid, key, field);
 
         if (dictDelete((dict*)o->ptr, field) == C_OK) {
             deleted = 1;

@@ -1429,37 +1429,34 @@ void check_mem_requirement_on_startup()
 }
 
 
-/* return the config least free memory in bytes.
+/* return the config max processs memory for RedRock in bytes.
  * 
- * 1) if server.leastfreemem == 0, 
- * it means the value is defined by system, 
- * return different size for differnt machine.
+ * 1) if server.maxrockpsmem negative, 
+ * it means dissable the feature of max rock process mmemory check,
+ * so we return LONG_LONG_MAX.
  * 
- * For system defined, the least free memory do not use too much,
- * because the page os (buff/cache in free -h) is not accounted for. 
-
- * 2) if negative, it means disable least free mem checking.
+ * 2) if zero, we return 90% of system memory.
+ * Usually the system memory is more than 8G, so there is at least 800M for OS.
+ * So process used memoory (including Redis and RocksDB) can limit to some degree.
  * 
- * 3) otherwise, it is up to the user. Any thing possible for the user responsibility. 
+ * 3) otherwise, it is up to the administrator. 
+ *    Any thing possible for the user responsibility. 
  */
-static long long get_least_free_mem_in_bytes()
+static size_t get_max_rock_process_mem_in_bytes()
 {
-    unsigned long long least_free_mem = server.leastfreemem;
-    if (least_free_mem == 0)
+    const long long max_mem = server.maxrockpsmem;
+    if (max_mem < 0)
     {
-        // system defined least free memory
-        if (server.system_memory_size >= (10ULL<<30))
-        {
-            // if this machine has memory more than 10G, we set least free mem to 256M
-            least_free_mem = 256ULL<<20;
-        }
-        else
-        {
-            // otherwise, 128M
-            least_free_mem = 128ULL<<20;
-        }
+        return LONG_LONG_MAX;
     }
-    return least_free_mem;
+    else if (max_mem == 0)
+    {
+        return server.system_memory_size * 90 / 1000;
+    }
+    else
+    {
+        return (size_t)max_mem;
+    }
 }
 
 unsigned long long get_max_rock_mem_of_os()
@@ -1515,16 +1512,8 @@ void rock_stat(client *c)
     bytesToHuman(peak_hmem, server.stat_peak_memory);
     char free_hmem[64];
     bytesToHuman(free_hmem, get_free_mem_of_os());
-    char least_free_hmem[64];
-    const long long least_free_mem = get_least_free_mem_in_bytes();
-    if (least_free_mem < 0)
-    {
-        strncpy(least_free_hmem, "leastfreemem_disabled", 64);
-    }
-    else
-    {
-        bytesToHuman(least_free_hmem, (size_t)least_free_mem);
-    }
+    char max_rock_ps_hmem[64];
+    bytesToHuman(max_rock_ps_hmem, get_max_rock_process_mem_in_bytes());
     char max_rock_hmem[64];
     bytesToHuman(max_rock_hmem, get_max_rock_mem_of_os());
     char used_memory_rss_hmem[64];
@@ -1535,10 +1524,10 @@ void rock_stat(client *c)
     bytesToHuman(rocksdb_hmem, rocksdb_mem);
     s = sdscatprintf(s, 
                     "used_human = %s, used_peak_human = %s, sys_human = %s, "
-                    "free_hmem = %s, least_free_hmem = %s, max_rock_hmem = %s, "
+                    "free_hmem = %s, least_free_hmem = %s, max_rock_ps_hmem = %s, "
                     "rss_hmem = %s, rocksdb(and other) = %s", 
                     hmem, peak_hmem, total_system_hmem, 
-                    free_hmem, least_free_hmem, max_rock_hmem,
+                    free_hmem, max_rock_ps_hmem, max_rock_hmem,
                     used_memory_rss_hmem, rocksdb_hmem);
     addReplyBulkCString(c, s);
     sdsfree(s);
@@ -2007,8 +1996,8 @@ void rock_all(client *c)
         addReply(c, shared.ok);
 }
 
-/* Check current free memory is OK for continue the command.
- * Return 1 if OK, otherwise 0.
+/* Check current free memory is OK for continue(or execute) the command.
+ * Return 1 if OK, otherwise 0 (fail).
  *
  * If free memory is not enough, two conditions will return 0
  * 1. the client is in multi state and the command is to be buffered
@@ -2018,15 +2007,13 @@ void rock_all(client *c)
  */
 int check_free_mem_for_command(const client *c, const int is_denyoom_command)
 {
-    const long long least_free_mem = get_least_free_mem_in_bytes();
-    if (least_free_mem < 0)
-        return 1;       // disalbe least free mem check
+    const size_t config_max_rock_mem = get_max_rock_process_mem_in_bytes();
+    const size_t rss_mem = server.cron_malloc_stats.process_rss;
+    if (rss_mem < config_max_rock_mem)
+        return 1;       
 
-    const size_t current_free_mem = get_free_mem_of_os();   // NOTE: for MacOs, it is the MAX_SIZE
-    if (current_free_mem >= (size_t)least_free_mem)
-        return 1;
-
-    // free memory is not engough
+    // Memory is low
+    // check whether the command use memory
     if (c->flags & CLIENT_MULTI &&
         c->cmd->proc != execCommand &&
         c->cmd->proc != discardCommand &&
@@ -2136,4 +2123,94 @@ void rock_mem(client *c)
     result = sdscatprintf(result, "rockmem acutally freed %zu(bytes), which is %s", freed, hmem);
 
     addReplyBulkSds(c, result);
+}
+
+static robj* add_whole_key_to_redis(redisDb *db, sds key, robj *val, int rdbflags, robj *key_if_need_delete)
+{
+    // add the key and rock value to the real database of redis
+    robj *rock_val = get_match_rock_value(val);
+    if (dictAdd(db->dict, key, rock_val) != DICT_OK)
+    {
+        // Check rdbLoadRio() for more infomation. Use similar code
+        if (rdbflags & RDBFLAGS_ALLOW_DUP)
+        {
+            dbSyncDelete(db, key_if_need_delete);
+            serverAssert(dictAdd(db->dict, key, rock_val) == DICT_OK);
+        }
+        else
+        {
+            serverLog(LL_WARNING,
+                      "RDB has duplicated key '%s' in DB %d for db_add_rockval_when_load_rdb()", key, db->id);
+            serverPanic("Duplicated key found in RDB file when db_add_rockval_when_load_rdb()");
+        }
+    }
+    return rock_val;
+}
+
+/* When loading from rdb and the caller finds it needs to add the key and val
+ * as rock value to the db, it will call here.
+ * It does something like dbAddRDBLoad() but use rock value.
+ * 
+ * Return the replaced robj if added to the db with another object (with rock value) from val.
+ * Otherwise, return NULLL, meaning no addition for the db.
+ */
+robj* db_add_rockval_when_load_rdb(redisDb *db, sds key, robj *val, int rdbflags, robj *key_if_need_delete)
+{
+    if (!is_rock_type(val) || is_shared_value(val))
+        return NULL;
+
+    // write the key and value to RocksDB and add the replaced value to redis
+
+    int add_as_whoke_key = 1;
+    const size_t threshold = server.hash_max_rock_entries;
+    if (threshold != 0 && val->type == OBJ_HASH && val->encoding == OBJ_ENCODING_HT)
+    {
+        dict *hash = val->ptr;
+        if (dictSize(hash) > threshold)
+            add_as_whoke_key = 0;   // add as hash (for all fields)
+    }
+
+    if (add_as_whoke_key)
+    {
+        // add as whole key
+        write_to_rocksdb_in_main_for_key_when_load(db, key, val);
+        return add_whole_key_to_redis(db, key, val, rdbflags, key_if_need_delete);
+    }
+    else
+    {
+        // add as hash + field
+        if (dictFind(db->dict, key))
+        {
+            if (rdbflags & RDBFLAGS_ALLOW_DUP)
+            {
+                dbSyncDelete(db, key_if_need_delete);
+            }
+            else
+            {
+                serverLog(LL_WARNING,
+                            "RDB has duplicated key '%s' in DB %d for db_add_rockval_when_load_rdb()",key,db->id);
+                serverPanic("Duplicated key found in RDB file when db_add_rockval_when_load_rdb()");
+            }
+        }
+
+        robj *in_redis = create_pure_empty_hash_object(dictSize((dict*)val->ptr));
+        in_redis->encoding = OBJ_ENCODING_HT;
+        serverAssert(dictAdd(db->dict, key, in_redis) == DICT_OK);        
+
+        dict *dst = in_redis->ptr;
+        dict *src = val->ptr;
+        dictIterator *di = dictGetIterator(src);
+        dictEntry *de;
+        while ((de = dictNext(di)))
+        {
+            sds field = sdsdup(dictGetKey(de));     // need a copy of field
+            sds field_val = dictGetVal(de);
+
+            write_to_rocksdb_in_main_for_hash_when_load(db, key, field, field_val);
+            serverAssert(dictAdd(dst, field, shared.hash_rock_val_for_field) == DICT_OK);
+        }
+        dictReleaseIterator(di);
+
+        return in_redis;
+    }
 }

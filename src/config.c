@@ -2412,23 +2412,23 @@ static int update_hash_max_rock_entries(long long val, long long prev, const cha
         return 1;
 
     static char msg[128];
-    sprintf(msg, "hash-max-rock-entries must be greater than hash-max-ziplist-entries which is %lu", server.hash_max_ziplist_entries);
+    sprintf(msg, "hash-max-rock-entries must be greater than hash-max-ziplist-entries which is %zu", server.hash_max_ziplist_entries);
     *err = msg;
     return 0;
 }
 
-static int update_least_free_mem(long long val, long long prev, const char **err)
+static int update_max_rock_ps_mem(long long val, long long prev, const char **err)
 {
     UNUSED(prev);
 
     if (val <= 0)
         return 1;
 
-    if ((size_t)val > server.system_memory_size - (1ULL<<30))
+    if ((size_t)val > server.system_memory_size)
     {
         static char msg[128];
-        sprintf(msg, "least free mem can not too large, up to system memory minus 1G which is %llu", 
-               server.system_memory_size - (1ULL<<30));
+        sprintf(msg, "max rock process mem can not too large, up to system memory which is %lu", 
+               server.system_memory_size);
         *err = msg;
         return 0;
     }
@@ -2614,7 +2614,7 @@ standardConfig configs[] = {
     createLongLongConfig("proto-max-bulk-len", NULL, MODIFIABLE_CONFIG, 1024*1024, LONG_MAX, server.proto_max_bulk_len, 512ll*1024*1024, MEMORY_CONFIG, NULL, NULL), /* Bulk request max size */
     createLongLongConfig("stream-node-max-entries", NULL, MODIFIABLE_CONFIG, 0, LLONG_MAX, server.stream_node_max_entries, 100, INTEGER_CONFIG, NULL, NULL),
     createLongLongConfig("repl-backlog-size", NULL, MODIFIABLE_CONFIG, 1, LLONG_MAX, server.repl_backlog_size, 1024*1024, MEMORY_CONFIG, NULL, updateReplBacklogSize), /* Default: 1mb */
-    createLongLongConfig("leastfreemem", NULL, MODIFIABLE_CONFIG, -1, LLONG_MAX, server.leastfreemem, -1, INTEGER_CONFIG, NULL, update_least_free_mem),
+    createLongLongConfig("maxrockpsmem", NULL, MODIFIABLE_CONFIG, -1, LLONG_MAX, server.maxrockpsmem, -1, INTEGER_CONFIG, NULL, update_max_rock_ps_mem),
 
     /* Unsigned Long Long configs */
     createULongLongConfig("maxmemory", NULL, IMMUTABLE_CONFIG, 0, ULLONG_MAX, server.maxmemory, 0, MEMORY_CONFIG, NULL, updateMaxmemory),

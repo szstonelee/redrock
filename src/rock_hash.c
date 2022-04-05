@@ -242,9 +242,11 @@ static unsigned int get_update_lru_for_rock_hash(const unsigned int old_lru)
  * 1. The reids_key is a hash with correct format 
  * 2. the redis_key not exist in rock_hash
  * 
- * NOTE: for rock_hash, we need to use internal_redis_key and internal_fields 
+ * NOTE1: for rock_hash, we need to use internal_redis_key and internal_fields 
+ * 
+ * NOTE2: if rdb_loading is true, it means the caller deal with RDB and some field's value may be already rock value.
  */
-static void add_whole_redis_hash_to_rock_hash(const int dbid, const sds redis_key)
+static void add_whole_redis_hash_to_rock_hash(const int dbid, const sds redis_key, const int rdb_loading)
 {
     serverAssert(server.hash_max_rock_entries > 0);
 
@@ -265,12 +267,26 @@ static void add_whole_redis_hash_to_rock_hash(const int dbid, const sds redis_ke
     while ((de_hash = dictNext(di_hash)))
     {
         const sds internal_field = dictGetKey(de_hash);
-        serverAssert(dictGetVal(de_hash) != shared.hash_rock_val_for_field);
-        serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);
+        if (!rdb_loading)
+        {
+            serverAssert(dictGetVal(de_hash) != shared.hash_rock_val_for_field);
+            serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);            
+        }
+        else
+        {
+            const sds field_val = dictGetVal(de_hash);
+            if (field_val != shared.hash_rock_val_for_field)
+            {
+                serverAssert(dictAdd(lrus, internal_field, (void*)clock) == DICT_OK);
+            }
+            else
+            {
+                ++db->rock_field_in_disk_cnt;
+            }
+        }
     }
     dictReleaseIterator(di_hash);
-
-    serverAssert(dictSize(lrus) > server.hash_max_rock_entries);
+    
     if (dictAdd(db->rock_hash, internal_redis_key, lrus) != DICT_OK)
         serverPanic("add_whole_redis_hash_to_rock_hash(), key = %s", internal_redis_key);
 
@@ -331,7 +347,7 @@ void on_hash_key_add_field(const int dbid, const sds redis_key, const sds field)
             return;    
         // create a dict of lrus, add all fields to the lrus
         // then add redis_key and lrus to rock_hash 
-        add_whole_redis_hash_to_rock_hash(dbid, internal_redis_key);
+        add_whole_redis_hash_to_rock_hash(dbid, internal_redis_key, 0);
         on_transfer_to_rock_hash(dbid, internal_redis_key);
     }
 }
@@ -746,7 +762,7 @@ void on_overwrite_key_from_db_for_rock_hash(const int dbid, const sds redis_key,
     // We need a the whole hash to rock hash
     sds internal_redis_key = dictGetKey(de_db);
 
-    add_whole_redis_hash_to_rock_hash(dbid, internal_redis_key);
+    add_whole_redis_hash_to_rock_hash(dbid, internal_redis_key, 0);
 }
 
 /* When flushdb or flushalldb, it will empty the db(s).
@@ -786,6 +802,8 @@ int is_in_rock_hash(const int dbid, const sds redis_key)
 
 /* When redis server start and finish loading RDB/AOF,
  * we need to add the matched hash to rock hash.
+ *
+ * NOTE: some field may be already in RocksDB when loading RDB/AOF
  */
 void init_rock_hash_before_enter_event_loop()
 {
@@ -815,7 +833,7 @@ void init_rock_hash_before_enter_event_loop()
                     sds internal_redis_key = dictGetKey(de);
                     // serverLog(LL_WARNING, "init_rock_hash_before_enter_event_loop(), add whole key = %s, rock_hash_size = %zu", 
                     //         internal_redis_key, dictSize(db->rock_hash));
-                    add_whole_redis_hash_to_rock_hash(i, internal_redis_key);
+                    add_whole_redis_hash_to_rock_hash(i, internal_redis_key, 1);
                 }
             }
         }
