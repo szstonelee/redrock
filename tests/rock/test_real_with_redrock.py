@@ -76,10 +76,10 @@ def get_key(key_prefix: str):
 
 
 def get_fields(field_prefix: str):
-    fields = []
+    fields = set()
     for _ in range(0, 100):
-        fields.append(field_prefix + str(random.randint(1, 1000)))
-    return fields
+        fields.add(field_prefix + str(random.randint(1, 1000)))
+    return list(fields)
 
 
 def get_keys(key_prefix: str):
@@ -133,7 +133,7 @@ def check_same(key: str, caller: str):
         raise Exception(msg)
 
 
-def set(name: str):
+def string_set(name: str):
     k = get_key("strkey")
     v = get_val()
     cmd = f"set {k} {v}"
@@ -364,7 +364,7 @@ def substr(name: str):
 
 
 def string_cmd_table():
-    cmds: dict = {"set": set,
+    cmds: dict = {"set": string_set,
                   "append": append,
                   "decr": decr,
                   "decrby": decrby,
@@ -726,14 +726,22 @@ def bitmap_cmd_table():
     return cmds
 
 
-def hdel(name: str):
+def hash_insert_one():
     k = get_key("hashkey")
+    cmd = f"del {k}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
     fs = get_fields("f")
     for f in fs:
         v = get_val()
         cmd = f"hset {k} {f} {v}"
         r1.execute_command(cmd)
         r2.execute_command(cmd)
+    return k, fs
+
+
+def hdel(name: str):
+    k, fs = hash_insert_one()
     f1 = random.choice(fs)
     f2 = random.choice(fs)
     f3 = random.choice(fs)
@@ -743,10 +751,180 @@ def hdel(name: str):
     check(res1, res2, name, cmd)
 
 
+def hexists(name: str):
+    k, fs = hash_insert_one()
+    f = random.choice(fs)
+    cmd = f"hexists {k} {f}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def hget(name: str):
+    k, fs = hash_insert_one()
+    f = random.choice(fs)
+    cmd = f"hget {k} {f}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def hgetall(name: str):
+    k, fs = hash_insert_one()
+    cmd = f"hgetall {k}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    if 2 * len(fs) != len(res1):
+        print(fs)
+        raise Exception(f"hgetall, key = {k}, 2 * len(fs) != len(res1), 2 * len(fs) = {2 * len(fs)}, len(res1) = {len(res1)}")
+    if 2 * len(fs) != len(res2):
+        raise Exception(f"hgetall key = {k}, len(fs) != len(res2), 2 * len(fs) = {2 * len(fs)}, len(res2) = {len(res1)}")
+    for f in fs:
+        if f not in res1:
+            raise Exception(f"hgetall key = {k}, f not in res1")
+        if f not in res2:
+            raise Exception(f"hgetall key = {k}, f not in res2")
+
+
+def hincrby(name: str):
+    k, fs = hash_insert_one()
+    f = random.choice(fs)
+    n = random.randint(-1000_000, 1000_000)
+    cmd = f"hset {k} {f} {n}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    incr = random.randint(-100, 100)
+    cmd = f"hincrby {k} {f} {incr}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    if res1 != n + incr:
+        raise Exception(f"hincrby for res1 key = {k}, field = {f}, n = {n}, incr = {incr}")
+    if res2 != n + incr:
+        raise Exception(f"hincrby for res2 key = {k}, field = {f}, n = {n}, incr = {incr}")
+
+
+def hincrbyflat(name: str):
+    k, fs = hash_insert_one()
+    f = random.choice(fs)
+    n = random.randint(-1000_000, 1000_000)
+    cmd = f"hset {k} {f} {n}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    incr = 10.1
+    cmd = f"hicrby {k} {f} {incr}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def hkeys(name: str):
+    k, fs = hash_insert_one()
+    cmd = f"hkeys {k}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def hlen(name: str):
+    k, fs = hash_insert_one()
+    cmd = f"hlen {k}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    if res1 != len(fs) or res2 != len(fs):
+        raise Exception(f"hlen, key = {k}")
+
+
+def hmget(name: str):
+    k, fs = hash_insert_one()
+    f1 = random.choice(fs)
+    f2 = random.choice(fs)
+    f3 = random.choice(fs)
+    cmd = f"hmget {k} {f1} {f2} {f3}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def hmset(name: str):
+    k = get_key("hashkey")
+    cmd = f"del {k}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"hmset {k} f1 v1 f2 v2"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def hrandfield(name: str):
+    k, fs = hash_insert_one()
+    res1 = r1.execute_command(f"hrandfield {k} 3")
+    for key in res1:
+        if key not in fs:
+            raise Exception(f"hrandfield, key = {k}")
+
+
+def hset(name: str):
+    k = get_key("hashkey")
+    cmd = f"del {k}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"hset {k} f1 v1 f2 v2 f3 v3"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def hsetnx(name: str):
+    k, fs = hash_insert_one()
+    f = random.choice(fs)
+    cmd = f"hsetnx {k} {f} v"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    new_f = get_key("random")
+    cmd = f"hsetnx {k} {new_f} vv"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def hstrlen(name: str):
+    k, fs = hash_insert_one()
+    f = random.choice(fs)
+    cmd = f"hstrlen {k} {f}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def hvals(name: str):
+    k, _ = hash_insert_one()
+    cmd = f"hvals {k}"
+    res1: list = r1.execute_command(cmd)
+    res2: list = r2.execute_command(cmd)
+    res1.sort()
+    res2.sort()
+    check(res1, res2, name, cmd)
+
+
 def hash_cmd_table():
     cmds: dict = {"hdel": hdel,
+                  "hexists": hexists,
+                  "hget": hget,
+                  "hgetall": hgetall,
+                  "hincrby": hincrby,
+                  "hlen": hlen,
+                  "hmget": hmget,
+                  "hmset": hmset,
+                  "hrandfield": hrandfield,
+                  "hset": hset,
+                  "hsetnx": hsetnx,
+                  "hstrlen": hstrlen,
+                  "hvals": hvals,
                   }
     return cmds
+
 
 
 def init_cmd_table(table: str):
