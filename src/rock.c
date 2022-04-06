@@ -1513,7 +1513,15 @@ void rock_stat(client *c)
     char free_hmem[64];
     bytesToHuman(free_hmem, get_free_mem_of_os());
     char max_rock_ps_hmem[64];
-    bytesToHuman(max_rock_ps_hmem, get_max_rock_process_mem_in_bytes());
+    const size_t max_rock_ps_mem = get_max_rock_process_mem_in_bytes();
+    if (max_rock_ps_mem != LONG_LONG_MAX)
+    {
+        bytesToHuman(max_rock_ps_hmem, max_rock_ps_mem);
+    }
+    else
+    {
+        sprintf(max_rock_ps_hmem, "disabled");
+    }    
     char max_rock_hmem[64];
     bytesToHuman(max_rock_hmem, get_max_rock_mem_of_os());
     char used_memory_rss_hmem[64];
@@ -1524,7 +1532,7 @@ void rock_stat(client *c)
     bytesToHuman(rocksdb_hmem, rocksdb_mem);
     s = sdscatprintf(s, 
                     "used_human = %s, used_peak_human = %s, sys_human = %s, "
-                    "free_hmem = %s, least_free_hmem = %s, max_rock_ps_hmem = %s, "
+                    "free_hmem = %s, max_rock_ps_hmem = %s, max_rock_human = %s, "
                     "rss_hmem = %s, rocksdb(and other) = %s", 
                     hmem, peak_hmem, total_system_hmem, 
                     free_hmem, max_rock_ps_hmem, max_rock_hmem,
