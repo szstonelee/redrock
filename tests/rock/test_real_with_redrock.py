@@ -7,6 +7,7 @@ import random
 import string
 import time
 import sys
+import threading
 
 
 r1: redis.StrictRedis   # redrock
@@ -926,6 +927,392 @@ def hash_cmd_table():
     return cmds
 
 
+def zset_insert_one():
+    k = get_key("zsetkey")
+    cmd = f"del {k}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    members = get_fields("z")
+    zset = {}
+    for m in members:
+        s = random.randint(-1000_000, 1000_000)
+        cmd = f"zadd {k} {s} {m}"
+        r1.execute_command(cmd)
+        r2.execute_command(cmd)
+        zset[m] = s
+    return k, zset
+
+
+def thread_insert_one_member(k: str):
+    time.sleep(1)
+    m = get_key("member")
+    s = random.randint(-100, 100)
+    cmd = f"zadd {k} {s} {m}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+
+
+def bzpopmax(name: str):
+    k = get_key("zsetkey")
+    cmd = f"del {k}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    t = threading.Thread(target=thread_insert_one_member, args=(k,))
+    t.start()
+    cmd = f"bzpopmax {k} 0"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    k, _ = zset_insert_one()
+    cmd = f"bzpopmax {k} 1"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def bzpopmin(name: str):
+    k = get_key("zsetkey")
+    cmd = f"del {k}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    t = threading.Thread(target=thread_insert_one_member, args=(k,))
+    t.start()
+    cmd = f"bzpopmin {k} 0"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    k, _ = zset_insert_one()
+    cmd = f"bzpopmin {k} 1"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zadd(name: str):
+    k = get_key("zsetkey")
+    cmd = f"del {k}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    s = random.randint(-1000_000, 1000_000)
+    m = get_key("member")
+    cmd = f"zadd {k} {s} {m}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zcard(name: str):
+    k, _ = zset_insert_one()
+    cmd = f"zcard {k}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zcount(name: str):
+    k, _ = zset_insert_one()
+    min = random.randint(-100_000, 100_000)
+    max = random.randint(-100_000, 100_000)
+    if min > max:
+        min, max = max, min
+    cmd = f"zcount {k} {min} {max}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zdiff(name: str):
+    k1, _ = zset_insert_one()
+    k2, _ = zset_insert_one()
+    k3, _ = zset_insert_one()
+    cmd = f"zdiff 3 {k1} {k2} {k3} WITHSCORES"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zdiffstore(name: str):
+    k1, _ = zset_insert_one()
+    k2, _ = zset_insert_one()
+    k3, _ = zset_insert_one()
+    d = get_key("zsetkey")
+    if d in (k1, k2, k3):
+        d = get_key("zsetkey")
+    cmd = f"zdiffstore {d} 3 {k1} {k2} {k3}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zincrby(name: str):
+    k, zset = zset_insert_one()
+    m = random.choice(list(zset))
+    incr = random.randint(-100, 100)
+    cmd = f"zincrby {k} {incr} {m}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zinter(name: str):
+    k1, _ = zset_insert_one()
+    k2, _ = zset_insert_one()
+    k3, _ = zset_insert_one()
+    cmd = f"zinter 3 {k1} {k2} {k3} AGGREGATE SUM WITHSCORES"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zinterstore(name: str):
+    k1, _ = zset_insert_one()
+    k2, _ = zset_insert_one()
+    k3, _ = zset_insert_one()
+    d = get_key("zsetkey")
+    if d in (k1, k2, k3):
+        d = get_key("zsetkey")
+    cmd = f"zinterstore {d} 3 {k1} {k2} {k3} AGGREGATE SUM"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zlexcount(name: str):
+    k, _ = zset_insert_one()
+    cmd = f"zlexcount {k} - +"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zmscore(name: str):
+    k, zset = zset_insert_one()
+    m1 = random.choice(list(zset))
+    m2 = random.choice(list(zset))
+    cmd = f"zmscore {k} {m1} {m2}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zpopmax(name: str):
+    k, _ = zset_insert_one()
+    cmd = f"zpopmax {k} 2"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zpopmin(name: str):
+    k, _ = zset_insert_one()
+    cmd = f"zpopmin {k} 2"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zrange(name: str):
+    k, _ = zset_insert_one()
+    min = random.randint(-100_000, 100_000)
+    max = random.randint(-100_000, 100_000)
+    if min > max:
+        min, max = max, min
+    cmd = f"zrange {k} {min} {max}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zrangebylex(name: str):
+    k, _ = zset_insert_one()
+    cmd = f"zrangebylex {k} - +"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zrangebyscore(name: str):
+    k, _ = zset_insert_one()
+    min = random.randint(-100_000, 100_000)
+    max = random.randint(-100_000, 100_000)
+    if min > max:
+        min, max = max, min
+    cmd = f"zrangebyscore {k} {min} {max}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zrangestore(name: str):
+    k, _ = zset_insert_one()
+    min = random.randint(-100_000, 100_000)
+    max = random.randint(-100_000, 100_000)
+    if min > max:
+        min, max = max, min
+    d = get_key("zsetkey")
+    if d == k:
+        d = get_key("zsetkey")
+    cmd = f"zrangestore {d} {k} {min} {max}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zrank(name: str):
+    k, zset = zset_insert_one()
+    m = random.choice(list(zset))
+    cmd = f"zrank {k} {m}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zrem(name: str):
+    k, zset = zset_insert_one()
+    m = random.choice(list(zset))
+    m_maybe = get_key("member")
+    cmd = f"zrem {k} {m} {m_maybe}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zremrangebylex(name: str):
+    k, _ = zset_insert_one()
+    cmd = f"zremrangebylex {k} [alpha [omega"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zremrangebyrank(name: str):
+    k, _ = zset_insert_one()
+    start = random.randint(0, 10)
+    stop = start + random.randint(1, 3)
+    cmd = f"zremrangebyrank {k} {start} {stop}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zremrangebyscore(name: str):
+    k, _ = zset_insert_one()
+    min = random.randint(-100_000, 100_000)
+    max = random.randint(-100_000, 100_000)
+    if min > max:
+        min, max = max, min
+    cmd = f"zremrangebyscore {k} {min} {max}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zrevrange(name: str):
+    k, _ = zset_insert_one()
+    start = random.randint(0, 10)
+    stop = start + random.randint(1, 3)
+    cmd = f"zrevrange {k} {start} {stop}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zrevrangebylex(name: str):
+    k, _ = zset_insert_one()
+    cmd = f"zrevrangebylex {k} (g [aaa"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zrevrangebyscore(name: str):
+    k, _ = zset_insert_one()
+    min = random.randint(-100_000, 100_000)
+    max = random.randint(-100_000, 100_000)
+    if min > max:
+        min, max = max, min
+    cmd = f"zrevrangebyscore {k} {max} {min}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zrevrank(name: str):
+    k, zset = zset_insert_one()
+    m = random.choice(list(zset))
+    cmd = f"zrevrank {k} {m}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zscore(name: str):
+    k, zset = zset_insert_one()
+    m = random.choice(list(zset))
+    cmd = f"zscore {k} {m}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zunion(name: str):
+    k1, _ = zset_insert_one()
+    k2, _ = zset_insert_one()
+    k3, _ = zset_insert_one()
+    cmd = f"zunion 3 {k1} {k2} {k3} AGGREGATE SUM"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def zunionstore(name: str):
+    k1, _ = zset_insert_one()
+    k2, _ = zset_insert_one()
+    k3, _ = zset_insert_one()
+    d = get_key("zsetkey")
+    if d in (k1, k2, k3):
+        d = get_key("zsetkey")
+    cmd = f"zunionstore {d} 3 {k1} {k2} {k3} AGGREGATE SUM"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+
+def zset_cmd_table():
+    cmds: dict = {"bzpopmax": bzpopmax,
+                  "bzpopmin": bzpopmin,
+                  "zadd": zadd,
+                  "zcard": zcard,
+                  "zcount": zcount,
+                  "zdiff": zdiff,
+                  "zdiffstore": zdiffstore,
+                  "zincrby": zincrby,
+                  "zinter": zinter,
+                  "zinterstore": zinterstore,
+                  "zlexcount": zlexcount,
+                  "zmscore": zmscore,
+                  "zpopmax": zpopmax,
+                  "zpopmin": zpopmin,
+                  "zrange": zrange,
+                  "zrangebylex": zrangebylex,
+                  "zrangebyscore": zrangebyscore,
+                  "zrangestore": zrangestore,
+                  "zrank": zrank,
+                  "zrem": zrem,
+                  "zremrangebylex": zremrangebylex,
+                  "zremrangebyrank": zremrangebyrank,
+                  "zremrangebyscore": zremrangebyscore,
+                  "zrevrange": zrevrange,
+                  "zrevrangebylex": zrevrangebylex,
+                  "zrevrangebyscore": zrevrangebyscore,
+                  "zrevrank": zrevrank,
+                  "zscore": zscore,
+                  "zunion": zunion,
+                  "zunionstore": zunionstore,
+                  }
+    return cmds
+
 
 def init_cmd_table(table: str):
     if table == "str":
@@ -936,6 +1323,8 @@ def init_cmd_table(table: str):
         return bitmap_cmd_table()
     elif table == "hash":
         return hash_cmd_table()
+    elif table == "zset":
+        return zset_cmd_table()
     elif table == "all":
         str_cmds = string_cmd_table()
         list_cmds = list_cmd_table()
