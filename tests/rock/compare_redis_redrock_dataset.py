@@ -51,7 +51,7 @@ def compare(dbid):
         t2 = r2.execute_command(cmd)
         if t1 != t2:
             raise Exception(f"key = {key} type not correct, t1 = {t1}, t2 = {t2}")
-        if t1 == "string" or t1 == "list":
+        if t1 == "string" or t1 == "list" or t1 == "zset":
             dump1 = r1.execute_command(f"dump {key}")
             dump2 = r2.execute_command(f"dump {key}")
             if dump1 != dump2:
@@ -75,7 +75,7 @@ def compare(dbid):
                     if v1 != v2:
                         raise Exception(f"key = {key}, field = {field}, value not same for a hash")
         else:
-            raise Exception("unrecognized type for key = {key}, type = {t1}")
+            raise Exception(f"unrecognized type for key = {key}, type = {t1}")
 
 
 def _main():

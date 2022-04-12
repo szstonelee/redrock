@@ -1210,15 +1210,7 @@ void hvalsCommand(client *c) {
 
 list* hvals_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    list *keys = generic_get_one_key_for_rock(c, 1);
-
-    if (keys == NULL)
-    {
-        const sds key = c->argv[1]->ptr;
-        generic_get_all_fields_for_rock(c, key, hash_keys, hash_fields);
-    }
-
-    return keys;
+    return generic_get_whole_key_or_hash_fields_for_rock(c, 1, hash_keys, hash_fields);
 }
 
 void hgetallCommand(client *c) {
@@ -1227,15 +1219,7 @@ void hgetallCommand(client *c) {
 
 list* hgetall_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    list *keys = generic_get_one_key_for_rock(c, 1);
-
-    if (keys == NULL)
-    {
-        const sds key = c->argv[1]->ptr;
-        generic_get_all_fields_for_rock(c, key, hash_keys, hash_fields);
-    }
-
-    return keys;
+    return generic_get_whole_key_or_hash_fields_for_rock(c, 1, hash_keys, hash_fields);
 }
 
 void hexistsCommand(client *c) {

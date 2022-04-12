@@ -49,4 +49,6 @@ void on_empty_db_for_hash(const int dbnum);
 
 int is_in_rock_hash(const int dbid, const sds redis_key);
 
+dict* create_empty_lrus_for_rock_hash();
+
 #endif

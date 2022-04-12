@@ -122,31 +122,50 @@ void init_rock_evict_before_enter_event_loop()
 }
 
 /* When a key has been added to a redis db, we need 
- * check whether it is OK for add to rock evict and add it.
- * NOTE: for rock evcit dictionary, the key is the internal key in redis db->dict
+ * check whether it is OK for add to rock evict or hash and add it.
+ * The caller guarantee the internal_key is a new added key in db->dict
+ * and all values of the key (including all fields'value for a hash) are in memory.
  */
-void on_db_add_key_for_rock_evict(const int dbid, const sds internal_key)
+void on_db_add_key_for_rock_evict_or_rock_hash(const int dbid, const sds internal_key)
 {
     redisDb *db = server.db + dbid;
 
     dictEntry *de = dictFind(db->dict, internal_key);
     serverAssert(de);
-
     robj *o = dictGetVal(de);
 
-    #if defined RED_ROCK_DEBUG
-    serverAssert(dictGetKey(de) == internal_key);
-    serverAssert(!is_in_rock_hash(dbid, internal_key));
-    serverAssert(!is_rock_value(o));
-    #endif
+    // determine go to rock evict or rock hash
+    int go_to_rock_hash = 0;
+    if (o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT)
+    {
+        if (server.hash_max_rock_entries != 0 && dictSize((dict*)o->ptr) > server.hash_max_rock_entries)
+            go_to_rock_hash = 1;
+    }
 
-    if (!is_rock_type(o))
-        return;
+    if (!go_to_rock_hash)
+    {
+        // only deal with rock evict
+        // This include such situaltions like replaced_key is hash
+        // but not in rock hash (e.g., it is a ziplist or a whole hash key)
 
-    if (is_shared_value(o))
-        return;
+        #if defined RED_ROCK_DEBUG
+        serverAssert(dictGetKey(de) == internal_key);
+        serverAssert(!is_in_rock_hash(dbid, internal_key));
+        serverAssert(!is_rock_value(o));
+        #endif
 
-    serverAssert(dictAdd(db->rock_evict, internal_key, NULL) == DICT_OK);
+        if (!is_rock_type(o))
+            return;
+
+        if (is_shared_value(o))
+            return;
+
+        serverAssert(dictAdd(db->rock_evict, internal_key, NULL) == DICT_OK);
+    }
+    else
+    {
+        add_whole_redis_hash_to_rock_hash(dbid, internal_key, 0);
+    }
 }
 
 /* Before a key deleted from a redis db, 

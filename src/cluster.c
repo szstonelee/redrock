@@ -5216,10 +5216,7 @@ void restoreCommand(client *c) {
 
 list* dump_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
-
-    return generic_get_one_key_for_rock(c, 1);
+    return generic_get_whole_key_or_hash_fields_for_rock(c, 1, hash_keys, hash_fields);
 }
 
 /* MIGRATE socket cache implementation.

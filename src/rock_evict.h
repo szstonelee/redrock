@@ -41,7 +41,9 @@ void eviction_info_print();
 dict* init_rock_evict_dict(const int dbid);
 void init_rock_evict_before_enter_event_loop();
 
-void on_db_add_key_for_rock_evict(const int dbid, const sds internal_key);
+void add_whole_redis_hash_to_rock_hash(const int dbid, const sds redis_key, const int rdb_loading);
+
+void on_db_add_key_for_rock_evict_or_rock_hash(const int dbid, const sds internal_key);
 void on_db_del_key_for_rock_evict(const int dbid, const sds key);
 void on_db_overwrite_key_for_rock_evict(const int dbid, const sds key, const int is_old_rock_val, const robj *new_o);
 void on_transfer_to_rock_hash(const int dbid, const sds internal_key);

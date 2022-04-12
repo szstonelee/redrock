@@ -36,36 +36,38 @@ def init_redis_clients():
     return r1, r2
 
 
-def insert_50K_keys_for_redrock():
-    print("starting insert 50k keys to RedRock so RedRock will use disk for this test...")
-    for i in range(0, 25_000):
-        if i % 1000 == 0:
-            print(f"insert_50K_keys_for_redrock(), i = {i}")
-        # string first
+def insert_6K_keys_for_redrock():
+    print("starting insert 6k keys to RedRock so RedRock will use disk for this test...")
+    for i in range(0, 1_000):
+        if i % 100 == 0:
+            print(f"insert_6K_keys_for_redrock(), hash first(field number = 5), i = {i}")
         k = "init_for_redrock_hash_" + str(i)
         field_v = "fv" * 500
         cmd = f"hmset {k} f1 {field_v} f2 {field_v} f3 {field_v} f4 {field_v} f5 {field_v}"
         r1.execute_command(cmd)
         r2.execute_command(cmd)
+    for i in range(0, 5_000):
         # then hash
+        if i % 1000 == 0:
+            print(f"insert_6K_keys_for_redrock(), string second, i = {i}")
         k = "init_for_redrcok_str_" + str(i)
         v = "v" * 1000
         cmd = f"set {k} {v}"
         r1.execute_command(cmd)
         r2.execute_command(cmd)
 
-    print("insert_50K_keys_for_redrock finished!!!!")
+    print("insert_6K_keys_for_redrock finished!!!!")
 
 
 def init_redrock(r: redis.StrictRedis):
     r.execute_command("config set hash-max-ziplist-entries 2")
     r.execute_command("config set hash-max-rock-entries 4")
-    r.execute_command("config set maxrockmem 50000000")  # 50M
+    r.execute_command("config set maxrockmem 10000000")  # 10M
     r.execute_command("config set appendonly yes")
     dbsize = r.execute_command("dbsize")
     print(f"dbsize = {dbsize}")
-    if dbsize < 40_000:
-        insert_50K_keys_for_redrock()
+    if dbsize < 5_000:
+        insert_6K_keys_for_redrock()
     #r.execute_command("config set save '3600 1 300 100 60 10000'")
 
 
@@ -125,13 +127,49 @@ def check_same(key: str, caller: str):
         raise Exception(msg)
     if not res1:
         return
-    cmd = f"dump {key}"
-    res1 = r1.execute_command(cmd)
-    res2 = r2.execute_command(cmd)
-    if res1 != res2:
-        msg = f"check_compare fail for {key} dump. caller = {caller}"
-        print(msg)
-        raise Exception(msg)
+    key_type = r1.execute_command(f"type {key}")
+    if key_type == "set" or key_type == "hash":
+        # check fiield number first
+        if key_type == "hash":
+            all_fields: list = r1.execute_command(f"hkeys {key}")
+            r2_field_num = r2.execute_command(f"hlen {key}")
+        else:
+            all_fields: list = r1.execute_command(f"smembers {key}")
+            r2_field_num = r2.execute_command(f"scard {key}")
+        if len(all_fields) != r2_field_num:
+            raise Exception(f"check_same() fail, field number not match, key = {key}, caller = {caller}")
+        # check all fields
+        for f in all_fields:
+            if key_type == "hash":
+                f_exist = r2.execute_command(f"hexists {key} {f}")
+                if not f_exist:
+                    raise Exception(f"check_same() fail for hash, field not exist, key = {key}, field = {f}, caller = {caller}")
+            else:
+                f_exist = r2.execute_command(f"sismember {key} {f}")
+                if not f_exist:
+                    raise Exception(f"check_same() fail for set, field not exist, key = {key}, field = {f}, caller = {caller}")
+        if key_type == "hash":
+            # check value
+            for f in all_fields:
+                cmd = f"hget {key} {f}"
+                r1_val = r1.execute_command(cmd)
+                r2_val = r2.execute_command(cmd)
+                if r1_val != r2_val:
+                    raise Exception(f"check_same() fail for hash, value not match, key = {key}, field = {f}, caller = {caller}")
+    else:
+        cmd = f"dump {key}"
+        res1 = r1.execute_command(cmd)
+        res2 = r2.execute_command(cmd)
+        if res1 != res2:
+            msg = f"check_same() fail for {key} dump. caller = {caller}"
+            print(msg)
+            raise Exception(msg)
+
+
+def delete_whole_key(k: str):
+    cmd = f"del {k}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
 
 
 def string_set(name: str):
@@ -927,6 +965,221 @@ def hash_cmd_table():
     return cmds
 
 
+def add_set_key(k: str):
+    cmd = f"sadd {k} "
+    members = []
+    for _ in range(0, random.randint(1, 100)):
+        member = get_key("m_")
+        cmd = cmd + member
+        members.append(member)
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    return res1, res2, cmd, members
+
+
+def sadd(name: str):
+    k = get_key("setkey")
+    res1, res2, cmd, _ = add_set_key(k)
+    check(res1, res2, name, cmd)
+
+
+def scard(name: str):
+    k = get_key("setkey")
+    add_set_key(k)
+    cmd = f"scard {k}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def sdiff(name: str):
+    k1 = get_key("setkey")
+    add_set_key(k1)
+    k2 = get_key("setkey")
+    add_set_key(k2)
+    k3 = get_key("setkey")
+    add_set_key(k3)
+    cmd = f"sdiff {k1} {k2} {k3}"
+    res1:list = r1.execute_command(cmd)
+    res1.sort()
+    res2:list = r2.execute_command(cmd)
+    res2.sort()
+    check(res1, res2, name, cmd)
+
+
+def sdiffstore(name: str):
+    k1 = get_key("setkey")
+    add_set_key(k1)
+    k2 = get_key("setkey")
+    add_set_key(k2)
+    dst = get_key("setkey")
+    if dst in (k1, k2):
+        dst = get_key("setkey")
+    cmd = f"sdiffstore {dst} {k1} {k2}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def sinter(name: str):
+    k1 = get_key("setkey")
+    add_set_key(k1)
+    k2 = get_key("setkey")
+    add_set_key(k2)
+    cmd = f"sinter {k1} {k2}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def sinterstore(name: str):
+    k1 = get_key("setkey")
+    add_set_key(k1)
+    k2 = get_key("setkey")
+    add_set_key(k2)
+    dst = get_key("setkey")
+    if dst in (k1, k2):
+        dst = get_key("setkey")
+    cmd = f"sinterstore {dst} {k1} {k2}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def sismember(name: str):
+    k = get_key("setkey")
+    add_set_key(k)
+    for _ in range(0, 100):
+        member = get_key("m_")
+        cmd = f"sismember {k} {member}"
+        res1 = r1.execute_command(cmd)
+        res2 = r2.execute_command(cmd)
+        check(res1, res2, name, cmd)
+
+
+def smembers(name: str):
+    k = get_key("setkey")
+    add_set_key(k)
+    cmd = f"smembers {k}"
+    res1: list = r1.execute_command(cmd)
+    res2: list = r2.execute_command(cmd)
+    if res1.sort() != res2.sort():
+        raise Exception(f"smembers key = {k}")
+
+
+def smismember(name: str):
+    k = get_key("setkey")
+    add_set_key(k)
+    members = ""
+    for _ in range(0, 100):
+        member = get_key("m_")
+        members = members + " " + member
+    cmd = f"smismember {k} " + members
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def smove(name: str):
+    k = get_key("setkey")
+    _, _, _, members = add_set_key(k)
+    member = random.choice(members)
+    dst = get_key("setkey")
+    if dst == k:
+        dst = get_key("setkey")
+    cmd = f"smove {k} {dst} {member}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def spop(name: str):
+    k = get_key("setkey")
+    add_set_key(k)
+    cmd = f"spop {k}"
+    res1 = r1.execute_command(cmd)
+    cmd = f"sismember {k} {res1}"
+    res2 = r2.execute_command(cmd)
+    if not res2:
+        print(f"res1 = {res1}")
+        raise Exception(f"spop key = {k}")
+    delete_whole_key(k)
+
+
+def srandmember(name: str):
+    k = get_key("setkey")
+    add_set_key(k)
+    cmd = f"srandmember {k}"
+    res1 = r1.execute_command(cmd)
+    cmd = f"sismember {k} {res1}"
+    res2 = r2.execute_command(cmd)
+    if not res2:
+        print(f"res1 = {res1}")
+        raise Exception(f"srandmember key = {k}")
+
+
+def srem(name: str):
+    k = get_key("setkey")
+    _, _, _, members = add_set_key(k)
+    to_removes = []
+    for _ in range(0, 10):
+        to_removes.append(random.choice(members))
+    cmd = f"srem {k}"
+    for to_rem in to_removes:
+        cmd = cmd + " " + to_rem
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def sunion(name: str):
+    k1 = get_key("setkey")
+    add_set_key(k1)
+    k2 = get_key("setkey")
+    add_set_key(k2)
+    cmd = f"sunion {k1} {k2}"
+    res1: list = r1.execute_command(cmd)
+    res2: list = r2.execute_command(cmd)
+    if res1.sort() != res2.sort():
+        raise Exception(f"sunion, key1 = {k1}, key2 = {k2}")
+
+
+def sunionstore(name: str):
+    k1 = get_key("setkey")
+    add_set_key(k1)
+    k2 = get_key("setkey")
+    add_set_key(k2)
+    dst = get_key("setkey")
+    if dst in (k1, k2):
+        dst = get_key("setkey")
+    cmd = f"sunionstore {dst} {k1} {k2}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def set_cmd_table():
+    cmds: dict = {"sadd": sadd,
+                  "scard": scard,
+                  "sdiff": sdiff,
+                  "sdiffstore": sdiffstore,
+                  "sinter": sinter,
+                  "sinterstore": sinterstore,
+                  "sismember": sismember,
+                  "smembers": smembers,
+                  "smismember": smismember,
+                  "smove": smove,
+                  "spop": spop,
+                  "srandmember": srandmember,
+                  "srem": srem,
+                  "sunion": sunion,
+                  "sunionstore": sunionstore,
+                  }
+    return cmds
+
+
+
+
 def zset_insert_one():
     k = get_key("zsetkey")
     cmd = f"del {k}"
@@ -954,9 +1207,7 @@ def thread_insert_one_member(k: str):
 
 def bzpopmax(name: str):
     k = get_key("zsetkey")
-    cmd = f"del {k}"
-    r1.execute_command(cmd)
-    r2.execute_command(cmd)
+    delete_whole_key(k)
     t = threading.Thread(target=thread_insert_one_member, args=(k,))
     t.start()
     cmd = f"bzpopmax {k} 0"
@@ -972,9 +1223,7 @@ def bzpopmax(name: str):
 
 def bzpopmin(name: str):
     k = get_key("zsetkey")
-    cmd = f"del {k}"
-    r1.execute_command(cmd)
-    r2.execute_command(cmd)
+    delete_whole_key(k)
     t = threading.Thread(target=thread_insert_one_member, args=(k,))
     t.start()
     cmd = f"bzpopmin {k} 0"
@@ -990,9 +1239,7 @@ def bzpopmin(name: str):
 
 def zadd(name: str):
     k = get_key("zsetkey")
-    cmd = f"del {k}"
-    r1.execute_command(cmd)
-    r2.execute_command(cmd)
+    delete_whole_key(k)
     s = random.randint(-1000_000, 1000_000)
     m = get_key("member")
     cmd = f"zadd {k} {s} {m}"
@@ -1314,6 +1561,424 @@ def zset_cmd_table():
     return cmds
 
 
+def create_string_key(k: str):
+    v = get_val()
+    cmd = f"set {k} {v}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+
+
+def create_list_key(k: str):
+    delete_whole_key(k)
+    for _ in range(0, random.randint(1, 100)):
+        ele = get_val()
+        cmd = f"rpush {k} {ele}"
+        r1.execute_command(cmd)
+        r2.execute_command(cmd)
+
+
+def create_hash_key(k: str):
+    delete_whole_key(k)
+    for _ in range(0, random.randint(1, 100)):
+        field = get_key("f")
+        val = get_val()
+        cmd = f"hset {k} {field} {val}"
+        r1.execute_command(cmd)
+        r2.execute_command(cmd)
+
+
+def create_set_key(k: str):
+    delete_whole_key(k)
+    for _ in range(0, random.randint(1, 100)):
+        member = get_key("f")
+        cmd = f"sadd {k} {member}"
+        r1.execute_command(cmd)
+        r2.execute_command(cmd)
+
+
+def create_zset_key(k: str):
+    delete_whole_key(k)
+    for _ in range(0, random.randint(1, 100)):
+        member = get_key("m")
+        score = random.randint(-1000_000, 1000_000)
+        cmd = f"zadd {k} NX {score} {member}"
+        r1.execute_command(cmd)
+        r2.execute_command(cmd)
+
+
+def copy(name: str):
+    src = get_key("generickey")
+    dst = get_key("generickey")
+    create_string_key(src)
+    cmd = f"copy {src} {dst} REPLACE"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    create_list_key(src)
+    cmd = f"copy {src} {dst} REPLACE"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    create_hash_key(src)
+    cmd = f"copy {src} {dst} REPLACE"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    create_set_key(src)
+    cmd = f"copy {src} {dst} REPLACE"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    create_zset_key(src)
+    cmd = f"copy {src} {dst} REPLACE"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def del_redis(name):
+    k1 = get_key("generickey")
+    k2 = get_key("generickey")
+    k3 = get_key("generickey")
+    k4 = get_key("generickey")
+    k5 = get_key("generickey")
+    create_string_key(k1)
+    create_list_key(k2)
+    create_hash_key(k3)
+    create_set_key(k4)
+    create_zset_key(k5)
+
+    cmd = f"del {k1} {k2}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def dump(name):
+    k = get_key("generickey")
+    cmd = f"dump {k}"
+
+    create_string_key(k)
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+    create_list_key(k)
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+    create_zset_key(k)
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+    create_set_key(k)
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(k, "dump")
+
+    create_hash_key(k)
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(k, "dump")
+
+
+def exists(name: str):
+    k1 = get_key("generickey")
+    k2 = get_key("generickey")
+    k3 = get_key("generickey")
+    k4 = get_key("generickey")
+    k5 = get_key("generickey")
+    create_string_key(k1)
+    create_list_key(k2)
+    create_hash_key(k3)
+    create_set_key(k4)
+    create_zset_key(k5)
+    k_random = get_key("generickey")
+
+    cmd = f"exists {k1} {k2} {k3} {k4} {k5} {k_random}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def expire(name: str):
+    k1 = get_key("generickey")
+    k2 = get_key("generickey")
+    k3 = get_key("generickey")
+    k4 = get_key("generickey")
+    k5 = get_key("generickey")
+    create_string_key(k1)
+    create_list_key(k2)
+    create_hash_key(k3)
+    create_set_key(k4)
+    create_zset_key(k5)
+
+    cmd = f"expire {k1} 1"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"expire {k2} 1"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"expire {k3} 1"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"expire {k4} 1"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"expire {k5} 1"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+
+    time.sleep(2)
+
+    cmd = f"exists {k1} {k2} {k3} {k4} {k5}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+    for _ in range(0, random.randint(1, 100)):
+        k_add_one = get_key("generickey")
+        create_string_key(k_add_one)
+    k_add_two = get_key("generickey")
+    create_hash_key(k_add_two)
+
+
+def expireat(name: str):
+    k1 = get_key("generickey")
+    k2 = get_key("generickey")
+    k3 = get_key("generickey")
+    k4 = get_key("generickey")
+    k5 = get_key("generickey")
+    create_string_key(k1)
+    create_list_key(k2)
+    create_hash_key(k3)
+    create_set_key(k4)
+    create_zset_key(k5)
+
+    res = r1.execute_command("time")
+    unix_time = res[0]
+
+    cmd = f"expireat {k1} {unix_time+1}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"expireat {k2} {unix_time+1}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"expireat {k3} {unix_time+1}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"expireat {k4} {unix_time+1}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"expireat {k5} {unix_time+1}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+
+    time.sleep(2)
+
+    cmd = f"exists {k1} {k2} {k3} {k4} {k5}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+    for _ in range(0, random.randint(1, 100)):
+        k_add_one = get_key("generickey")
+        create_string_key(k_add_one)
+    k_add_two = get_key("generickey")
+    create_hash_key(k_add_two)
+
+
+def keys(name: str):
+    pattern = "for_keys_pattern_"
+    for _ in range(0, random.randint(1, 100)):
+        k = get_key(pattern)
+        create_string_key(k)
+    cmd = f"keys {pattern}*"
+    res1: list = r1.execute_command(cmd)
+    res1.sort()
+    res2: list = r2.execute_command(cmd)
+    res2.sort()
+    check(res1, res2, name, cmd)
+
+
+def move(name: str):
+    k1 = get_key("generickey")
+    k2 = get_key("generickey")
+    k3 = get_key("generickey")
+    k4 = get_key("generickey")
+    k5 = get_key("generickey")
+    create_string_key(k1)
+    create_list_key(k2)
+    create_hash_key(k3)
+    create_set_key(k4)
+    create_zset_key(k5)
+
+    cmd = f"move {k1} 1"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"move {k2} 2"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"move {k3} 3"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"move {k4} 4"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"move {k5} 5"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def rename(name: str):
+    k1 = get_key("generickey")
+    k2 = get_key("generickey")
+    k3 = get_key("generickey")
+    k4 = get_key("generickey")
+    k5 = get_key("generickey")
+    create_string_key(k1)
+    create_list_key(k2)
+    create_hash_key(k3)
+    create_set_key(k4)
+    create_zset_key(k5)
+
+    k1_new = get_key("generickey")
+    k2_new = get_key("generickey")
+    k3_new = get_key("generickey")
+    k4_new = get_key("generickey")
+    k5_new = get_key("generickey")
+
+    cmd = f"rename {k1} {k1_new}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"rename {k2} {k2_new}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"rename {k3} {k3_new}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"rename {k4} {k4_new}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"rename {k5} {k5_new}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def renamenx(name: str):
+    k1 = get_key("generickey")
+    k2 = get_key("generickey")
+    k3 = get_key("generickey")
+    k4 = get_key("generickey")
+    k5 = get_key("generickey")
+    create_string_key(k1)
+    create_list_key(k2)
+    create_hash_key(k3)
+    create_set_key(k4)
+    create_zset_key(k5)
+
+    k1_new = get_key("generickey")
+    k2_new = get_key("generickey")
+    k3_new = get_key("generickey")
+    k4_new = get_key("generickey")
+    k5_new = get_key("generickey")
+
+    cmd = f"renamenx {k1} {k1_new}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"renamenx {k2} {k2_new}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"renamenx {k3} {k3_new}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"renamenx {k4} {k4_new}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"renamenx {k5} {k5_new}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def restore(name: str):
+    k1 = get_key("generickey")
+    k2 = get_key("generickey")
+    k3 = get_key("generickey")
+    k4 = get_key("generickey")
+    k5 = get_key("generickey")
+    create_string_key(k1)
+    create_list_key(k2)
+    create_hash_key(k3)
+    create_set_key(k4)
+    create_zset_key(k5)
+
+    k1_dump = r1.execute_command("dump {k1}")
+    k2_dump = r1.execute_command("dump {k2}")
+    k3_dump = r1.execute_command("dump {k3}")
+    k4_dump = r1.execute_command("dump {k4}")
+    k5_dump = r1.execute_command("dump {k5}")
+
+    k1_new = get_key("generickey")
+    k2_new = get_key("generickey")
+    k3_new = get_key("generickey")
+    k4_new = get_key("generickey")
+    k5_new = get_key("generickey")
+
+    cmd = f"restore {k1_new} 0 {k1_dump} REPLACE"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(k1_new, "restore")
+    cmd = f"restore {k2_new} 0 {k2_dump} REPLACE"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(k3_new, "restore")
+    cmd = f"restore {k3_new} 0 {k3_dump} REPLACE"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(k3_new, "restore")
+    cmd = f"restore {k4_new} 0 {k4_dump} REPLACE"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(k5_new, "restore")
+    cmd = f"restore {k5_new} 0 {k5_dump} REPLACE"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    check_same(k5_new, "restore")
+
+
+def generic_cmd_table():
+    cmds: dict = {"copy": copy,
+                  "del_redis": del_redis,
+                  "dump": dump,
+                  "exists": exists,
+                  "expire": expire,
+                  "expireat": expireat,
+                  "keys": keys,
+                  "move": move,
+                  "rename": rename,
+                  "renamenx": renamenx,
+                  #"restore": restore,
+                  }
+    return cmds
+
+
 def init_cmd_table(table: str):
     if table == "str":
         return string_cmd_table()
@@ -1323,8 +1988,12 @@ def init_cmd_table(table: str):
         return bitmap_cmd_table()
     elif table == "hash":
         return hash_cmd_table()
+    elif table == "set":
+        return set_cmd_table()
     elif table == "zset":
         return zset_cmd_table()
+    elif table == "generic":
+        return generic_cmd_table()
     elif table == "all":
         str_cmds = string_cmd_table()
         list_cmds = list_cmd_table()
@@ -1338,6 +2007,10 @@ def _main():
     global r1, r2
     r1, r2 = init_redis_clients()
     cmd_table = sys.argv[1]
+
+    max_cmd_num = sys.maxsize
+    if len(sys.argv) >= 3:
+        max_cmd_num = int(sys.argv[2])
 
     if cmd_table == "flushall":
         r1.execute_command("flushall")
@@ -1368,6 +2041,10 @@ def _main():
 
             if cnt % 1000 == 0:
                 print(f"cnt = {cnt}, time = {time.time()}")
+
+            if cnt >= max_cmd_num:
+                print(f"finish by max limit of cnt = {cnt}")
+                break
 
 
 if __name__ == '__main__':

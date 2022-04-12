@@ -1283,3 +1283,41 @@ static unsigned int filter_duplicated_samples(const unsigned int cnt, dictEntry 
 
     return end + 1;
 }
+
+
+static sds db_add_common(redisDb *db, robj *key, robj *val)
+{
+    sds copy = sdsdup(key->ptr);
+    int retval = dictAdd(db->dict, copy, val);
+
+    serverAssertWithInfo(NULL,key,retval == DICT_OK);
+    signalKeyAsReady(db, key, val->type);
+    if (server.cluster_enabled) slotToKeyAdd(key->ptr);
+
+    return copy;
+}
+
+
+/* For Replace command, we need do the similiar thing 
+ * but for on_db_add_key_for_rock_evict() we need pass the replaced_key
+ * The caller guarantee the replaced key exists and is different from key.
+ * Because the val may be a hash in rock_hash, it should be moved (replaced the key pointer)
+ * 
+ * We do not modify dbAdd() and copy some code from it
+ * because dbAdd() is called by many caller.
+ */
+void db_add_from_replace(redisDb *db, robj *key, robj *val, const sds replaced_key)
+{
+    /*
+    sds copy = sdsdup(key->ptr);
+    int retval = dictAdd(db->dict, copy, val);
+
+    serverAssertWithInfo(NULL,key,retval == DICT_OK);
+    signalKeyAsReady(db, key, val->type);
+    if (server.cluster_enabled) slotToKeyAdd(key->ptr);
+    */
+
+    sds copy = db_add_common(db, key, val);
+
+    on_db_add_key_for_rock_evict_or_rock_hash(db->id, copy, replaced_key);
+}

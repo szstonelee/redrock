@@ -969,6 +969,28 @@ list* generic_get_zset_num_for_rock(const client *c, const int have_dest)
     return keys;
 }
 
+/* First try to get the whole key.
+ * If not success, then get all fileds of rock value for hash_keys and hash_fileds
+ * return the the whole key as a list (thouogh it is only one item in the list or NULL if no whole key rock value)
+ * 
+ * index: is the key index of argv in client c.
+ */
+list* generic_get_whole_key_or_hash_fields_for_rock(const client *c, const int index,
+                                                    list **hash_keys, list **hash_fields)
+{
+    list* keys = generic_get_one_key_for_rock(c, index);
+
+    if (keys == NULL)
+    {
+        // Only when keys are not found, i.e., key's total value are not rock value,
+        // we go on for rock all field.
+        const sds key = c->argv[index]->ptr;
+        generic_get_all_fields_for_rock(c, key, hash_keys, hash_fields);
+    }
+
+    return keys;        // one item in list or NULL
+}
+
 /* Main thread waiting for read thread and write thread exit */
 void wait_rock_threads_exit()
 {

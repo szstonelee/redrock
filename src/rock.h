@@ -187,6 +187,9 @@ void generic_get_all_fields_for_rock(const client *c, const sds key, list **hash
 void generic_get_multi_fields_for_rock(const client *c, const sds key, const int index, const int step,
                                        list **hash_keys, list **hash_fields);
 
+list* generic_get_whole_key_or_hash_fields_for_rock(const client *c, const int index,
+                                                    list **hash_keys, list **hash_fields);
+
 // string (t_string.c)
 list* get_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
 list* getex_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);

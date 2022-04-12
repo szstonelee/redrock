@@ -191,6 +191,7 @@ robj *lookupKeyWriteOrReply(client *c, robj *key, robj *reply) {
     return o;
 }
 
+
 /* Add the key to the DB. It's up to the caller to increment the reference
  * counter of the value if needed.
  *
@@ -203,8 +204,9 @@ void dbAdd(redisDb *db, robj *key, robj *val) {
     signalKeyAsReady(db, key, val->type);
     if (server.cluster_enabled) slotToKeyAdd(key->ptr);
 
-    on_db_add_key_for_rock_evict(db->id, copy);
+    on_db_add_key_for_rock_evict_or_rock_hash(db->id, copy);
 }
+
 
 /* This is a special version of dbAdd() that is used only when loading
  * keys from the RDB file: the key is passed as an SDS string that is
@@ -1157,7 +1159,9 @@ void renameGenericCommand(client *c, int nx) {
          * with the same name. */
         dbDelete(c->db,c->argv[2]);
     }
-    dbAdd(c->db,c->argv[2],o);
+    // NOTE: For replace command, RedRock need a new version db_add_from_replace
+    //       to replace dbAdd()
+    dbAdd(c->db,c->argv[2],o);       
     if (expire != -1) setExpire(c,c->db,c->argv[2],expire);
     dbDelete(c->db,c->argv[1]);
     signalModifiedKey(c,c->db,c->argv[1]);
@@ -1174,12 +1178,12 @@ void renameCommand(client *c) {
     renameGenericCommand(c,0);
 }
 
+/* NOTE: rename (and renamenx) command must restore all hash if fields's value is rock value.
+ *       because the key stored in RocksDB changed
+ */
 list* rename_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
-
-    return generic_get_one_key_for_rock(c, 1);
+    return generic_get_whole_key_or_hash_fields_for_rock(c, 1, hash_keys, hash_fields);
 }
 
 void renamenxCommand(client *c) {
@@ -1188,10 +1192,7 @@ void renamenxCommand(client *c) {
 
 list* renamenx_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
-
-    return generic_get_one_key_for_rock(c, 1);
+    return generic_get_whole_key_or_hash_fields_for_rock(c, 1, hash_keys, hash_fields);
 }
 
 void moveCommand(client *c) {
@@ -1258,10 +1259,7 @@ void moveCommand(client *c) {
 
 list* move_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
-
-    return generic_get_one_key_for_rock(c, 1);
+    return generic_get_whole_key_or_hash_fields_for_rock(c, 1, hash_keys, hash_fields);
 }
 
 void copyCommand(client *c) {
@@ -1368,10 +1366,7 @@ void copyCommand(client *c) {
 
 list* copy_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
-
-    return generic_get_one_key_for_rock(c, 1);
+    return generic_get_whole_key_or_hash_fields_for_rock(c, 1, hash_keys, hash_fields);
 }
 
 /* Helper function for dbSwapDatabases(): scans the list of keys that have

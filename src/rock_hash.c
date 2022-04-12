@@ -236,6 +236,11 @@ static unsigned int get_update_lru_for_rock_hash(const unsigned int old_lru)
     }
 }
 
+dict* create_empty_lrus_for_rock_hash()
+{
+    return dictCreate(&fieldLruDictType, NULL);
+}
+
 /* Add a hash in redis db to rock hash by allocating the lrus for all fields in the hash.
  *
  * The caller guarantee that: 
@@ -246,7 +251,7 @@ static unsigned int get_update_lru_for_rock_hash(const unsigned int old_lru)
  * 
  * NOTE2: if rdb_loading is true, it means the caller deal with RDB and some field's value may be already rock value.
  */
-static void add_whole_redis_hash_to_rock_hash(const int dbid, const sds redis_key, const int rdb_loading)
+void add_whole_redis_hash_to_rock_hash(const int dbid, const sds redis_key, const int rdb_loading)
 {
     serverAssert(server.hash_max_rock_entries > 0);
 
@@ -259,7 +264,7 @@ static void add_whole_redis_hash_to_rock_hash(const int dbid, const sds redis_ke
     serverAssert(o->type == OBJ_HASH && o->encoding == OBJ_ENCODING_HT);
     dict *hash = o->ptr;
 
-    dict *lrus = dictCreate(&fieldLruDictType, NULL);
+    dict *lrus = create_empty_lrus_for_rock_hash();
 
     const uint64_t clock = get_init_lru_for_rock_hash();
     dictIterator *di_hash = dictGetIterator((dict*)hash);
