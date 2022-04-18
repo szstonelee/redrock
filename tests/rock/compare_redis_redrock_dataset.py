@@ -51,11 +51,22 @@ def compare(dbid):
         t2 = r2.execute_command(cmd)
         if t1 != t2:
             raise Exception(f"key = {key} type not correct, t1 = {t1}, t2 = {t2}")
-        if t1 == "string" or t1 == "list" or t1 == "zset":
+        if t1 == "string" or t1 == "zset":
             dump1 = r1.execute_command(f"dump {key}")
             dump2 = r2.execute_command(f"dump {key}")
             if dump1 != dump2:
                 raise Exception(f"key = {key}, not same")
+        elif t1 == "list":
+            cmd = f"llen {key}"
+            len1 = r1.execute_command(cmd)
+            len2 = r2.execute_command(cmd)
+            if len1 != len2:
+                raise Exception(f"key = {key}, list len not same!")
+            cmd = f"lrange {key} 0 -1"
+            all1 = r1.execute_command(cmd)
+            all2 = r2.execute_command(cmd)
+            if all1 != all2:
+                raise Exception(f"key = {key}, list content not same!")
         elif t1 == "hash" or t1 == "set":
             if t1 == "hash":
                 cmd = f"hkeys {key}"
