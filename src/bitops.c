@@ -563,10 +563,38 @@ void setbitCommand(client *c) {
     addReply(c, bitval ? shared.cone : shared.czero);
 }
 
+static int setbit_command_check_and_reply(client *c)
+{
+    size_t bitoffset;
+    long on;
+    char *err = "bit is not an integer or out of range";
+     robj *o;
+
+    if (getBitOffsetFromArgument(c,c->argv[2],&bitoffset,0,0) != C_OK)
+        return 1;
+
+    if (getLongFromObjectOrReply(c,c->argv[3],&on,err) != C_OK)
+        return 1;
+
+    /* Bits can only be set or cleared... */
+    if (on & ~1) {
+        addReplyError(c,err);
+        return 1;
+    }
+
+    if ((o = lookupStringForBitCommand(c,bitoffset)) == NULL) 
+        return 1;
+
+    return 0;
+}
+
 list* setbit_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (setbit_command_check_and_reply((client *) c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -598,10 +626,28 @@ void getbitCommand(client *c) {
     addReply(c, bitval ? shared.cone : shared.czero);
 }
 
+static int getbit_command_check_and_reply(client *c)
+{
+    size_t bitoffset;
+    robj *o;
+
+    if (getBitOffsetFromArgument(c,c->argv[2],&bitoffset,0,0) != C_OK)
+        return 1;
+
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,o,OBJ_STRING)) 
+        return 1;
+
+    return 0;
+}
+
 list* getbit_cmd_for_rock(const client* c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (getbit_command_check_and_reply((client *) c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -796,10 +842,51 @@ void bitopCommand(client *c) {
     addReplyLongLong(c,maxlen); /* Return the output string length in bytes. */
 }
 
+static int bitop_command_check_and_reply(client *c)
+{
+    char *opname = c->argv[1]->ptr;
+    unsigned long op;
+
+    /* Parse the operation name. */
+    if ((opname[0] == 'a' || opname[0] == 'A') && !strcasecmp(opname,"and"))
+    {
+        op = BITOP_AND;
+    }
+    else if((opname[0] == 'o' || opname[0] == 'O') && !strcasecmp(opname,"or"))
+    {
+        op = BITOP_OR;
+    }
+    else if((opname[0] == 'x' || opname[0] == 'X') && !strcasecmp(opname,"xor"))
+    {
+        op = BITOP_XOR;
+    }
+    else if((opname[0] == 'n' || opname[0] == 'N') && !strcasecmp(opname,"not"))
+    {
+        op = BITOP_NOT;
+    }
+    else 
+    {
+        addReplyErrorObject(c,shared.syntaxerr);
+        return 1;
+    }
+
+    /* Sanity check: NOT accepts only a single key argument. */
+    if (op == BITOP_NOT && c->argc != 4) 
+    {
+        addReplyError(c,"BITOP NOT must be called with a single source key.");
+        return 1;
+    }
+
+    return 0;
+}
+
 list* bitop_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (bitop_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_multi_keys_for_rock(c, 3, 1);
 }
@@ -853,10 +940,48 @@ void bitcountCommand(client *c) {
     }
 }
 
+static int bitcount_command_check_and_reply(client *c)
+{
+    robj *o;
+    /* Lookup, check for type, and return 0 for non existing keys. */
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,o,OBJ_STRING)) 
+        return 1;
+
+    long start, end;
+    /* Parse start/end range if any. */
+    if (c->argc == 4) 
+    {
+        if (getLongFromObjectOrReply(c,c->argv[2],&start,NULL) != C_OK)
+            return 1;
+
+        if (getLongFromObjectOrReply(c,c->argv[3],&end,NULL) != C_OK)
+            return 1;
+
+        /* Convert negative indexes */
+        if (start < 0 && end < 0 && start > end) {
+            addReply(c,shared.czero);
+            return 1;
+        }
+    } else if (c->argc == 2) 
+    {
+        // Do nothing
+    } else {
+        /* Syntax error. */
+        addReplyErrorObject(c,shared.syntaxerr);
+        return 1;
+    }
+
+    return 0;
+}
+
 list* bitcount_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (bitcount_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -939,10 +1064,70 @@ void bitposCommand(client *c) {
     }
 }
 
+static int bitpos_command_check_and_reply(client *c)
+{
+    long bit;
+
+    /* Parse the bit argument to understand what we are looking for, set
+     * or clear bits. */
+    if (getLongFromObjectOrReply(c,c->argv[2],&bit,NULL) != C_OK)
+        return 1;
+
+    if (bit != 0 && bit != 1) 
+    {
+        addReplyError(c, "The bit argument must be 1 or 0.");
+        return 1;
+    }
+
+    /* If the key does not exist, from our point of view it is an infinite
+     * array of 0 bits. If the user is looking for the fist clear bit return 0,
+     * If the user is looking for the first set bit, return -1. */
+    robj *o;
+    if ((o = lookupKeyRead(c->db,c->argv[1])) == NULL) 
+    {
+        addReplyLongLong(c, bit ? -1 : 0);
+        return 1;
+    }
+    if (checkType(c,o,OBJ_STRING)) 
+        return 1;
+
+    /* Parse start/end range if any. */
+    long start, end;
+    if (c->argc == 4 || c->argc == 5) 
+    {
+        if (getLongFromObjectOrReply(c,c->argv[3],&start,NULL) != C_OK)
+            return 1;
+
+        if (c->argc == 5) 
+        {
+            if (getLongFromObjectOrReply(c,c->argv[4],&end,NULL) != C_OK)
+                return 1;
+        } else 
+        {
+            // Do nothing
+        }
+    } 
+    else if (c->argc == 3) 
+    {
+        // Do nothing
+    } 
+    else 
+    {
+        /* Syntax error. */
+        addReplyErrorObject(c,shared.syntaxerr);
+        return 1;
+    }
+
+    return 0;
+}
+
 list* bitpos_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (bitpos_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
    
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -1197,6 +1382,142 @@ void bitfieldGeneric(client *c, int flags) {
     zfree(ops);
 }
 
+static int bitfield_generic_check_and_replay(client *c, int flags)
+{
+    int readonly = 1;
+    struct bitfieldOp *ops = NULL; /* Array of ops to execute at end. */
+    int owtype = BFOVERFLOW_WRAP; /* Overflow type. */
+    size_t bitoffset;
+    size_t highest_write_offset = 0;
+    int numops = 0;
+
+    for (int j = 2; j < c->argc; j++) 
+    {
+        int remargs = c->argc-j-1; /* Remaining args other than current. */
+        char *subcmd = c->argv[j]->ptr; /* Current command name. */
+        int opcode; /* Current operation code. */
+        long long i64 = 0;  /* Signed SET value. */
+        int sign = 0; /* Signed or unsigned type? */
+        int bits = 0; /* Bitfield width in bits. */
+
+        if (!strcasecmp(subcmd,"get") && remargs >= 2)
+        {
+            opcode = BITFIELDOP_GET;
+        }
+        else if (!strcasecmp(subcmd,"set") && remargs >= 3)
+        {
+            opcode = BITFIELDOP_SET;
+        }
+        else if (!strcasecmp(subcmd,"incrby") && remargs >= 3)
+        {
+            opcode = BITFIELDOP_INCRBY;
+        }
+        else if (!strcasecmp(subcmd,"overflow") && remargs >= 1) 
+        {
+            char *owtypename = c->argv[j+1]->ptr;
+            j++;
+            if (!strcasecmp(owtypename,"wrap"))
+            {
+                owtype = BFOVERFLOW_WRAP;
+            }
+            else if (!strcasecmp(owtypename,"sat"))
+            {
+                owtype = BFOVERFLOW_SAT;
+            }
+            else if (!strcasecmp(owtypename,"fail"))
+            {
+                owtype = BFOVERFLOW_FAIL;
+            }
+            else 
+            {
+                addReplyError(c,"Invalid OVERFLOW type specified");
+                zfree(ops);
+                return 1;
+            }
+            continue;
+        } 
+        else 
+        {
+            addReplyErrorObject(c,shared.syntaxerr);
+            zfree(ops);
+            return 1;
+        }
+
+        /* Get the type and offset arguments, common to all the ops. */
+        if (getBitfieldTypeFromArgument(c,c->argv[j+1],&sign,&bits) != C_OK) 
+        {
+            zfree(ops);
+            return 1;
+        }
+
+        if (getBitOffsetFromArgument(c,c->argv[j+2],&bitoffset,1,bits) != C_OK)
+        {
+            zfree(ops);
+            return 1;
+        }
+
+        if (opcode != BITFIELDOP_GET) 
+        {
+            readonly = 0;
+            if (highest_write_offset < bitoffset + bits - 1)
+                highest_write_offset = bitoffset + bits - 1;
+
+            /* INCRBY and SET require another argument. */
+            if (getLongLongFromObjectOrReply(c,c->argv[j+3],&i64,NULL) != C_OK)
+            {
+                zfree(ops);
+                return 1;
+            }
+        }
+
+        /* Populate the array of operations we'll process. */
+        ops = zrealloc(ops,sizeof(*ops)*(numops+1));
+        ops[numops].offset = bitoffset;
+        ops[numops].i64 = i64;
+        ops[numops].opcode = opcode;
+        ops[numops].owtype = owtype;
+        ops[numops].bits = bits;
+        ops[numops].sign = sign;
+        numops++;
+
+        j += 3 - (opcode == BITFIELDOP_GET);
+    }
+
+    robj *o;
+
+    if (readonly) 
+    {
+        /* Lookup for read is ok if key doesn't exit, but errors
+         * if it's not a string. */
+        o = lookupKeyRead(c->db,c->argv[1]);
+        if (o != NULL && checkType(c,o,OBJ_STRING)) 
+        {
+            zfree(ops);
+            return 1;
+        }
+    } 
+    else 
+    {
+        if (flags & BITFIELD_FLAG_READONLY) 
+        {
+            zfree(ops);
+            addReplyError(c, "BITFIELD_RO only supports the GET subcommand");
+            return 1;
+        }
+
+        /* Lookup by making room up to the farest bit reached by
+         * this operation. */
+        if ((o = lookupStringForBitCommand(c,
+            highest_write_offset)) == NULL) 
+        {
+            zfree(ops);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 void bitfieldCommand(client *c) {
     bitfieldGeneric(c, BITFIELD_FLAG_NONE);
 }
@@ -1205,6 +1526,9 @@ list* bitfield_cmd_for_rock(const client* c, list **hash_keys, list **hash_field
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (bitfield_generic_check_and_replay((client *)c, BITFIELD_FLAG_NONE))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -1217,6 +1541,9 @@ list* bitfield_ro_cmd_for_rock(const client *c, list **hash_keys, list **hash_fi
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (bitfield_generic_check_and_replay((client *)c, BITFIELD_FLAG_READONLY))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }

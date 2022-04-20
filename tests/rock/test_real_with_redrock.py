@@ -2323,19 +2323,185 @@ def script_load_and_sha(name: str):
         raise Exception("script_load_and_sha, res2 != arg_v2")
 
 
-
 def lua_cmd_table():
     cmds: dict = {"eval": eval,
                   "script_load_and_sha": script_load_and_sha,
                   }
     return cmds
 
+
+def geoadd(name: str):
+    k = get_key("geo_")
+    delete_whole_key(k)
+    cmd = f"geoadd {k} 13.361389 38.115556 Palermo 15.087269 37.502669 Catania"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def geodist(name: str):
+    k = get_key("geo_")
+    delete_whole_key(k)
+    m1 = "Palermo"
+    m2 = "Catania"
+    cmd = f"geoadd {k} 13.361389 38.115556 {m1} 15.087269 37.502669 {m2}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"geodist {k} {m1} {m2}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"geodist {k} {m1} {m2} km"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"geodist {k} {m1} {m2} mi"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def geohash(name: str):
+    k = get_key("geo_")
+    delete_whole_key(k)
+    m1 = "Palermo"
+    m2 = "Catania"
+    cmd = f"geoadd {k} 13.361389 38.115556 {m1} 15.087269 37.502669 {m2}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"geohash {k} {m1} {m2}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def geopos(name: str):
+    k = get_key("geo_")
+    delete_whole_key(k)
+    m1 = "Palermo"
+    m2 = "Catania"
+    cmd = f"geoadd {k} 13.361389 38.115556 {m1} 15.087269 37.502669 {m2}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"geopos {k} {m1} {m2}"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def georadius(name: str):
+    k = get_key("geo_")
+    delete_whole_key(k)
+    m1 = "Palermo"
+    m2 = "Catania"
+    cmd = f"geoadd {k} 13.361389 38.115556 {m1} 15.087269 37.502669 {m2}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"georadius {k} 15 37 200 km WITHDIST"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"georadius {k} 15 37 200 km WITHCOORD"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"georadius {k} 15 37 200 km WITHDIST WITHCOORD"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def georadiusbymember(name: str):
+    k = get_key("geo_")
+    delete_whole_key(k)
+    m1 = "Agrigento"
+    cmd = f"geoadd {k} 13.583333 37.316667 {m1}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    m2 = "Palermo"
+    m3 = "Catania"
+    cmd = f"geoadd {k} 13.361389 38.115556 {m2} 15.087269 37.502669 {m3}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"GEORADIUSBYMEMBER {k} {m1} 100 km"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def geosearch(name: str):
+    k = get_key("geo_")
+    delete_whole_key(k)
+    m1 = "Palermo"
+    m2 = "Catania"
+    cmd = f"geoadd {k} 13.361389 38.115556 {m1} 15.087269 37.502669 {m2}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    e1 = "edge1"
+    e2 = "edge2"
+    cmd = f"geoadd {k} 12.758489 38.788135 {e1} 17.241510 38.788135 {e2}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"geosearch {k} FROMLONLAT 15 37 BYRADIUS 200 km ASC"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"geosearch {k} FROMLONLAT 15 37 BYBOX 400 400 km ASC WITHCOORD WITHDIST"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def geosearchstore(name: str):
+    k = get_key("geo_")
+    d1 = get_key("geodst1_")
+    d2 = get_key("geodst2_")
+    delete_whole_key(k)
+    delete_whole_key(d1)
+    delete_whole_key(d2)
+    m1 = "Palermo"
+    m2 = "Catania"
+    cmd = f"geoadd {k} 13.361389 38.115556 {m1} 15.087269 37.502669 {m2}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    e1 = "edge1"
+    e2 = "edge2"
+    cmd = f"geoadd {k} 12.758489 38.788135 {e1} 17.241510 38.788135 {e2}"
+    r1.execute_command(cmd)
+    r2.execute_command(cmd)
+    cmd = f"geosearchstore {d1} {k} FROMLONLAT 15 37 BYBOX 400 400 km ASC COUNT 3"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"geosearch {d1} FROMLONLAT 15 37 BYBOX 400 400 km ASC WITHCOORD WITHDIST WITHHASH"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+    cmd = f"geosearchstore {d2} {k} FROMLONLAT 15 37 BYBOX 400 400 km ASC COUNT 3 STOREDIST"
+    res1 = r1.execute_command(cmd)
+    res2 = r2.execute_command(cmd)
+    check(res1, res2, name, cmd)
+
+
+def geo_cmd_table():
+    cmds: dict = {"geoadd": geoadd,
+                  "geodist": geodist,
+                  "geohash": geohash,
+                  "geopos": geopos,
+                  "georadius": georadius,
+                  "georadiusbymember": georadiusbymember,
+                  "geosearch": geosearch,
+                  "geosearchstore": geosearchstore,
+                  }
+    return cmds
+
+
 def init_cmd_table(table: str):
     if table == "str":
         return string_cmd_table()
     elif table == "list":
         return list_cmd_table()
-    elif table == "bitcount":
+    elif table == "bitmap":
         return bitmap_cmd_table()
     elif table == "hash":
         return hash_cmd_table()
@@ -2345,16 +2511,29 @@ def init_cmd_table(table: str):
         return zset_cmd_table()
     elif table == "generic":
         return generic_cmd_table()
-    elif table == "transaction":
+    elif table == "tran":
         return transaction_cmd_table()
     elif table == "lua":
         return lua_cmd_table()
+    elif table == "geo":
+        return geo_cmd_table()
     elif table == "all":
         str_cmds = string_cmd_table()
         list_cmds = list_cmd_table()
-        return {**str_cmds, **list_cmds}
+        bitcount_cmds = bitmap_cmd_table()
+        hash_cmds = hash_cmd_table()
+        set_cmds = set_cmd_table()
+        zset_cmds = zset_cmd_table()
+        generic_cmds = generic_cmd_table()
+        tran_cmds = transaction_cmd_table()
+        lua_cmds = lua_cmd_table()
+        geo_cmds = geo_cmd_table()
+        return {**str_cmds, **list_cmds, **bitcount_cmds,
+                **hash_cmds, **set_cmds, **zset_cmds,
+                **generic_cmds, **tran_cmds, **lua_cmds,
+                **geo_cmds}
     else:
-        print("un-recognize table, select one from all, str, list")
+        print("un-recognize table, select one from all, str, list, bitmap, hash, set, zset, generic, tran, lua, geo")
         return {}
 
 

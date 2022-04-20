@@ -2600,7 +2600,7 @@ dictType setAccumulatorDictType = {
     NULL                       /* allow to expand */
 };
 
-int zunion_inter_diff_generic_command_check_and_reply(client *c, robj *dstkey, int numkeysIndex, int op)
+static int zunion_inter_diff_generic_command_check_and_reply(client *c, robj *dstkey, int numkeysIndex, int op)
 {
     UNUSED(dstkey);
     UNUSED(op);
@@ -3516,10 +3516,33 @@ void zcountCommand(client *c) {
     addReplyLongLong(c, count);
 }
 
+static int zcount_command_check_and_reply(client *c)
+{
+    robj *key = c->argv[1];
+    robj *zobj;
+    zrangespec range;
+
+    /* Parse the range arguments */
+    if (zslParseRange(c->argv[2],c->argv[3],&range) != C_OK) {
+        addReplyError(c,"min or max is not a float");
+        return 1;
+    }
+
+    /* Lookup the sorted set */
+    if ((zobj = lookupKeyReadOrReply(c, key, shared.czero)) == NULL ||
+        checkType(c, zobj, OBJ_ZSET)) 
+        return 1;
+
+    return 0;
+}
+
 list* zcount_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (zcount_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -3603,10 +3626,37 @@ void zlexcountCommand(client *c) {
     addReplyLongLong(c, count);
 }
 
+static int zlexcount_command_check_and_reply(client *c)
+{
+    robj *key = c->argv[1];
+    robj *zobj;
+    zlexrangespec range;
+
+    /* Parse the range arguments */
+    if (zslParseLexRange(c->argv[2],c->argv[3],&range) != C_OK) 
+    {
+        addReplyError(c,"min or max not valid string range item");
+        return 1;
+    }
+
+    /* Lookup the sorted set */
+    if ((zobj = lookupKeyReadOrReply(c, key, shared.czero)) == NULL ||
+        checkType(c, zobj, OBJ_ZSET))
+    {
+        zslFreeLexRange(&range);
+        return 1;
+    }
+
+    return 0;
+}
+
 list* zlexcount_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (zlexcount_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -3921,10 +3971,25 @@ void zcardCommand(client *c) {
     addReplyLongLong(c,zsetLength(zobj));
 }
 
+static int zcard_command_check_and_reply(client *c)
+{
+    robj *key = c->argv[1];
+    robj *zobj;
+
+    if ((zobj = lookupKeyReadOrReply(c,key,shared.czero)) == NULL ||
+        checkType(c,zobj,OBJ_ZSET)) 
+        return 1;
+
+    return 0;
+}
+
 list* zcard_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (zcard_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -3944,10 +4009,25 @@ void zscoreCommand(client *c) {
     }
 }
 
+static int zscore_command_check_and_reply(client *c)
+{
+    robj *key = c->argv[1];
+    robj *zobj;
+
+    if ((zobj = lookupKeyReadOrReply(c,key,shared.null[c->resp])) == NULL ||
+        checkType(c,zobj,OBJ_ZSET)) 
+        return 1;
+
+    return 0;
+}
+
 list* zscore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (zscore_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -3970,10 +4050,24 @@ void zmscoreCommand(client *c) {
     }
 }
 
+static int zmscore_command_check_and_reply(client *c)
+{
+    robj *key = c->argv[1];
+
+    robj *zobj = lookupKeyRead(c->db,key);
+    if (checkType(c,zobj,OBJ_ZSET)) 
+        return 1;
+
+    return 0;
+}
+
 list* zmscore_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (zmscore_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -4030,10 +4124,28 @@ void zscanCommand(client *c) {
     scanGenericCommand(c,o,cursor);
 }
 
+static int zscan_command_check_and_reply(client *c)
+{
+    robj *o;
+    unsigned long cursor;
+
+    if (parseScanCursorOrReply(c,c->argv[2],&cursor) == C_ERR) 
+        return 1;
+
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL ||
+        checkType(c,o,OBJ_ZSET)) 
+        return 1;
+
+    return 0;
+}
+
 list* zscan_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (zscan_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -4161,10 +4273,23 @@ void zpopminCommand(client *c) {
         c->argc == 3 ? c->argv[2] : NULL);
 }
 
+static int zpopmin_command_check_and_reply(client *c)
+{
+    if (c->argc > 3) {
+        addReplyErrorObject(c,shared.syntaxerr);
+        return 1;
+    }
+
+    return 0;
+}
+
 list* zpopmin_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (zpopmin_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -4179,10 +4304,24 @@ void zpopmaxCommand(client *c) {
         c->argc == 3 ? c->argv[2] : NULL);
 }
 
+static int zpopmax_command_check_and_reply(client *c)
+{
+    if (c->argc > 3) 
+    {
+        addReplyErrorObject(c,shared.syntaxerr);
+        return 1;
+    }
+
+    return 0;
+}
+
 list* zpopmax_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (zpopmax_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }

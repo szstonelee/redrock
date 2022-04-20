@@ -296,7 +296,7 @@ list* zrandmember_cmd_for_rock(const client *c, list **hash_keys, list **hash_fi
 list* hset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
 list* hsetnx_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
 list* hget_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
-list* hmset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
+// list* hmset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
 list* hmget_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
 list* hincrby_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
 list* hincrbyfloat_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
@@ -309,7 +309,7 @@ list* hgetall_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields
 list* hexists_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
 list* hrandfield_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
 list* hscan_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
-list* hmset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
+// list* hmset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);
 
 // db.c
 list* move_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields);

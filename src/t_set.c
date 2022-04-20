@@ -420,10 +420,43 @@ void smoveCommand(client *c) {
     addReply(c,shared.cone);
 }
 
+static int smove_commmand_check_and_reply(client *c)
+{
+    robj *srcset, *dstset, *ele;
+    srcset = lookupKeyWrite(c->db,c->argv[1]);
+    dstset = lookupKeyWrite(c->db,c->argv[2]);
+    ele = c->argv[3];
+
+    /* If the source key does not exist return 0 */
+    if (srcset == NULL) {
+        addReply(c,shared.czero);
+        return 1;
+    }
+
+    /* If the source key has the wrong type, or the destination key
+     * is set and has the wrong type, return with an error. */
+    if (checkType(c,srcset,OBJ_SET) ||
+        checkType(c,dstset,OBJ_SET)) 
+        return 1;
+
+    /* If srcset and dstset are equal, SMOVE is a no-op */
+    if (srcset == dstset) 
+    {
+        addReply(c,setTypeIsMember(srcset,ele->ptr) ?
+            shared.cone : shared.czero);
+        return 1;
+    }
+
+    return 0;
+}
+
 list* smove_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (smove_commmand_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
@@ -440,10 +473,24 @@ void sismemberCommand(client *c) {
         addReply(c,shared.czero);
 }
 
+static int sismember_command_check_and_reply(client *c)
+{
+    robj *set;
+
+    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,set,OBJ_SET)) 
+        return 1;
+
+    return 0;
+}
+
 list* sismember_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (sismember_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -467,10 +514,22 @@ void smismemberCommand(client *c) {
     }
 }
 
+static int smismember_commmand_check_and_reply(client *c)
+{
+    robj *set = lookupKeyRead(c->db,c->argv[1]);
+    if (set && checkType(c,set,OBJ_SET)) 
+        return 1;
+
+    return 0;
+}
+
 list* smismember_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (smismember_commmand_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -484,10 +543,24 @@ void scardCommand(client *c) {
     addReplyLongLong(c,setTypeSize(o));
 }
 
+static int scard_command_check_and_reply(client *c)
+{
+    robj *o;
+
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,o,OBJ_SET)) 
+        return 1;
+
+    return 0;
+}
+
 list* scard_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (scard_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -694,10 +767,33 @@ void spopCommand(client *c) {
     server.dirty++;
 }
 
+static int spop_command_check_and_reply(client *c)
+{
+    if (c->argc == 3) 
+    {
+        return 0;
+    } 
+    else if (c->argc > 3) 
+    {
+        addReplyErrorObject(c,shared.syntaxerr);
+        return 1;
+    }
+
+    robj *set;
+    if ((set = lookupKeyWriteOrReply(c,c->argv[1],shared.null[c->resp]))
+         == NULL || checkType(c,set,OBJ_SET)) 
+         return 1;
+
+    return 0;
+}
+
 list* spop_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (spop_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -888,10 +984,34 @@ void srandmemberCommand(client *c) {
     }
 }
 
+static int srandmember_command_check_and_reply(client *c)
+{
+    if (c->argc == 3) 
+    {
+        return 0;
+    } 
+    else if (c->argc > 3) 
+    {
+        addReplyErrorObject(c,shared.syntaxerr);
+        return 1;
+    }
+
+    /* Handle variant without <count> argument. Reply with simple bulk string */
+    robj *set;
+    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.null[c->resp]))
+        == NULL || checkType(c,set,OBJ_SET)) 
+        return 1;
+
+    return 0;
+}
+
 list* srandmember_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (srandmember_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -1296,10 +1416,28 @@ void sscanCommand(client *c) {
     scanGenericCommand(c,set,cursor);
 }
 
+static int sscan_command_check_and_reply(client *c)
+{
+    robj *set;
+    unsigned long cursor;
+
+    if (parseScanCursorOrReply(c,c->argv[2],&cursor) == C_ERR) 
+        return 1;
+
+    if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL ||
+        checkType(c,set,OBJ_SET)) 
+        return 1;
+
+    return 0;
+}
+
 list* sscan_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (sscan_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }

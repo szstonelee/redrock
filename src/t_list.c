@@ -348,10 +348,36 @@ void linsertCommand(client *c) {
     addReplyLongLong(c,listTypeLength(subject));
 }
 
+static int linsert_command_check_and_reply(client *c)
+{
+    if (strcasecmp(c->argv[2]->ptr,"after") == 0) 
+    {
+    } 
+    else if (strcasecmp(c->argv[2]->ptr,"before") == 0) 
+    {
+    } 
+    else 
+    {
+        addReplyErrorObject(c,shared.syntaxerr);
+        return 1;
+    }
+
+    robj *subject;
+
+    if ((subject = lookupKeyWriteOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,subject,OBJ_LIST)) 
+        return 1;
+
+    return 0;
+}
+
 list* linsert_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (linsert_command_check_and_reply((client*) c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -363,10 +389,22 @@ void llenCommand(client *c) {
     addReplyLongLong(c,listTypeLength(o));
 }
 
+static int llen_command_check_and_reply(client *c)
+{
+    robj *o = lookupKeyReadOrReply(c,c->argv[1],shared.czero);
+    if (o == NULL || checkType(c,o,OBJ_LIST)) 
+        return 1;
+
+    return 0;
+}
+
 list* llen_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (llen_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -396,10 +434,26 @@ void lindexCommand(client *c) {
     }
 }
 
+static int lindex_command_check_and_reply(client *c)
+{
+    robj *o = lookupKeyReadOrReply(c,c->argv[1],shared.null[c->resp]);
+    if (o == NULL || checkType(c,o,OBJ_LIST)) 
+        return 1;
+
+    long index;
+    if ((getLongFromObjectOrReply(c, c->argv[2], &index, NULL) != C_OK))
+        return 1;
+
+    return 0;
+}
+
 list* lindex_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (lindex_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -431,10 +485,26 @@ void lsetCommand(client *c) {
     }
 }
 
+static int lset_command_check_and_reply(client *c)
+{
+    robj *o = lookupKeyWriteOrReply(c,c->argv[1],shared.nokeyerr);
+    if (o == NULL || checkType(c,o,OBJ_LIST)) 
+        return 1;
+
+    long index;
+    if ((getLongFromObjectOrReply(c, c->argv[2], &index, NULL) != C_OK))
+        return 1;
+
+    return 0;
+}
+
 list* lset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (lset_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -547,6 +617,37 @@ void popGenericCommand(client *c, int where) {
     }
 }
 
+static int pop_generic_command_check_and_reply(client *c)
+{
+    long count = 0;
+
+    if (c->argc > 3) 
+    {
+        addReplyErrorFormat(c,"wrong number of arguments for '%s' command",
+                            c->cmd->name);
+        return 1;
+    } 
+    else if (c->argc == 3) 
+    {
+        /* Parse the optional count argument. */
+        if (getPositiveLongFromObjectOrReply(c,c->argv[2],&count,NULL) != C_OK) 
+            return 1;
+
+        if (count == 0) 
+        {
+            /* Fast exit path. */
+            addReplyNullArray(c);
+            return 1;
+        }
+    }
+
+    robj *o = lookupKeyWriteOrReply(c, c->argv[1], shared.null[c->resp]);
+    if (o == NULL || checkType(c, o, OBJ_LIST))
+        return 1;
+
+    return 0;
+}
+
 /* LPOP <key> [count] */
 void lpopCommand(client *c) {
     popGenericCommand(c,LIST_HEAD);
@@ -556,6 +657,9 @@ list* lpop_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (pop_generic_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -569,6 +673,9 @@ list* rpop_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (pop_generic_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -587,10 +694,29 @@ void lrangeCommand(client *c) {
     addListRangeReply(c,o,start,end,0);
 }
 
+static int lrange_command_check_and_reply(client *c)
+{
+    robj *o;
+    long start, end;
+
+    if ((getLongFromObjectOrReply(c, c->argv[2], &start, NULL) != C_OK) ||
+        (getLongFromObjectOrReply(c, c->argv[3], &end, NULL) != C_OK)) 
+        return 1;
+
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptyarray)) == NULL
+         || checkType(c,o,OBJ_LIST)) 
+         return 1;
+
+    return 0;
+}
+
 list* lrange_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (lrange_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -642,10 +768,30 @@ void ltrimCommand(client *c) {
     addReply(c,shared.ok);
 }
 
+static int ltrim_command_check_and_reply(client *c)
+{
+    long start, end;
+
+    if ((getLongFromObjectOrReply(c, c->argv[2], &start, NULL) != C_OK) ||
+        (getLongFromObjectOrReply(c, c->argv[3], &end, NULL) != C_OK)) 
+        return 1;
+
+    robj *o;
+
+    if ((o = lookupKeyWriteOrReply(c,c->argv[1],shared.ok)) == NULL ||
+        checkType(c,o,OBJ_LIST)) 
+        return 1;
+
+    return 0;
+}
+
 list* ltrim_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (ltrim_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -761,10 +907,63 @@ void lposCommand(client *c) {
     }
 }
 
+static int lpos_command_check_and_reply(client *c)
+{
+    long rank = 1, count = -1, maxlen = 0; /* Count -1: option not given. */
+
+    /* Parse the optional arguments. */
+    for (int j = 3; j < c->argc; j++) 
+    {
+        char *opt = c->argv[j]->ptr;
+        int moreargs = (c->argc-1)-j;
+
+        if (!strcasecmp(opt,"RANK") && moreargs) 
+        {
+            j++;
+
+            if (getLongFromObjectOrReply(c, c->argv[j], &rank, NULL) != C_OK)
+                return 1;
+
+            if (rank == 0) 
+            {
+                addReplyError(c,"RANK can't be zero: use 1 to start from "
+                                "the first match, 2 from the second, ...");
+                return 1;
+            }
+        } 
+        else if (!strcasecmp(opt,"COUNT") && moreargs) 
+        {
+            j++;
+
+            if (getPositiveLongFromObjectOrReply(c, c->argv[j], &count,
+              "COUNT can't be negative") != C_OK)
+                return 1;
+        } 
+        else if (!strcasecmp(opt,"MAXLEN") && moreargs) 
+        {
+            j++;
+
+            if (getPositiveLongFromObjectOrReply(c, c->argv[j], &maxlen, 
+              "MAXLEN can't be negative") != C_OK)
+                return 1;
+        } 
+        else 
+        {
+            addReplyErrorObject(c,shared.syntaxerr);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 list* lpos_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (lpos_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -814,10 +1013,26 @@ void lremCommand(client *c) {
     addReplyLongLong(c,removed);
 }
 
+static int lrem_command_check_and_reply(client *c)
+{
+    long toremove;
+    if ((getLongFromObjectOrReply(c, c->argv[2], &toremove, NULL) != C_OK))
+        return 1;
+
+    robj *subject = lookupKeyWriteOrReply(c,c->argv[1],shared.czero);
+    if (subject == NULL || checkType(c,subject,OBJ_LIST)) 
+        return 1;
+
+    return 0;
+}
+
 list* lrem_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (lrem_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -915,10 +1130,28 @@ void lmoveCommand(client *c) {
     lmoveGenericCommand(c, wherefrom, whereto);
 }
 
+static int lmove_command_check_and_reply(client *c)
+{
+    int wherefrom, whereto;
+
+    if (getListPositionFromObjectOrReply(c,c->argv[3],&wherefrom)
+        != C_OK) 
+        return 1;
+
+    if (getListPositionFromObjectOrReply(c,c->argv[4],&whereto)
+        != C_OK) 
+        return 1;
+
+    return 0;
+}
+
 list* lmove_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (lmove_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
@@ -1139,10 +1372,33 @@ void blmoveCommand(client *c) {
     blmoveGenericCommand(c,wherefrom,whereto,timeout);
 }
 
+static int blmove_command_check_and_reply(client *c)
+{
+    mstime_t timeout;
+    int wherefrom, whereto;
+
+    if (getListPositionFromObjectOrReply(c,c->argv[3],&wherefrom)
+        != C_OK) 
+        return 1;
+
+    if (getListPositionFromObjectOrReply(c,c->argv[4],&whereto)
+        != C_OK) 
+        return 1;
+
+    if (getTimeoutFromObjectOrReply(c,c->argv[5],&timeout,UNIT_SECONDS)
+        != C_OK) 
+        return 1;
+
+    return 0;
+}
+
 list* blmoove_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (blmove_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
@@ -1155,10 +1411,24 @@ void brpoplpushCommand(client *c) {
     blmoveGenericCommand(c, LIST_TAIL, LIST_HEAD, timeout);
 }
 
+static int brpoplpush_command_check_and_reply(client *c)
+{
+    mstime_t timeout;
+
+    if (getTimeoutFromObjectOrReply(c,c->argv[3],&timeout,UNIT_SECONDS)
+        != C_OK) 
+        return 1;
+
+    return 0;
+}
+
 list* brpoplpush_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (brpoplpush_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_multi_keys_for_rock_exclude_tails(c, 1, 1, 1);
 }

@@ -497,10 +497,51 @@ void geoaddCommand(client *c) {
     zaddCommand(c);
 }
 
+static int geoadd_command_check_and_reply(client *c)
+{
+    int xx = 0, nx = 0, longidx = 2;
+
+    /* Parse options. At the end 'longidx' is set to the argument position
+     * of the longitude of the first element. */
+    while (longidx < c->argc) 
+    {
+        char *opt = c->argv[longidx]->ptr;
+        if (!strcasecmp(opt,"nx")) 
+        {
+            nx = 1;
+        }
+        else if (!strcasecmp(opt,"xx")) 
+        {
+            xx = 1;
+        }
+        else if (!strcasecmp(opt,"ch")) 
+        {
+            // Do nothing
+        }
+        else 
+        {
+            break;
+        }
+        longidx++;
+    }
+
+    if ((c->argc - longidx) % 3 || (xx && nx)) 
+    {
+        /* Need an odd number of arguments if we got this far... */
+            addReplyErrorObject(c,shared.syntaxerr);
+        return 1;
+    }
+
+    return 0;
+}
+
 list* geoadd_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (geoadd_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -817,6 +858,19 @@ void georadiusGeneric(client *c, int srcKeyIndex, int flags) {
     geoArrayFree(ga);
 }
 
+static int georadius_generic_check_and_reply(client *c, int srcKeyIndex, int flags)
+{
+    UNUSED(flags);
+
+    /* Look up the requested zset */
+    robj *zobj = NULL;
+    if ((zobj = lookupKeyReadOrReply(c, c->argv[srcKeyIndex], shared.emptyarray)) == NULL ||
+        checkType(c, zobj, OBJ_ZSET)) 
+        return 1;
+
+    return 0;
+}
+
 /* GEORADIUS wrapper function. */
 void georadiusCommand(client *c) {
     georadiusGeneric(c, 1, RADIUS_COORDS);
@@ -826,6 +880,9 @@ list* georadius_cmd_for_rock(const client *c, list **hash_keys, list **hash_fiel
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (georadius_generic_check_and_reply((client*)c, 1, RADIUS_COORDS))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -840,6 +897,9 @@ list* georadiusbymember_cmd_for_rock(const client *c, list **hash_keys, list **h
     UNUSED(hash_keys);
     UNUSED(hash_fields);
 
+    if (georadius_generic_check_and_reply((client*)c, 1, RADIUS_MEMBER))
+        return shared.rock_cmd_fail;
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -852,6 +912,9 @@ list* georadius_ro_cmd_for_rock(const client *c, list **hash_keys, list **hash_f
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (georadius_generic_check_and_reply((client*)c, 1, RADIUS_COORDS|RADIUS_NOSTORE))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -866,6 +929,9 @@ list* georadiusbymember_ro_cmd_for_rock(const client *c, list **hash_keys, list 
     UNUSED(hash_keys);
     UNUSED(hash_fields);
 
+    if (georadius_generic_check_and_reply((client*)c, 1, RADIUS_MEMBER|RADIUS_NOSTORE))
+        return shared.rock_cmd_fail;
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -878,6 +944,9 @@ list* geosearch_cmd_for_rock(const client *c, list **hash_keys, list **hash_fiel
     UNUSED(hash_keys);
     UNUSED(hash_fields);
 
+    if (georadius_generic_check_and_reply((client*)c, 1, GEOSEARCH))
+        return shared.rock_cmd_fail;
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -889,6 +958,9 @@ list* geosearchstore_cmd_for_rock(const client *c, list **hash_keys, list **hash
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (georadius_generic_check_and_reply((client*)c, 2, GEOSEARCH|GEOSEARCHSTORE))
+        return shared.rock_cmd_fail;
 
     return generic_get_multi_keys_for_rock_in_range(c, 1, 3);
 }
@@ -955,10 +1027,23 @@ void geohashCommand(client *c) {
     }
 }
 
+static int geohash_command_check_and_reply(client *c)
+{
+    /* Look up the requested zset */
+    robj *zobj = lookupKeyRead(c->db, c->argv[1]);
+    if (checkType(c, zobj, OBJ_ZSET)) 
+        return 1;
+
+    return 0;
+}
+
 list* geohash_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (geohash_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -995,10 +1080,23 @@ void geoposCommand(client *c) {
     }
 }
 
+static int geopos_command_check_and_reply(client *c)
+{
+    /* Look up the requested zset */
+    robj *zobj = lookupKeyRead(c->db, c->argv[1]);
+    if (checkType(c, zobj, OBJ_ZSET)) 
+        return 1;
+
+    return 0;
+}
+
 list* geopos_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (geopos_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -1042,10 +1140,39 @@ void geodistCommand(client *c) {
             geohashGetDistance(xyxy[0],xyxy[1],xyxy[2],xyxy[3]) / to_meter);
 }
 
+static int geodist_command_check_and_reply(client *c)
+{
+    double to_meter = 1;
+
+    /* Check if there is the unit to extract, otherwise assume meters. */
+    if (c->argc == 5) 
+    {
+        to_meter = extractUnitOrReply(c,c->argv[4]);
+        if (to_meter < 0) 
+            return 1;
+    } 
+    else if (c->argc > 5) 
+    {
+        addReplyErrorObject(c,shared.syntaxerr);
+        return 1;
+    }
+
+    /* Look up the requested zset */
+    robj *zobj = NULL;
+    if ((zobj = lookupKeyReadOrReply(c, c->argv[1], shared.null[c->resp]))
+        == NULL || checkType(c, zobj, OBJ_ZSET)) 
+        return 1;
+
+    return 0;
+}
+
 list* geodist_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (geodist_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }

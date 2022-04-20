@@ -784,11 +784,23 @@ void hsetnxCommand(client *c) {
     }
 }
 
+static int hsetnx_command_check_and_reply(client *c)
+{
+    robj *o;
+    if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) 
+        return 1;
+
+    return 0;
+}
+
 /* NOTE: hsetnx check the field's value for exists, so we need to restore them 
  *       from rock hash. check hashTypeGetFromHashTable() for more details
  */
 list* hsetnx_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    if (hsetnx_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
+
     list *keys = generic_get_one_key_for_rock(c, 1);
 
     if (keys == NULL)
@@ -829,20 +841,29 @@ void hsetCommand(client *c) {
     server.dirty += (c->argc - 2)/2;
 }
 
-
-list* hmset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
+static int hset_command_check_and_reply(client *c)
 {
-    UNUSED(hash_keys);
-    UNUSED(hash_fields);
+    robj *o;
 
-    return generic_get_one_key_for_rock(c, 1);
+    if ((c->argc % 2) == 1) 
+    {
+        addReplyErrorFormat(c,"wrong number of arguments for '%s' command",c->cmd->name);
+        return 1;
+    }
+
+    if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) 
+        return 1;
+
+    return 0;
 }
-
 
 list* hset_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (hset_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -882,8 +903,50 @@ void hincrbyCommand(client *c) {
     server.dirty++;
 }
 
+static int hincrby_command_check_and_reply(client *c)
+{
+    long long incr;
+    if (getLongLongFromObjectOrReply(c,c->argv[3],&incr,NULL) != C_OK) 
+        return 1;
+
+    robj *o;
+    if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) 
+        return 1;
+
+    unsigned int vlen;
+    unsigned char *vstr;
+    long long value;
+    if (hashTypeGetValue(o,c->argv[2]->ptr,&vstr,&vlen,&value) == C_OK) 
+    {
+        if (vstr) 
+        {
+            if (string2ll((char*)vstr,vlen,&value) == 0) 
+            {
+                addReplyError(c,"hash value is not an integer");
+                return 1;
+            }
+        } /* Else hashTypeGetValue() already stored it into &value */
+    } 
+    else 
+    {
+        value = 0;
+    }
+
+    long long oldvalue = value;
+    if ((incr < 0 && oldvalue < 0 && incr < (LLONG_MIN-oldvalue)) ||
+        (incr > 0 && oldvalue > 0 && incr > (LLONG_MAX-oldvalue))) {
+        addReplyError(c,"increment or decrement would overflow");
+        return 1;
+    }
+
+    return 0;
+}
+
 list* hincrby_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    if (hincrby_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
+
     list *keys = generic_get_one_key_for_rock(c, 1);
 
     if (keys == NULL)
@@ -945,8 +1008,55 @@ void hincrbyfloatCommand(client *c) {
     decrRefCount(newobj);
 }
 
+static int hincrbyfloat_command_check_and_reply(client *c)
+{
+    long double incr;
+    if (getLongDoubleFromObjectOrReply(c,c->argv[3],&incr,NULL) != C_OK) 
+        return 1;
+
+    robj *o;
+    if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) 
+        return 1;
+
+    unsigned char *vstr;
+    unsigned int vlen;
+    long long ll;
+    long double value;
+    if (hashTypeGetValue(o,c->argv[2]->ptr,&vstr,&vlen,&ll) == C_OK) 
+    {
+        if (vstr) 
+        {
+            if (string2ld((char*)vstr,vlen,&value) == 0) 
+            {
+                addReplyError(c,"hash value is not a float");
+                return 1;
+            }
+        } 
+        else 
+        {
+            value = (long double)ll;
+        }
+    } 
+    else 
+    {
+        value = 0;
+    }
+
+    value += incr;
+    if (isnan(value) || isinf(value)) 
+    {
+        addReplyError(c,"increment would produce NaN or Infinity");
+        return 1;
+    }
+
+    return 0;
+}
+
 list* hincrbyfloat_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    if (hincrbyfloat_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
+
     list *keys = generic_get_one_key_for_rock(c, 1);
 
     if (keys == NULL)
@@ -1006,8 +1116,22 @@ void hgetCommand(client *c) {
     addHashFieldToReply(c, o, c->argv[2]->ptr);
 }
 
+static int hget_command_check_and_reply(client *c)
+{
+    robj *o;
+
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.null[c->resp])) == NULL ||
+        checkType(c,o,OBJ_HASH)) 
+        return 1;
+
+    return 0;
+}
+
 list* hget_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    if (hget_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
+
     list *keys = generic_get_one_key_for_rock(c, 1);
 
     if (keys == NULL)
@@ -1039,8 +1163,20 @@ void hmgetCommand(client *c) {
     }
 }
 
+static int hmget_command_check_and_reply(client *c)
+{
+    robj *o = lookupKeyRead(c->db, c->argv[1]);
+    if (checkType(c,o,OBJ_HASH)) 
+        return 1;
+
+    return 0;
+}
+
 list* hmget_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    if (hmget_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
+
     list *keys = generic_get_one_key_for_rock(c, 1);
 
     if (keys == NULL)
@@ -1082,10 +1218,23 @@ void hdelCommand(client *c) {
     addReplyLongLong(c,deleted);
 }
 
+static int hdel_command_check_and_reply(client *c)
+{
+    robj *o;
+    if ((o = lookupKeyWriteOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,o,OBJ_HASH)) 
+        return 1;
+
+    return 0;
+}
+
 list* hdel_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (hdel_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -1099,10 +1248,23 @@ void hlenCommand(client *c) {
     addReplyLongLong(c,hashTypeLength(o));
 }
 
+static int hlen_command_check_and_reply(client *c)
+{
+    robj *o;
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,o,OBJ_HASH)) 
+        return 1;
+
+    return 0;
+}
+
 list* hlen_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (hlen_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -1118,8 +1280,21 @@ void hstrlenCommand(client *c) {
     addReplyLongLong(c,hashTypeGetValueLength(o,c->argv[2]->ptr));
 }
 
+static int hstrlen_command_check_and_reply(client *c)
+{
+    robj *o;
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,o,OBJ_HASH)) 
+        return 1;
+    
+    return 0;
+}
+
 list* hstrlen_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    if (hstrlen_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
+
     list *keys = generic_get_one_key_for_rock(c, 1);
 
     if (keys == NULL)
@@ -1192,6 +1367,19 @@ void genericHgetallCommand(client *c, int flags) {
     on_visit_all_fields_of_hash_for_readonly(c->db->id, c->argv[1]->ptr);
 }
 
+static int generic_hgeall_command_check_and_reply(client *c, int flags)
+{
+    robj *emptyResp = (flags & OBJ_HASH_KEY && flags & OBJ_HASH_VALUE) ?
+        shared.emptymap[c->resp] : shared.emptyarray;
+
+    robj *o;
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],emptyResp))
+        == NULL || checkType(c,o,OBJ_HASH)) 
+        return 1;
+
+    return 0;
+}
+
 void hkeysCommand(client *c) {
     genericHgetallCommand(c,OBJ_HASH_KEY);
 }
@@ -1200,6 +1388,9 @@ list* hkeys_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (generic_hgeall_command_check_and_reply((client*)c, OBJ_HASH_KEY))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -1210,6 +1401,9 @@ void hvalsCommand(client *c) {
 
 list* hvals_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    if (generic_hgeall_command_check_and_reply((client*)c, OBJ_HASH_VALUE))
+        return shared.rock_cmd_fail;
+
     return generic_get_whole_key_or_hash_fields_for_rock(c, 1, hash_keys, hash_fields);
 }
 
@@ -1219,6 +1413,9 @@ void hgetallCommand(client *c) {
 
 list* hgetall_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    if (generic_hgeall_command_check_and_reply((client*)c, OBJ_HASH_KEY|OBJ_HASH_VALUE))
+        return shared.rock_cmd_fail;
+
     return generic_get_whole_key_or_hash_fields_for_rock(c, 1, hash_keys, hash_fields);
 }
 
@@ -1232,6 +1429,16 @@ void hexistsCommand(client *c) {
     addReply(c, hashTypeExists(o,c->argv[2]->ptr) ? shared.cone : shared.czero);
 }
 
+static int hexists_command_check_and_reply(client *c)
+{
+    robj *o;
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,o,OBJ_HASH)) 
+        return 1;
+
+    return 0;
+}
+
 /* NOTE: Because the Redis get the value from hash field to 
  *       check whether the field exist,
  *       we need to recover the fields if it is in RocksDB.
@@ -1239,6 +1446,9 @@ void hexistsCommand(client *c) {
  */
 list* hexists_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    if (hexists_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
+
     list *keys = generic_get_one_key_for_rock(c, 1);
 
     if (keys == NULL)
@@ -1248,6 +1458,16 @@ list* hexists_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields
     }
 
     return keys;
+}
+
+void hscanCommand(client *c) {
+    robj *o;
+    unsigned long cursor;
+
+    if (parseScanCursorOrReply(c,c->argv[2],&cursor) == C_ERR) return;
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL ||
+        checkType(c,o,OBJ_HASH)) return;
+    scanGenericCommand(c,o,cursor);
 }
 
 static int hsacn_command_check_and_reply(client *c)
@@ -1263,16 +1483,6 @@ static int hsacn_command_check_and_reply(client *c)
         return 1;
 
     return 0;   
-}
-
-void hscanCommand(client *c) {
-    robj *o;
-    unsigned long cursor;
-
-    if (parseScanCursorOrReply(c,c->argv[2],&cursor) == C_ERR) return;
-    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptyscan)) == NULL ||
-        checkType(c,o,OBJ_HASH)) return;
-    scanGenericCommand(c,o,cursor);
 }
 
 list* hscan_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
@@ -1518,28 +1728,6 @@ void hrandfieldWithCountCommand(client *c, long l, int withvalues) {
     }
 }
 
-static int hrandfield_commannd_check_and_reply(client *c)
-{
-    long l;
-    robj *hash;
-
-    if (c->argc >= 3) {
-        if (getLongFromObjectOrReply(c,c->argv[2],&l,NULL) != C_OK) return 1;
-        if (c->argc > 4 || (c->argc == 4 && strcasecmp(c->argv[3]->ptr,"withvalues"))) {
-            addReplyErrorObject(c,shared.syntaxerr);
-            return 1;
-        } 
-    }
-
-    /* Handle variant without <count> argument. Reply with simple bulk string */
-    if ((hash = lookupKeyReadOrReply(c,c->argv[1],shared.null[c->resp]))== NULL ||
-        checkType(c,hash,OBJ_HASH)) {
-        return 1;
-    }
-
-    return 0;
-}
-
 /* HRANDFIELD [<count> WITHVALUES] */
 void hrandfieldCommand(client *c) {
     long l;
@@ -1568,9 +1756,34 @@ void hrandfieldCommand(client *c) {
     hashReplyFromZiplistEntry(c, &ele);
 }
 
+static int hrandfield_command_check_and_reply(client *c)
+{
+    long l;
+    if (c->argc >= 3) 
+    {
+        if (getLongFromObjectOrReply(c,c->argv[2],&l,NULL) != C_OK) 
+            return 1;
+
+        if (c->argc > 4 || (c->argc == 4 && strcasecmp(c->argv[3]->ptr,"withvalues"))) 
+        {
+            addReplyErrorObject(c,shared.syntaxerr);
+            return 1;
+        }
+        return 0; 
+    }
+
+    /* Handle variant without <count> argument. Reply with simple bulk string */
+    robj *hash;
+    if ((hash = lookupKeyReadOrReply(c,c->argv[1],shared.null[c->resp]))== NULL ||
+        checkType(c,hash,OBJ_HASH)) 
+        return 1;
+
+    return 0;
+}
+
 list* hrandfield_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
-    if (hrandfield_commannd_check_and_reply((client*)c))
+    if (hrandfield_command_check_and_reply((client*)c))
         return shared.rock_cmd_fail;
 
     int withvalues = 0;

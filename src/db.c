@@ -1259,6 +1259,8 @@ void moveCommand(client *c) {
 
 list* move_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
+    // NOTE: move command can not use for move_command_check_and_reply
+    // because in async mode, if (server.cluster_enabled) could be differeent
     return generic_get_whole_key_or_hash_fields_for_rock(c, 1, hash_keys, hash_fields);
 }
 

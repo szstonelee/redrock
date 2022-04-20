@@ -269,11 +269,26 @@ void setCommand(client *c) {
     setGenericCommand(c,flags,c->argv[1],c->argv[2],expire,unit,NULL,NULL);
 }
 
+static int set_command_check_and_reply(client *c)
+{
+    robj *expire = NULL;
+    int unit = UNIT_SECONDS;
+    int flags = OBJ_NO_FLAGS;
+
+    if (parseExtendedStringArgumentsOrReply(c,&flags,&unit,&expire,COMMAND_SET) != C_OK) 
+        return 1;
+
+    return 0;
+}
+
 /* NOTE: for SET command, if only SET <key> <val>, no need for rock key */
 list* set_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (set_command_check_and_reply((client *) c))
+        return shared.rock_cmd_fail;
 
     if (c->argc == 3)
     {
@@ -438,10 +453,58 @@ void getexCommand(client *c) {
     }
 }
 
+static int getex_command_check_and_reply(client *c)
+{
+    robj *expire = NULL;
+    int unit = UNIT_SECONDS;
+    int flags = OBJ_NO_FLAGS;
+
+    if (parseExtendedStringArgumentsOrReply(c,&flags,&unit,&expire,COMMAND_GET) != C_OK) {
+        return 1;
+    }
+
+    robj *o;
+
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.null[c->resp])) == NULL)
+        return 1;
+
+    if (checkType(c,o,OBJ_STRING)) {
+        return 1;
+    }
+
+    long long milliseconds = 0, when = 0;
+
+    /* Validate the expiration time value first */
+    if (expire) {
+        if (getLongLongFromObjectOrReply(c, expire, &milliseconds, NULL) != C_OK)
+            return 1;
+        if (milliseconds <= 0 || (unit == UNIT_SECONDS && milliseconds > LLONG_MAX / 1000)) {
+            /* Negative value provided or multiplication is gonna overflow. */
+            addReplyErrorFormat(c, "invalid expire time in %s", c->cmd->name);
+            return 1;
+        }
+        if (unit == UNIT_SECONDS) milliseconds *= 1000;
+        when = milliseconds;
+        if ((flags & OBJ_PX) || (flags & OBJ_EX))
+            when += mstime();
+        if (when <= 0) {
+            /* Overflow detected. */
+            addReplyErrorFormat(c, "invalid expire time in %s", c->cmd->name);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
 list* getex_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (getex_command_check_and_reply((client *)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -547,10 +610,65 @@ void setrangeCommand(client *c) {
     addReplyLongLong(c,sdslen(o->ptr));
 }
 
+static int setrange_command_check_and_reply(client *c)
+{
+    long offset;
+
+    if (getLongFromObjectOrReply(c,c->argv[2],&offset,NULL) != C_OK)
+        return 1;
+
+    if (offset < 0) 
+    {
+        addReplyError(c,"offset is out of range");
+        return 1;
+    }
+
+    robj *o = lookupKeyWrite(c->db,c->argv[1]);
+    sds value = c->argv[3]->ptr;
+    if (o == NULL) 
+    {
+        /* Return 0 when setting nothing on a non-existing string */
+        if (sdslen(value) == 0) 
+        {
+            addReply(c,shared.czero);
+            return 1;
+        }
+
+        /* Return when the resulting string exceeds allowed size */
+        if (checkStringLength(c,offset+sdslen(value)) != C_OK)
+            return 1;
+    } 
+    else 
+    {
+        size_t olen;
+
+        /* Key exists, check type */
+        if (checkType(c,o,OBJ_STRING))
+            return 1;
+
+        /* Return existing string length when setting nothing */
+        olen = stringObjectLen(o);
+        if (sdslen(value) == 0) 
+        {
+            addReplyLongLong(c,olen);
+            return 1;
+        }
+
+        /* Return when the resulting string exceeds allowed size */
+        if (checkStringLength(c,offset+sdslen(value)) != C_OK)
+            return 1;
+    }
+
+    return 0;
+}
+
 list* setrange_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (setrange_command_check_and_reply((client *)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -596,10 +714,31 @@ void getrangeCommand(client *c) {
     }
 }
 
+static int getrange_command_check_and_reply(client *c)
+{
+    long long start, end;
+
+    if (getLongLongFromObjectOrReply(c,c->argv[2],&start,NULL) != C_OK)
+        return 1;
+
+    if (getLongLongFromObjectOrReply(c,c->argv[3],&end,NULL) != C_OK)
+        return 1;
+
+    robj *o;
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptybulk)) == NULL ||
+        checkType(c,o,OBJ_STRING)) 
+        return 1;
+
+    return 0;
+}
+
 list* getrange_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (getrange_command_check_and_reply((client*) c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -704,6 +843,28 @@ void incrDecrCommand(client *c, long long incr) {
     addReply(c,shared.crlf);
 }
 
+static int incr_decr_command_check_and_reply(client *c, long long incr)
+{
+    robj *o = lookupKeyWrite(c->db,c->argv[1]);
+
+    if (checkType(c,o,OBJ_STRING)) 
+        return 1;
+
+    long long value, oldvalue;
+
+    if (getLongLongFromObjectOrReply(c,o,&value,NULL) != C_OK) 
+        return 1;
+
+    oldvalue = value;
+    if ((incr < 0 && oldvalue < 0 && incr < (LLONG_MIN-oldvalue)) ||
+        (incr > 0 && oldvalue > 0 && incr > (LLONG_MAX-oldvalue))) {
+        addReplyError(c,"increment or decrement would overflow");
+        return 1;
+    }
+
+    return 0;
+}
+
 void incrCommand(client *c) {
     incrDecrCommand(c,1);
 }
@@ -712,6 +873,9 @@ list* incr_cmd_for_rock(const client* c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (incr_decr_command_check_and_reply((client *)c, 1))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -725,6 +889,9 @@ list* decr_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
     UNUSED(hash_keys);
     UNUSED(hash_fields);
 
+    if (incr_decr_command_check_and_reply((client *)c, -1))
+        return shared.rock_cmd_fail;
+
     return generic_get_one_key_for_rock(c, 1);
 }
 
@@ -735,10 +902,22 @@ void incrbyCommand(client *c) {
     incrDecrCommand(c,incr);
 }
 
+static int incrby_command_check_and_reply(client *c)
+{
+    long long incr;
+    if (getLongLongFromObjectOrReply(c, c->argv[2], &incr, NULL) != C_OK) 
+        return 1;
+
+    return 0;
+}
+
 list* incrby_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (incrby_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -750,10 +929,22 @@ void decrbyCommand(client *c) {
     incrDecrCommand(c,-incr);
 }
 
+static int decrby_command_check_and_reply(client *c)
+{
+    long long incr;
+    if (getLongLongFromObjectOrReply(c, c->argv[2], &incr, NULL) != C_OK) 
+        return 1;
+
+    return 0;
+}
+
 list* decrby_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (decrby_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -791,10 +982,34 @@ void incrbyfloatCommand(client *c) {
     rewriteClientCommandArgument(c,3,shared.keepttl);
 }
 
+static int incrbyfloat_command_check_and_reply(client *c)
+{
+    robj *o = lookupKeyWrite(c->db,c->argv[1]);
+    if (checkType(c,o,OBJ_STRING)) 
+        return 1;
+
+    long double incr, value;
+    if (getLongDoubleFromObjectOrReply(c,o,&value,NULL) != C_OK ||
+        getLongDoubleFromObjectOrReply(c,c->argv[2],&incr,NULL) != C_OK)
+        return 1;
+
+    value += incr;
+    if (isnan(value) || isinf(value)) 
+    {
+        addReplyError(c,"increment would produce NaN or Infinity");
+        return 1;
+    }
+
+    return 0;
+}
+
 list* incrbyfloat_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (incrbyfloat_command_check_and_reply((client*)c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
@@ -832,10 +1047,34 @@ void appendCommand(client *c) {
     addReplyLongLong(c,totlen);
 }
 
+static int append_command_check_and_reply(client *c)
+{
+    robj *o = lookupKeyWrite(c->db,c->argv[1]);
+
+    if (o != NULL)
+    {
+        /* Key exists, check type */
+        if (checkType(c,o,OBJ_STRING))
+            return 1;
+
+        /* "append" is an argument, so always an sds */
+        robj *append = c->argv[2];
+        size_t totlen;
+        totlen = stringObjectLen(o)+sdslen(append->ptr);
+        if (checkStringLength(c,totlen) != C_OK)
+            return 1;
+    }
+
+    return 0;
+}
+
 list* append_cmd_for_rock(const client *c, list **hash_keys, list **hash_fields)
 {
     UNUSED(hash_keys);
     UNUSED(hash_fields);
+
+    if (append_command_check_and_reply((client *) c))
+        return shared.rock_cmd_fail;
 
     return generic_get_one_key_for_rock(c, 1);
 }
