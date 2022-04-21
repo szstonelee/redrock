@@ -16,10 +16,13 @@ r2: redis.StrictRedis   # real redis 6.2.2
 r1_thread: redis.StrictRedis
 r2_thread: redis.StrictRedis
 
+server_ip = "192.168.64.4"
+#server_ip = "127.0.0.1"
 
 def init_redis_clients():
-    r1_ip = "192.168.64.4"
-    r2_ip = "192.168.64.4"
+    global server_ip
+    r1_ip = server_ip
+    r2_ip = server_ip
     r1_port = 6379
     r2_port = 6380
     pool1 = redis.ConnectionPool(host=r1_ip,
