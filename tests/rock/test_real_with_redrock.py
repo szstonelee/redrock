@@ -16,7 +16,7 @@ r2: redis.StrictRedis   # real redis 6.2.2
 r1_thread: redis.StrictRedis
 r2_thread: redis.StrictRedis
 
-server_ip = "192.168.64.4"
+server_ip = "192.168.56.11"
 #server_ip = "127.0.0.1"
 
 def init_redis_clients():
