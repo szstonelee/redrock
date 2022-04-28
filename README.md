@@ -1,7 +1,7 @@
 ## 目录
 
-* [RedRock是什么](Readme.md#redrock是什么)
-* [RedRock的安装](Readme.md#安装)
+* [RedRock是什么](#redrock是什么)
+* [RedRock的安装](#安装)
 * [RedRock的特性](features.md)
 * [RedRock的管理](management.md)
 
