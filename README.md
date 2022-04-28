@@ -21,27 +21,42 @@ RedRock基于Redis源码(当前基于Redis 6.2.2版本)修改，用了RocksDB作
 
 #### Linux
 
-可以用（其中之一）curl、wget、或者点击下面的https连接直接下载执行文件redrock（），然后在下面的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11（都经过测试）直接运行，其他Linux平台用户也可以尝试下载
+可以用（其中之一）curl、wget、或者点击下面的https连接直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock.，然后在下面的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11（都经过测试）直接运行，其他Linux平台用户也可以尝试下载
 
 ```
-curl https://github.com/szstonelee/redrock/dl/redrock -o redrock
+curl https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
 或者镜像站点
 ```
-curl https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock -o redrock
+curl https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
 
 ```
-wget https://github.com/szstonelee/redrock/dl/redrock -o redrock
+wget https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
 或者镜像站点
 ```
-wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock -o redrock
+wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
 
 或者下面的连接：
-* github: [https://github.com/szstonelee/redrock/dl/redrock](https://github.com/szstonelee/redrock/dl/redrock)
-* 镜像站点：[https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock](https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock)s
+* github: [https://github.com/szstonelee/redrock/dl/redrock.tar](https://github.com/szstonelee/redrock/dl/redrock.tar)
+* 镜像站点：[https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar](https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar)
+
+解压请用
+```
+tar -xzf redrock.tar
+```
+
+然后可以看到一个执行文件redrock，执行它只需要
+```
+./redrock
+```
+
+如果想从请其他机器连接服务器，请使用
+```
+./redrock --bind 0.0.0.0
+```
 
 #### Mac
 
