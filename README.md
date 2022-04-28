@@ -3,7 +3,8 @@
 * [RedRock是什么](#redrock是什么)
 * [RedRock的安装](#安装)
 * [RedRock的特性](features.md)
-* [RedRock的管理](management.md)
+* [内存磁盘管理](memory.md)
+* [集群管理](cluster.md)
 
 ## RedRock是什么？
 
@@ -25,16 +26,17 @@ RedRock是在Redis源码(当前基于Redis 6.2.2版本)上直接修改的，增�
 
 详细可以参考：[RedRock的特性](features.md)
 
-## 安装
+## 安装RedRock
 
 ### 安装方式一：直接下载执行文件
 
 #### Linux
 
-可以用（其中之一）curl、wget、点击下面的https连接。直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock，然后在平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11（都经过测试）直接运行，其他Linux平台，用户也可以尝试下载和运行。
+可以用（其中之一）curl、wget、点击下面的https连接，直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock，然后在平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11（都经过测试）像Redis一样直接运行。
 
-##### 用curl下载
+##### 用curl下载redrock.tar
 
+GitHub站点
 ```
 curl https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
@@ -43,8 +45,9 @@ curl https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 curl https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
 
-##### 用wget下载
+##### 用wget下载redrock.tar
 
+GitHub站点
 ```
 wget https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
@@ -56,7 +59,7 @@ wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ##### 直接点链接下载（浏览器里点击并存盘即可）
 
 或者下面的连接：
-* github: [https://github.com/szstonelee/redrock/dl/redrock.tar](https://github.com/szstonelee/redrock/dl/redrock.tar)
+* GitHub: [https://github.com/szstonelee/redrock/dl/redrock.tar](https://github.com/szstonelee/redrock/dl/redrock.tar)
 * 镜像站点：[https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar](https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar)
 
 ##### 解压和执行
@@ -64,7 +67,7 @@ wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 tar -xzf redrock.tar
 ```
 
-然后可以看到本目录下有一个执行文件redrock，执行它和执行redis-server一样，只需要
+然后可以看到本目录下有一个执行文件redrock（200多兆，包含lz4和RocksDB静态库），执行它和执行redis-server一样，只需要
 ```
 sudo ./redrock
 ```
@@ -74,7 +77,9 @@ sudo ./redrock
 sudo ./redrock --bind 0.0.0.0
 ```
 
-注意：请用root身份，或者sudo命令执行redrock，因为需要权限读写磁盘（缺省是：/opt/redrock目录）
+注意：请用root身份，或者sudo命令执行redrock，因为需要权限读写磁盘（缺省是：/opt/redrock目录）。
+
+其他Linux平台，用户也可以尝试下载和运行，理论上所有的Linux都可以运行。
 
 #### Mac
 
