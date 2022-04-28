@@ -12,8 +12,9 @@ RedRock是在Redis源码(当前基于Redis 6.2.2版本)上直接修改的，增�
 2. 所有的特性：Pipeline，Transaction，Script(Lua)，Pub/Sub，Module
 3. 所有的管理：Server & Connection & Memory management，ACL，TLS，SlowLog，Config
 4. 所有的存储：包括RDB以及AOF，支持同步和异步两种存盘指令。既可以存盘，也可以启动时自动恢复数据
-5. 所有的集群：包括Cluster，Master/Slave，Sentinel。所以对于原有的Redis集群系统不用做任何修改
-6. 所有的命令你的客户端程序不做任何更改，只要将服务器执行文件（只有一个）替换掉即可
+5. 所有的集群：包括Cluster，Master/Slave，Sentinel。对于原有的Redis集群系统不用做任何修改
+6. 所有的命令：你的客户端程序不做任何更改，只要将服务器执行文件（只有一个）替换掉即可
+7. 增加的特性：可以直接对接StatsD并转为Grafana监测
 
 详细可以参考：[RedRock的特性](features.md)
 
@@ -23,9 +24,9 @@ RedRock是在Redis源码(当前基于Redis 6.2.2版本)上直接修改的，增�
 
 #### Linux
 
-可以用（其中之一）curl、wget、或者点击下面的https连接直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock.，然后在下面的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11（都经过测试）直接运行，其他Linux平台，用户也可以尝试下载和运行
+可以用（其中之一）curl、wget、点击下面的https连接。直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock，然后在平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11（都经过测试）直接运行，其他Linux平台，用户也可以尝试下载和运行。
 
-##### 用curl
+##### 用curl下载
 
 ```
 curl https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
@@ -35,7 +36,7 @@ curl https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 curl https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
 
-##### 用wget
+##### 用wget下载
 
 ```
 wget https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
@@ -45,7 +46,7 @@ wget https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
 
-##### 直接链接下载（浏览器里点击存盘即可）
+##### 直接点链接下载（浏览器里点击并存盘即可）
 
 或者下面的连接：
 * github: [https://github.com/szstonelee/redrock/dl/redrock.tar](https://github.com/szstonelee/redrock/dl/redrock.tar)
@@ -88,12 +89,12 @@ wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock_mac -o redrock
 ```
 brew install lz4
 brew install rocksdb
-``
+```
 
 ### 源码编译
 
 请参考[源码编译](source-build.md)
 
-## 简单验证磁盘效果
+## 简单验证RedRock的磁盘功效
 
 如何证明RedRock有上面的磁盘特性，请用下面的测试用例
