@@ -21,7 +21,9 @@ RedRock基于Redis源码(当前基于Redis 6.2.2版本)修改，用了RocksDB作
 
 #### Linux
 
-可以用（其中之一）curl、wget、或者点击下面的https连接直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock.，然后在下面的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11（都经过测试）直接运行，其他Linux平台用户也可以尝试下载
+可以用（其中之一）curl、wget、或者点击下面的https连接直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock.，然后在下面的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11（都经过测试）直接运行，其他Linux平台，用户也可以尝试下载和运行
+
+##### 用curl
 
 ```
 curl https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
@@ -31,6 +33,8 @@ curl https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 curl https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
 
+##### 用wget
+
 ```
 wget https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
@@ -38,6 +42,8 @@ wget https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
 wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 ```
+
+##### 直接链接下载（浏览器里点击存盘即可）
 
 或者下面的连接：
 * github: [https://github.com/szstonelee/redrock/dl/redrock.tar](https://github.com/szstonelee/redrock/dl/redrock.tar)
@@ -48,7 +54,7 @@ wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 tar -xzf redrock.tar
 ```
 
-然后可以看到一个执行文件redrock，执行它只需要
+然后可以看到本目录下有一个执行文件redrock，执行它只需要
 ```
 ./redrock
 ```
