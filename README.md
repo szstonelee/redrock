@@ -1,3 +1,10 @@
+## 目录
+
+* [RedRock是什么](Readme.md#redrock是什么)
+* [RedRock的安装](Readme.md#安装)
+* [RedRock的特性](features.md)
+* [RedRock的管理](management.md)
+
 ## RedRock是什么？
 
 RedRock是一个100%兼容的Redis服务器程序，但支持数据扩大到磁盘。因为内存太贵，我们希望用磁盘来存取大部分冷温数据，而内存只存储热数据，这样可以大大节省硬件成本，同时性能和原来的Redis几乎一样。
@@ -20,7 +27,7 @@ RedRock是在Redis源码(当前基于Redis 6.2.2版本)上直接修改的，增�
 
 ## 安装
 
-### 直接下载执行文件
+### 安装方式一：直接下载执行文件
 
 #### Linux
 
@@ -91,7 +98,7 @@ brew install lz4
 brew install rocksdb
 ```
 
-### 源码编译
+### 安装方式二：源码编译
 
 请参考[源码编译](source-build.md)
 
