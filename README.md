@@ -1,16 +1,18 @@
 ## RedRock是什么？
 
-RedRock是一个100%的Redis服务器程序，但支持数据扩大到磁盘。因为内存太贵，我们希望用磁盘来存取大部分冷温数据，而内存只存储热数据。
+RedRock是一个100%兼容的Redis服务器程序，但支持数据扩大到磁盘。因为内存太贵，我们希望用磁盘来存取大部分冷温数据，而内存只存储热数据，这样可以大大节省硬件成本，同时性能和原来的Redis几乎一样。
 
-虽然Redis有RDB/AOF去读写盘，但对于Redis而言，这只是数据的备份。而RedRock是将整个Redis的数据，超出内存的部分转为磁盘存储，这样，但你的应用要存取的数据超过整个内存，又希望整个应用的性能不要太多损失（比如：90%的热数据的访问和原来的Redis一样，时延Latency都在1ms以下），同时整个成本能大大降低（比如：数据大小超过内存的10倍或100倍，这样，整个存储的成本只有原来的1/10甚至1/100）。
+虽然Redis有RDB/AOF去写盘，但对于Redis而言，这只是数据的备份，即Redeis的命令不能实时读写磁盘上的RDB/AOF数据，整个服务器程序的数据大小仍受限于服务器硬件内存的限制（要么成本限制，要么内存本身的最大限制，一般顶级服务器内存最高也就到几个TB）。而RedRock是将超出内存的数据自动转为磁盘存储，这样，热数据在内存保证访问速度，冷温数据在磁盘并且支持实时读写（RedRock做了自动的冷热转化），从而大大节省硬件成本。因为磁盘的价格相比内存可以忽略，同时磁盘的大小可以远远超越内存的限制。内存一般都是GB级别，而磁盘可以轻易配置到TB甚至PB级别，在价格差不多的情况下，数据的大小提升最高到千倍以上。
 
-RedRock基于Redis源码(当前基于Redis 6.2.2版本)修改，用了RocksDB作为磁盘存储库。因此，RedRock支持Redis的所有特性，包括：
+整个应用的性能不会有太多损失，比如：大部分的访问性能和原来的Redis一样（因为热数据仍在内存中），即99%的时延Latency都在1ms以下。
+
+RedRock是在Redis源码(当前基于Redis 6.2.2版本)上直接修改的，增加了RocksDB作为磁盘存储库。因此，RedRock支持Redis的所有特性，包括：
 
 1. 所有的数据结构：String，Hash, Set, List, Sorted Set(ZSet)，Bitmap，HyperLogLog，Geo，Stream
 2. 所有的特性：Pipeline，Transaction，Script(Lua)，Pub/Sub，Module
 3. 所有的管理：Server Management，Connection Management，ACL，TLS，SlowLog，Memory Management, Config
-4. 所有的存储：包括RDB以及AOF(含Rewrite)，同时支持同步和异步两种指令
-5. 所有的集群：包括Cluster，Master/Slave，Sentinel
+4. 所有的存储：包括RDB以及AOF(含Rewrite)，支持同步和异步两种存盘指令。既可以存盘，也可以启动时自动读盘恢复数据
+5. 所有的集群：包括Cluster，Master/Slave，Sentinel。所以对于原有的Redis集群系统不用做任何修改
 6. 所有的命令：这样你的客户端程序不用做任何更改，只要将服务器执行文件（只有一个）替换掉即可，系统替换很简单
 
 详细可以参考：[RedRock的特性](features.md)
@@ -49,20 +51,22 @@ wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
 * github: [https://github.com/szstonelee/redrock/dl/redrock.tar](https://github.com/szstonelee/redrock/dl/redrock.tar)
 * 镜像站点：[https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar](https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar)
 
-解压请用
+##### 解压和执行
 ```
 tar -xzf redrock.tar
 ```
 
-然后可以看到本目录下有一个执行文件redrock，执行它只需要
+然后可以看到本目录下有一个执行文件redrock，执行它和执行redis-server一样，只需要
 ```
-./redrock
+sudo ./redrock
 ```
 
 如果想从请其他机器连接服务器，请使用
 ```
-./redrock --bind 0.0.0.0
+sudo ./redrock --bind 0.0.0.0
 ```
+
+注意：请用root身份，或者sudo命令执行redrock，因为需要权限读写磁盘（缺省是：/opt/redrock目录）
 
 #### Mac
 
@@ -70,14 +74,21 @@ tar -xzf redrock.tar
 curl https://github.com/szstonelee/redrock/dl/redrock_mac -o redrock
 ```
 ```
-curl https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock -o redrock
+curl https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock_mac -o redrock
 ```
 ```
 wget https://github.com/szstonelee/redrock/dl/redrock_mac -o redrcok
 ```
 ```
-wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock -o redrock
+wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock_mac -o redrock
 ```
+
+注：redrock_mac不需要tar解压，因为redrock_mac这个执行文件很小（不到2M，因为MacOS倾向于使用动态链接库），但你需要安装下面的动态库lz4和RocksDB
+
+```
+brew install lz4
+brew install rocksdb
+``
 
 ### 源码编译
 

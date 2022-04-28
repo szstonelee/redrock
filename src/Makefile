@@ -349,12 +349,11 @@ ifneq ($(strip $(PREV_FINAL_LDFLAGS)), $(strip $(FINAL_LDFLAGS)))
 .make-prerequisites: persist-settings
 endif
 
-
 # redrock-static-server for Linux (NOTE: macOS always prefer dynamic library)
 $(REDIS_STATIC_SERVER_NAME): $(REDIS_SERVER_OBJ)
 	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a $(FINAL_LIBS) -l:librocksdb.a -lpthread -l:liblz4.a -lstdc++
 
-# redrock-server for Linux and MacOS
+# redrock-server (with shared library like RocksDB) for Linux and MacOS
 $(REDIS_SERVER_NAME): $(REDIS_SERVER_OBJ)
 	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a $(FINAL_LIBS) -lrocksdb -lpthread -llz4 -lstdc++
 
