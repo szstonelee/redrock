@@ -19,6 +19,35 @@ RedRock基于Redis源码(当前基于Redis 6.2.2版本)修改，用了RocksDB作
 
 ### 直接下载执行文件
 
+#### Linux
+
+可以用（其中之一）curl、wget、或者点击下面的https连接直接下载执行文件redrock（），然后在下面的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11（都经过测试）直接运行，其他Linux平台用户也可以尝试下载
+
+```
+curl https://github.com/szstonelee/redrock/dl/redrock -o redrock
+或者镜像站点
+curl https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock -o redrock
+```
+
+```
+wget https://github.com/szstonelee/redrock/dl/redrock -o redrock
+或者镜像站点
+wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock -o redrock
+```
+
+或者下面的连接：
+github: [https://github.com/szstonelee/redrock/dl/redrock](https://github.com/szstonelee/redrock/dl/redrock)
+镜像站点：[https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock](https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock)s
+
+#### Mac
+
+```
+curl https://github.com/szstonelee/redrock/dl/redrock_mac -o redrock
+curl https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock -o redrock
+wget https://github.com/szstonelee/redrock/dl/redrock_mac -o redrcok
+wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock -o redrock
+```
+
 ### 源码编译
 
 请参考[源码编译](source-build.md)
