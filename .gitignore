@@ -38,7 +38,8 @@ Makefile.dep
 .ccls-cache/*
 compile_commands.json
 redis.code-workspace
-redrock
+src/redrock
+src/redrock_static
 .github/*
 .DS_Store
 tests/rock/__pycache__/*
@@ -47,3 +48,6 @@ src/*.aof
 tests/rock/.idea/
 tests/rock/mass*.txt
 src/node*.conf
+dl/redis-server-6.2.2
+dl/redrock_static_centos
+dl/redrock_static_ubuntu
