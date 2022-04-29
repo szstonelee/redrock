@@ -53,3 +53,4 @@ dl/redrock_static_centos
 dl/redrock_static_ubuntu
 dl/redrock
 #dl/redrock.tar
+.gitattributes
