@@ -52,4 +52,4 @@ dl/redis-server-6.2.2
 dl/redrock_static_centos
 dl/redrock_static_ubuntu
 dl/redrock
-dl/redrock.tar
+#dl/redrock.tar
