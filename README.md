@@ -34,7 +34,7 @@ RedRock是在Redis源码(基于Redis 6.2.2版本)上直接修改的，增加了R
 
 #### Linux（CentOS, Ubuntu, Debian）
 
-可以用curl、wget、点击下面的https连接三种方式之一，直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock，然后在平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11（都经过测试）像Redis一样直接运行。
+可以用curl、wget、https连接三种方式之一，直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock，在已测试的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11像Redis一样直接运行。
 
 ##### 用curl下载redrock.tar
 
@@ -55,7 +55,7 @@ wget https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar -O redrock.
 ```
 或者镜像站点（对于中国用户一般更快）
 ```
-wget https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar -o redrock.tar
+wget https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar -O redrock.tar
 ```
 
 ##### 直接点链接下载（浏览器里点击并存盘即可）
@@ -92,22 +92,23 @@ curl -L https://github.com/szstonelee/redrock/raw/master/dl/redrock_mac -o redro
 curl -L https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock_mac -o redrock
 ```
 ```
-wget https://github.com/szstonelee/redrock/raw/master/dl/redrock_mac -o redrcok
+wget https://github.com/szstonelee/redrock/raw/master/dl/redrock_mac -O redrcok
 ```
 ```
-wget https://hub.fastgit.xyz/szstonelee/raw/master/redrock/dl/redrock_mac -o redrock
+wget https://hub.fastgit.xyz/szstonelee/raw/master/redrock/dl/redrock_mac -O redrock
 ```
 
-注：redrock_mac不需要tar解压，因为redrock_mac这个执行文件很小（不到2M，因为MacOS倾向于使用动态链接库），但你需要安装下面的动态库lz4和RocksDB
-
+另外，MacOS需要安装lz4和RocksDB动态链接库才能让这个执行文件有合适的运行环境，方法如下：
 ```
 brew install lz4
 brew install rocksdb
 ```
 
+注：redrock_mac不需要tar解压，因为redrock_mac这个执行文件很小（不到2M，因为MacOS倾向于使用动态链接库），但你需要安装动态库lz4和RocksDB。
+
 ### 安装方式二：源码编译
 
-请参考[源码编译](source-build.md)
+请参考[源码编译](docs/source-build.md)
 
 ## 简单验证RedRock的磁盘功效
 
@@ -115,14 +116,14 @@ brew install rocksdb
 
 ### 测试说明
 
-我们将一个一百万条记录的String的数据放入到RedRock里，然后全部转到磁盘上，看服务器的内存的变化。
+我们将一个一百万条记录的String的数据放入到RedRock里，然后再全部转到磁盘上，看服务器的内存的变化。
 
 数据库记录说明：
 
 * 类型: string
 * 数量: 一百万
 * Key: k1, k2, ..., k1000000
-* Val: 随机大小2到2000，平均1000字节。内容为数字，然后后面跟着这么多的字符'v'。比如：2vv, 4vvvv ...
+* Val: 随机大小2到2000，平均1000字节。内容为数字，后面跟着这个数量的字符'v'。比如：2vv, 4vvvv ...
 
 ### 内存工具
 
