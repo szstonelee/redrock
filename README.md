@@ -127,7 +127,7 @@ brew install rocksdb
 
 ### 内存工具
 
-#### 获得Redis的内存统计
+#### By Redis Info Command
 
 可以用Redis提供的redis-cli工具，连接redrock服务器，执行INFO命令获取内存统计。
 
@@ -137,7 +137,7 @@ brew install rocksdb
 echo -e "*1\r\n\$4\r\nINFO\r\n" | nc 127.0.0.1 6379 | grep used_memory_human
 ```
 
-#### OS下显示的内存统计
+#### By Linux ps tool
 
 ```
 ps -eo command -eo rss | grep redrock
@@ -145,7 +145,7 @@ ps -eo command -eo rss | grep redrock
 
 ### 如何下载测试数数据库数据备份文件
 
-可以直接从GitHub下载这个文件sample.rdb，然后将之改为dump.rdb
+可以直接从GitHub下载这个文件sample.rdb（32.5M），然后将之改为dump.rdb。这样，redrock启动时会像redis-server一样加载这个测试数据库备份。
 
 方法如下
 ```
@@ -153,10 +153,11 @@ curl -L https://github.com/szstonelee/redrock/raw/master/dl/sample.rdb -o dump.r
 ```
 注：可以用镜像站点hub.fastgit.xyz替代github.com
 
-
 ### 将测试数据全部存盘
 
-redrock新加了一个ROCKALL命令（Redis命令不区分大小写），直接在redis-cli里执行rockall，或者没有redis-cli，用下面的shell命令
+RedRock新加了一个ROCKALL命令（Redis命令不区分大小写），这个命令强制将所有的数据存盘（但内存仍保留所有的key字段）。正常情况下，不需要这样做，因为RedRock是自动存盘，而且只将超出内存的冷数据自动存盘。但我们需要比较被测试的数据进入磁盘的前后内存使用情况对比情况（因为上面的测试数据并不大，正常1个G的内存就可以全部装下），所以需要用到这个RedRock新增的ROCKALL命令。
+
+直接在redis-cli里执行rockall，或者没有redis-cli，用下面的shell命令
 ```
 echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379 
 ```
@@ -165,9 +166,11 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 
 ### 测试步骤
 
-1. 空数据库: redrock执行文件目录下不要有dump.rdb和appendonly.aof文件
-2. 加载测试数据：下载测试数数据库数据备份文件，需要重启redrock
-3. 数据全部存盘：当redrock已经在内存里加载了册数数据，再执行
+1. 空数据库: redrock执行文件目录下不要有dump.rdb和appendonly.aof文件，然后启动redrock。
+
+2. 加载测试数据：下载测试数数据库数据备份文件，需要重启redrock。
+
+3. 数据全部存盘：当redrock已经在内存里加载了册数数据，再执行ROCKALL命令。
 
 ### 测试结果
 
@@ -176,16 +179,24 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 | 两个内存工具 | 空数据库 | 加载测试数据 | 数据全部存盘 |
 | -- | -- | -- | -- |
 | By Redis Info Command | 875K | 1.11G | 54.3M |
-| By Linux shell tool |  14M | 1.19G | 167.3M |
+| By Linux ps tool | 14M | 1.19G | 167.3M |
 
 注：Linux shell tool汇报的内存可能比Redis命令INOF要高，是因为Redis不能统计到RocksDB所占的内存。
 
-#### Pure Redis
+#### Pure Redis对比参照
+
+我们用一个6.2.2版本的Redis作为对比参照（请自行下载和安装redis，但必须是6.2.2版本的），当然，redis不支持ROCKALL命令进行存盘。所以只能做上面测试步骤的1和2。
 
 | 两个内存工具 | 空数据库 | 加载测试数据 |
 | -- | -- | -- | 
-| By Redis Info Command | 853K | 0M |
-| By Linux shell tool |  10.2M | 0M |
+| By Redis Info Command | 853K | 1.08G |
+| By Linux shell tool | 10.2M | 1.16G |
+
+### 测试结论
+
+1. 
+
+注：你可以做自己的测试，比如，不止一百万记录，可以是一亿条记录，详细参考源码/tests/rock/目录下的gen_some_str_keys.py。
 
 ### 存盘后的读盘
 
