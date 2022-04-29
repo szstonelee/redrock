@@ -160,6 +160,19 @@ cat  /proc/1845/status | grep RSS
 
 ### 测试结果
 
+#### RedRock
+
+| Tool | Zero-key | 1M Keys in Memory | 1M Keys in Disk |
+| -- | -- | -- | -- |
+| By Redis Info Command | 875K | 0M | 0M |
+| By Linux shell tool |  14M | 0M | 0M |
+
+#### Pure Redis
+
+| Tool | Zero-key | 1M Keys in Memory | 1M Keys in Disk |
+| -- | -- | -- | -- |
+| By Redis Info Command | 875K | 0M | 0M |
+| By Linux shell tool |  14M | 0M | 0M |
 
 ### 存盘后的读盘
 
