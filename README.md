@@ -40,29 +40,29 @@ RedRock是在Redis源码(基于Redis 6.2.2版本)上直接修改的，增加了R
 
 GitHub站点
 ```
-curl https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
+curl -L https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar -o redrock.tar
 ```
-或者镜像站点
+或者镜像站点（对于中国用户一般更快）
 ```
-curl https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
+curl -L https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar -o redrock.tar
 ```
 
 ##### 用wget下载redrock.tar
 
 GitHub站点
 ```
-wget https://github.com/szstonelee/redrock/dl/redrock.tar -o redrock.tar
+wget https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar -O redrock.tar
 ```
-或者镜像站点
+或者镜像站点（对于中国用户一般更快）
 ```
-wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar -o redrock.tar
+wget https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar -o redrock.tar
 ```
 
 ##### 直接点链接下载（浏览器里点击并存盘即可）
 
 或者下面的连接：
-* GitHub: [https://github.com/szstonelee/redrock/dl/redrock.tar](https://github.com/szstonelee/redrock/dl/redrock.tar)
-* 镜像站点：[https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar](https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock.tar)
+* GitHub: [https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar](https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar)
+* 镜像站点：[https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar](https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar)
 
 ##### 解压和执行
 ```
@@ -86,16 +86,16 @@ sudo ./redrock --bind 0.0.0.0
 #### MacOS
 
 ```
-curl https://github.com/szstonelee/redrock/dl/redrock_mac -o redrock
+curl -L https://github.com/szstonelee/redrock/raw/master/dl/redrock_mac -o redrock
 ```
 ```
-curl https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock_mac -o redrock
+curl -L https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock_mac -o redrock
 ```
 ```
-wget https://github.com/szstonelee/redrock/dl/redrock_mac -o redrcok
+wget https://github.com/szstonelee/redrock/raw/master/dl/redrock_mac -o redrcok
 ```
 ```
-wget https://hub.fastgit.xyz/szstonelee/redrock/dl/redrock_mac -o redrock
+wget https://hub.fastgit.xyz/szstonelee/raw/master/redrock/dl/redrock_mac -o redrock
 ```
 
 注：redrock_mac不需要tar解压，因为redrock_mac这个执行文件很小（不到2M，因为MacOS倾向于使用动态链接库），但你需要安装下面的动态库lz4和RocksDB
