@@ -34,7 +34,7 @@ RedRock是在Redis源码(基于Redis 6.2.2版本)上直接修改的，增加了R
 
 #### Linux（CentOS, Ubuntu, Debian）
 
-可以用curl、wget、https连接三种方式之一，直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock，在已测试的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11像Redis一样直接运行。
+可以用curl、wget、浏览器点击链接三种方式之一，直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock，在已测试的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11像Redis一样直接运行。
 
 ##### 用curl下载redrock.tar
 
@@ -58,7 +58,7 @@ wget https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar -O redrock.
 wget https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar -O redrock.tar
 ```
 
-##### 直接点链接下载（浏览器里点击并存盘即可）
+##### 浏览器直接点链接下载（浏览器里点击并存盘即可）
 
 或者下面的连接：
 * GitHub: [https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar](https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar)
@@ -137,23 +137,8 @@ brew install rocksdb
 echo -e "*1\r\n\$4\r\nINFO\r\n" | nc 127.0.0.1 6379 | grep used_memory_human
 ```
 
-注意：对于比较多的的Redis内存记录集，这个执行需要点时间，可能是分钟级，因为有大量的写盘动作。
-
 #### OS下显示的内存统计
 
-获得redrock进程的PID
-```
-ps -fC redrock
-```
-
-假设打印的PID是：1845
-
-然后
-```
-cat  /proc/1845/status | grep RSS
-```
-
-或者下面一条命令
 ```
 ps -eo command -eo rss | grep redrock
 ```
@@ -171,22 +156,24 @@ curl -L https://github.com/szstonelee/redrock/raw/master/dl/sample.rdb -o dump.r
 
 ### 将测试数据全部存盘
 
-redrock新加了一个rockall命令（Redis不区分命令大小写），直接在redis-cli里执行rockall，或者没有redis-cli，用下面的shell命令
+redrock新加了一个ROCKALL命令（Redis命令不区分大小写），直接在redis-cli里执行rockall，或者没有redis-cli，用下面的shell命令
 ```
 echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379 
 ```
+
+注意：对于比较多的的Redis内存记录集，这个执行需要点时间，因为有大量的写盘动作。
 
 ### 测试步骤
 
 1. 空数据库: redrock执行文件目录下不要有dump.rdb和appendonly.aof文件
 2. 加载测试数据：下载测试数数据库数据备份文件，需要重启redrock
-3. 数据存盘：当redrock已经在内存里加载了册数数据，再执行
+3. 数据全部存盘：当redrock已经在内存里加载了册数数据，再执行
 
 ### 测试结果
 
 #### RedRock
 
-| Tool | Zero-key | 1M Keys in Memory | 1M Keys in Disk |
+| 两个内存工具 | 空数据库 | 加载测试数据 | 数据全部存盘 |
 | -- | -- | -- | -- |
 | By Redis Info Command | 875K | 1.11G | 54.3M |
 | By Linux shell tool |  14M | 1.19G | 167.3M |
@@ -195,8 +182,8 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 
 #### Pure Redis
 
-| Tool | Zero-key | 1M Keys in Memory |
-| -- | -- | -- | -- |
+| 两个内存工具 | 空数据库 | 加载测试数据 |
+| -- | -- | -- | 
 | By Redis Info Command | 853K | 0M |
 | By Linux shell tool |  10.2M | 0M |
 
