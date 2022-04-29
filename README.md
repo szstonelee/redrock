@@ -137,6 +137,8 @@ brew install rocksdb
 echo -e "*1\r\n\$4\r\nINFO\r\n" | nc 127.0.0.1 6379 | grep used_memory_human
 ```
 
+注意：对于比较多的的Redis内存记录集，这个执行需要点时间，可能是分钟级，因为有大量的写盘动作。
+
 #### OS下显示的内存统计
 
 获得redrock进程的PID
@@ -151,12 +153,34 @@ ps -fC redrock
 cat  /proc/1845/status | grep RSS
 ```
 
+或者下面一条命令
+```
+ps -eo command -eo rss | grep redrock
+```
+
+### 如何下载测试数数据库数据备份文件
+
+可以直接从GitHub下载这个文件sample.rdb，然后将之改为dump.rdb
+
+方法如下
+```
+curl -L https://github.com/szstonelee/redrock/raw/master/dl/sample.rdb -o dump.rdb
+```
+注：可以用镜像站点hub.fastgit.xyz替代github.com
+
+
+### 将测试数据全部存盘
+
+redrock新加了一个rockall命令（Redis不区分命令大小写），直接在redis-cli里执行rockall，或者没有redis-cli，用下面的shell命令
+```
+echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379 
+```
 
 ### 测试步骤
 
-1. 空数据库
-2. 加载测试数据
-3. 数据存盘
+1. 空数据库: redrock执行文件目录下不要有dump.rdb和appendonly.aof文件
+2. 加载测试数据：下载测试数数据库数据备份文件，需要重启redrock
+3. 数据存盘：当redrock已经在内存里加载了册数数据，再执行
 
 ### 测试结果
 
@@ -164,15 +188,17 @@ cat  /proc/1845/status | grep RSS
 
 | Tool | Zero-key | 1M Keys in Memory | 1M Keys in Disk |
 | -- | -- | -- | -- |
-| By Redis Info Command | 875K | 0M | 0M |
-| By Linux shell tool |  14M | 0M | 0M |
+| By Redis Info Command | 875K | 1.11G | 54.3M |
+| By Linux shell tool |  14M | 1.19G | 167.3M |
+
+注：Linux shell tool汇报的内存可能比Redis命令INOF要高，是因为Redis不能统计到RocksDB所占的内存。
 
 #### Pure Redis
 
-| Tool | Zero-key | 1M Keys in Memory | 1M Keys in Disk |
+| Tool | Zero-key | 1M Keys in Memory |
 | -- | -- | -- | -- |
-| By Redis Info Command | 875K | 0M | 0M |
-| By Linux shell tool |  14M | 0M | 0M |
+| By Redis Info Command | 853K | 0M |
+| By Linux shell tool |  10.2M | 0M |
 
 ### 存盘后的读盘
 
