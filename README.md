@@ -88,15 +88,19 @@ sudo ./redrock --bind 0.0.0.0
 
 ```
 curl -L https://github.com/szstonelee/redrock/raw/master/dl/redrock_mac -o redrock
+chmod +x redrock
 ```
 ```
 curl -L https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock_mac -o redrock
+chmod +x redrock
 ```
 ```
-wget https://github.com/szstonelee/redrock/raw/master/dl/redrock_mac -O redrcok
+wget https://github.com/szstonelee/redrock/raw/master/dl/redrock_mac -O redrock
+chmod +x redrock
 ```
 ```
 wget https://hub.fastgit.xyz/szstonelee/raw/master/redrock/dl/redrock_mac -O redrock
+chmod +x redrock
 ```
 
 另外，MacOS需要安装lz4和RocksDB动态链接库才能让这个执行文件有合适的运行环境，方法如下：
