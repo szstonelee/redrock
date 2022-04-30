@@ -167,11 +167,13 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 
 ### 测试步骤
 
+每步都需要执行上面的INFO命令和ps命令并记录内存结果：
+
 1. 空数据库: redrock执行文件目录下不要有dump.rdb和appendonly.aof文件，然后启动redrock。
 
-2. 加载测试数据：下载测试数数据库数据备份文件，需要重启redrock。
+2. 加载测试数据：下载测试数数据库数据备份文件并替换为当前执行目录下的dump.rdb，需要重启redrock。
 
-3. 数据全部存盘：当redrock已经在内存里加载了册数数据，再执行ROCKALL命令。
+3. 数据全部存盘：当redrock已经在内存里加载了测试数数据，再执行ROCKALL命令。
 
 ### 测试结果
 
