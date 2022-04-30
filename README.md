@@ -132,7 +132,7 @@ brew install rocksdb
 
 #### By Redis Info Command
 
-可以用Redis提供的redis-cli工具，连接redrock服务器，执行INFO命令获取内存统计。
+可以用Redis提供的redis-cli工具，连接redrock服务器，执行INFO命令获取内存统计(读取Memory报告中的used_memory_human)。
 
 如果没有redis-cli，可以用下面的Shell命令直接执行：
 
@@ -221,7 +221,7 @@ echo -e "*2\r\n\$3\r\nGET\r\n\$4\r\nk123\r\n" | nc 127.0.0.1 6379
 
 这时，你会发现所有存盘的数据（value）仍旧可以读出。
 
-你甚至可以在步骤2时，就先用GET命令先读出一部分key，然后执行测试步骤3，全部存盘后，再用同样的命令读出进行结果比对。
+你甚至可以在步骤2时，就先用GET命令先读出一部分key，然后执行测试步骤3，全部存盘后，再用同样的命令读出，最后进行结果比对。
 
 
 
