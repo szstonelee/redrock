@@ -124,7 +124,9 @@ brew install rocksdb
 * 类型: string
 * 数量: 一百万
 * Key: k1, k2, ..., k1000000
-* Val: 随机大小2到2000，平均1000字节。内容为数字，后面跟着这个数量的字符'v'。比如：2vv, 4vvvv ...
+* Val: 随机大小2到2000。内容为数字，后面跟着这个数量的字符'v'。比如：2vv, 4vvvv ...
+
+这样大概平均每条记录是1K字节以上。
 
 ### 内存工具
 
@@ -156,7 +158,7 @@ curl -L https://github.com/szstonelee/redrock/raw/master/dl/sample.rdb -o dump.r
 
 ### 将测试数据全部存盘
 
-RedRock新加了一个ROCKALL命令（Redis命令不区分大小写），这个命令强制将所有的数据存盘（但内存仍保留所有的key字段）。正常情况下，不需要这样做，因为RedRock是自动存盘，而且只将超出内存的冷数据自动存盘。但我们需要比较被测试的数据进入磁盘的前后内存使用情况对比情况（因为上面的测试数据并不大，正常1个G的内存就可以全部装下），所以需要用到这个RedRock新增的ROCKALL命令。
+RedRock新加了一个ROCKALL命令（Redis命令不区分大小写），这个命令强制将所有的数据存盘（但内存仍保留所有的key字段）。正常情况下，不需要这样做，因为RedRock是自动存盘，而且只将超出内存的冷数据自动存盘。但这里，我们需要立刻比较被测试的数据进入磁盘的前后内存使用情况对比情况（因为上面的测试数据并不大，正常1个G的内存就可以全部装下），所以需要用到这个RedRock新增的ROCKALL命令。
 
 直接在redis-cli里执行rockall，或者没有redis-cli，用下面的shell命令
 ```
@@ -175,7 +177,7 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 
 3. 数据全部存盘：当redrock已经在内存里加载了测试数数据，再执行ROCKALL命令。
 
-### 测试结果
+### 测试结果（表中数据为内存使用量）
 
 #### RedRock
 
@@ -184,11 +186,11 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 | By Redis Info Command | 875K | 1.11G | 54.3M |
 | By Linux ps tool | 14M | 1.19G | 167.3M |
 
-注：Linux shell tool汇报的内存可能比Redis命令INOF要高，是因为Redis不能统计到RocksDB所占的内存。
+注：Linux shell tool汇报的内存比Redis命令INOF要高，是因为Redis不能统计到RocksDB所占的内存（还包括操作系统提前分配的一些内存，比如加载的程序代码）。
 
 #### Pure Redis对比参照
 
-我们用一个6.2.2版本的Redis作为对比参照（请自行下载和安装redis，但必须是6.2.2版本的，如果愿意：可以点这里下载：），当然，redis不支持ROCKALL命令进行存盘。所以只能做上面测试步骤的1和2。
+我们用一个6.2.2版本的Redis作为对比参照（请自行下载和安装redis，但必须是6.2.2版本的，如果愿意：可以点这里下载：https://github.com/szstonelee/redrock/raw/master/dl/redis-server-6.2.2），当然，redis不支持ROCKALL命令进行存盘。所以只能做上面测试步骤的1和2。
 
 | 两个内存工具 | 空数据库 | 加载测试数据 |
 | -- | -- | -- | 
@@ -205,8 +207,21 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 
 注：你可以做自己的测试，比如，不止一百万记录，可以是一亿条记录，详细参考源码/tests/rock/目录下的gen_some_str_keys.py。
 
-### 存盘后的读Key
+### 全部存盘后的根据key读取string value验证
 
+当做完测试步骤3后，你可以用redis-cli连入，然后执行Redis的GET命令，key的名字任意，只要是kxxx，xxx为1-1000000的任意数字，例如：
+```
+get k123
+```
+
+如果没有redis-cli，可以用下面的shell命令代替（不过建议用redis-cli，因为下面的命令，需要你熟悉Redis的RESP协议）
+```
+echo -e "*2\r\n\$3\r\nGET\r\n\$4\r\nk123\r\n" | nc 127.0.0.1 6379
+```
+
+这时，你会发现所有存盘的数据（value）仍旧可以读出。
+
+你甚至可以在步骤2时，就先用GET命令先读出一部分key，然后执行测试步骤3，全部存盘后，再用同样的命令读出进行结果比对。
 
 
 

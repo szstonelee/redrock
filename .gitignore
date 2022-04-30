@@ -11,7 +11,7 @@ redis-check-rdb
 redis-check-dump
 redis-cli
 redis-sentinel
-#redis-server
+redis-server
 doc-tools
 release
 misc/*
