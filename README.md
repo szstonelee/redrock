@@ -19,15 +19,15 @@ RedRock是一个100%兼容的Redis服务器程序，但支持数据扩大到磁�
 
 RedRock是在Redis源码(基于Redis 6.2.2版本)上直接修改的，增加了RocksDB库进程磁盘存储。因此，RedRock支持Redis的所有特性，包括：
 
-1. 全数据结构：String，Hash, Set, List, Sorted Set(ZSet)，Bitmap，HyperLogLog，Geo，Stream。
-2. 所有的特性：Pipeline，Transaction，Script(Lua)，Pub/Sub，Module。
-3. 所有的管理：Server & Connection & Memory management，ACL，TLS，SlowLog，Config。
-4. 所有的存储：包括RDB以及AOF，支持同步和异步两种存盘指令。自动存盘和启动时自动恢复数据。
-5. 所有的集群：包括Cluster，Master/Slave，Sentinel。对于原有的Redis集群系统不用做任何修改。
-6. 所有的命令：你的客户端程序不做任何更改，只要将服务器执行文件（只有一个）替换掉即可。
-7. 增加的特性：可以直接对接StatsD并转为Grafana监测性能指标metrics
+* 全数据结构：String，Hash, Set, List, Sorted Set(ZSet)，Bitmap，HyperLogLog，Geo，Stream。
+* 所有的特性：Pipeline，Transaction，Script(Lua)，Pub/Sub，Module。
+* 所有的管理：Server & Connection & Memory management，ACL，TLS，SlowLog，Config。
+* 所有的存储：包括RDB以及AOF，支持同步和异步两种存盘指令。自动存盘和启动时自动恢复数据。
+* 所有的集群：包括Cluster，Master/Slave，Sentinel。对于原有的Redis集群系统不用做任何修改。
+* 所有的命令：你的客户端程序不做任何更改，只要将服务器执行文件（只有一个）替换掉即可。
+* 增加的特性：可以直接对接StatsD并转为Grafana监测性能指标metrics
 
-详细可以参考：[RedRock的特性](features.md)
+详细可以参考：[RedRock的特性](docs/features.md)
 
 ## 安装RedRock
 
@@ -121,7 +121,7 @@ brew install rocksdb
 
 ### 测试说明
 
-我们将一个一百万条记录的String的数据放入到RedRock里，然后再全部转到磁盘上，看服务器的内存的变化。
+我们将一个一百万条记录的String的数据放入到RedRock里（这一百万记录已预先做成一个Redis的备份RDB数据文件），然后再全部转到磁盘上，看服务器的内存的变化。
 
 数据库记录说明：
 
@@ -132,7 +132,7 @@ brew install rocksdb
 
 这样大概平均每条记录是1K字节以上。
 
-### 内存工具
+### 内存观测工具
 
 #### By Redis Info Command
 
@@ -150,9 +150,9 @@ echo -e "*1\r\n\$4\r\nINFO\r\n" | nc 127.0.0.1 6379 | grep used_memory_human
 ps -eo command -eo rss | grep redrock
 ```
 
-### 如何下载测试数数据库数据备份文件
+### 如何下载提前准备好的测试Redis数据库数据备份文件(RDB格式)
 
-可以直接从GitHub下载这个文件sample.rdb（32.5M），然后将之改为dump.rdb。这样，redrock启动时会像redis-server一样加载这个测试数据库备份。
+可以直接从GitHub下载这个文件sample.rdb（32.5M），然后将之改为dump.rdb。这样，redrock启动时会像redis-server一样自动加载这个测试数据库备份。
 
 方法如下
 ```
@@ -169,7 +169,7 @@ RedRock新加了一个ROCKALL命令（Redis命令不区分大小写），这个�
 echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379 
 ```
 
-注意：对于比较多的的Redis内存记录集，这个执行需要点时间，因为有大量的写盘动作。
+注意：对于比较多（一般是更多）的的Redis内存记录集或者比较慢的磁盘（CPU的多少也是个影响因素，特别是针对VM，建议多于1个CPU Core），这个执行需要点时间，因为有大量的写盘动作。正常情况下，几秒钟就完成这百万记录的写盘。
 
 ### 测试步骤
 
@@ -194,7 +194,7 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 
 #### Pure Redis对比参照
 
-我们用一个6.2.2版本的Redis作为对比参照（请自行下载和安装redis，但必须是6.2.2版本的，如果愿意：可以点这里下载：https://github.com/szstonelee/redrock/raw/master/dl/redis-server-6.2.2），当然，redis不支持ROCKALL命令进行存盘。所以只能做上面测试步骤的1和2。
+我们用一个6.2.2版本的Redis作为对比参照（请自行下载和安装redis，但必须是6.2.2版本的，如果愿意：可以点这里下载：[https://github.com/szstonelee/redrock/raw/master/dl/redis-server-6.2.2](https://github.com/szstonelee/redrock/raw/master/dl/redis-server-6.2.2)，当然，redis不支持ROCKALL命令进行存盘。所以只能做上面测试步骤的1和2。
 
 | 两个内存工具 | 空数据库 | 加载测试数据 |
 | -- | -- | -- | 
@@ -203,9 +203,9 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 
 ### 测试结论
 
-1. 可以看到，对于百万String记录，当RedRock存盘后，内存由1G(不管是用Info还是ps降低到百兆上下，降低了90%以上。
+1. 可以看到，对于百万String记录，当RedRock存盘后，不管是用Redis Info还是ps看，内存由1G降低到百兆上下，降低了90%以上。
 
-2. Info和ps显示的内存的不同，主要是Info不知道RocksDB所使用的内存量。
+2. Redis Info和ps显示的内存的不同，主要是Info不知道RocksDB所使用的内存量。
 
 3. 如果用RedRock和纯Redis相比，同等状态下，基本上内存差别不大，即RedRock新增的额外内存相比Redis差别不大。
 
