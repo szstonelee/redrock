@@ -48,7 +48,6 @@ src/*.aof
 tests/rock/.idea/
 tests/rock/mass*.txt
 src/node*.conf
-dl/redis-server-6.2.2
 dl/redrock_static_centos
 dl/redrock_static_ubuntu
 dl/redrock
