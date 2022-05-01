@@ -137,7 +137,7 @@ brew install rocksdb
 
 ### 内存观测工具
 
-#### By Redis Info Command
+**By Redis Info Command**
 
 可以用Redis提供的redis-cli工具，连接redrock服务器，执行INFO命令获取内存统计(读取Memory报告中的used_memory_human)。
 
@@ -147,7 +147,7 @@ brew install rocksdb
 echo -e "*1\r\n\$4\r\nINFO\r\n" | nc 127.0.0.1 6379 | grep used_memory_human
 ```
 
-#### By Linux ps tool
+**By Linux ps tool**
 
 ```
 ps -eo command -eo rss | grep redrock
@@ -193,7 +193,9 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 | By Redis Info Command | 875K | 1.11G | 54.3M |
 | By Linux ps tool | 14M | 1.19G | 167.3M |
 
-注：Linux shell tool汇报的内存比Redis命令INOF要高，是因为Redis不能统计到RocksDB所占的内存（还包括操作系统提前分配的一些内存，比如加载的程序代码）。
+注1：Linux shell tool汇报的内存比Redis命令INOF要高，是因为Redis不能统计到RocksDB所占的内存（还包括操作系统提前分配的一些内存，比如加载的程序代码）。
+
+注2：不同操作系统下可能内存数字稍有不同，但数量级基本一致。
 
 #### Pure Redis对比参照
 
