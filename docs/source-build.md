@@ -4,18 +4,39 @@
 
 注：最好以root身份运行下面的命令，否则请加上sudo
 
-### 首先安装C/C++编译环境
+需要安装C/C++编译环境，需要gcc/g++ 7.0以上，以及git，make这两个工具
 
-RedRock需要最低gcc/g++7编译环境，如果未安装，可以安装最新的gcc/g++
+### CentOS安装编译环境
 
-#### CentOS安装编译环境
+```
+yum update -y
+yum install git -y
+yum groupinstall 'Development Tools' -y
+```
 
-#### Ubuntu安装编译环境
+这时，gcc和g++的version是4.8，可以用gcc -v和g++ -v检查。
 
-#### MacOS安装编译环境
+我们需要升级到gcc7和g++7，并且使其有效（否则，缺省仍是4.8）
+
+```
+yum install centos-release-scl -y
+yum install devtoolset-7-gcc-c++ -y
+scl enable devtoolset-7 bash
+```
+
+这时，用gcc -v和g++ -v检查，发现版本到7.3
+
+同时，最好让每次登录都能自动切换到gcc7，请修改~/.bash_profile，加入下面
+```
+scl enable devtoolset-7 bashs
+```
+
+### Ubuntu安装编译环境
+
+### MacOS安装编译环境
 
 
-### 下载和编译支持库lz4和RocksDB
+## 下载和编译支持库lz4和RocksDB
 
 需要至少两个库的支持，先是lz4，然后是RocksDB（RocksDB需要知道lz4安装成功）
 
@@ -34,6 +55,7 @@ make install
 对于Linux
 ```
 find /usr -name liblz4.so
+find /usr -name liblz4.a
 ```
 
 对于Mac
@@ -49,6 +71,7 @@ cd rocksdb
 make shared_lib
 make install
 ```
+注：编译时间很长，你最好去喝杯咖啡。
 
 可以检查RocksDB是否成功
 
