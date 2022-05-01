@@ -218,7 +218,7 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 get k123
 ```
 
-如果没有redis-cli，可以用下面的shell命令代替（不过建议用redis-cli，因为下面的命令，需要你熟悉Redis的RESP协议）
+如果没有redis-cli，可以用下面的shell命令代替（不过建议用redis-cli，因为下面的命令，如果随意改变kxxx，需要你熟悉Redis的RESP协议）
 ```
 echo -e "*2\r\n\$3\r\nGET\r\n\$4\r\nk123\r\n" | nc 127.0.0.1 6379
 ```
