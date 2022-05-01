@@ -9,33 +9,33 @@
 
 ## RedRock是什么？
 
-RedRock是一个100%兼容的Redis服务器程序，但支持数据扩大到磁盘。
+RedRock是一个100%兼容的Redis服务器程序，且支持数据扩大到磁盘。
 
 虽然Redis有RDB/AOF磁盘文件，但对于Redis而言，这只是数据的备份，即Redeis的命令不能实时读写磁盘上的RDB/AOF文件里包含的数据，整个服务器程序的数据大小仍受限于服务器硬件内存的限制（顶级服务器内存最高也就到几个TB，一般服务器内存就是GB量级）。
 
 而RedRock是将超出内存的数据自动转为磁盘存储，这样，热数据在内存保证访问速度，冷温数据在磁盘并且支持实时读写，RedRock为此做了自动的冷热转化，从而大大节省硬件成本。因为磁盘的价格相比内存可以几乎忽略，同时磁盘的大小远远超越内存的限制。内存一般都是GB级别，而磁盘可以轻易配置到TB甚至PB级别，在成本差不多的情况下，数据的大小提升最高到千倍以上。
 
-整个应用的性能不会有太多损失，比如：大部分的访问性能和原来的Redis一样（因为热数据仍在内存中），即99%的时延Latency都在1ms以下。
+性能不会有太多损失，比如：大部分的访问性能和原来的Redis一样（因为热数据仍在内存中），即99%的时延Latency都在1ms以下。
 
-RedRock是在Redis源码(基于Redis 6.2.2版本)上直接修改的，增加了RocksDB库进程磁盘存储。因此，RedRock支持Redis的所有特性，包括：
+RedRock是在Redis源码上直接修改的(基于6.2.2版本)，用RocksDB库进程磁盘存储。RedRock支持Redis的所有特性，包括：
 
 * 全数据结构：String，Hash, Set, List, Sorted Set(ZSet)，Bitmap，HyperLogLog，Geo，Stream。
 * 所有的特性：Pipeline，Transaction，Script(Lua)，Pub/Sub，Module。
 * 所有的管理：Server & Connection & Memory management，ACL，TLS，SlowLog，Config。
-* 所有的存储：包括RDB以及AOF，支持同步和异步两种存盘指令。自动存盘和启动时自动恢复数据。
+* 所有的存储：包括RDB以及AOF，支持同步和异步两种存盘指令。自动存盘和启动时自动恢复备份文件。
 * 所有的集群：包括Cluster，Master/Slave，Sentinel。对于原有的Redis集群系统不用做任何修改。
 * 所有的命令：你的客户端程序不做任何更改，只要将服务器执行文件（只有一个）替换掉即可。
-* 增加的特性：可以直接对接StatsD并转为Grafana监测性能指标metrics
+* 增加的特性：可以直接对接StatsD并转为Grafana监测性能指标metrics，并增加一些命令和配置管理内存和磁盘。
 
 详细可以参考：[RedRock的特性](docs/features.md)
 
 ## 安装RedRock
 
-### 安装方式一：直接下载执行文件
+### 安装方式一：直接下载执行文件redrock
 
-#### Linux（CentOS, Ubuntu, Debian）
+#### Linux（CentOS, Ubuntu, Debian）下载压缩包redrock.tar
 
-可以用curl、wget、浏览器点击链接三种方式之一，直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock，在已测试的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11像Redis一样直接运行。
+可以用curl、wget、浏览器点击链接三种方式之一，直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock，在已测试的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11上像Redis一样直接运行或配置为service。
 
 ##### 用curl下载redrock.tar
 
@@ -65,7 +65,7 @@ wget https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar -O red
 * GitHub: [https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar](https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar)
 * 镜像站点：[https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar](https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar)
 
-##### 解压和执行
+##### 下载redrock.tar后需要解压和执行
 ```
 tar -xzf redrock.tar
 ```
@@ -75,7 +75,7 @@ tar -xzf redrock.tar
 sudo ./redrock
 ```
 
-如果想从请其他机器连接服务器，请使用
+如果客户端（如redis-cli）想从请其他机器连接服务器，请使用
 ```
 sudo ./redrock --bind 0.0.0.0
 ```
@@ -84,7 +84,8 @@ sudo ./redrock --bind 0.0.0.0
 
 其他Linux平台，用户也可以尝试下载和运行，理论上所有的Linux都可以运行。
 
-#### MacOS
+#### MacOS直接下载执行文件redrock_mac
+下面四个方法选择其中一种即可：
 
 ```
 curl -L https://github.com/szstonelee/redrock/raw/master/dl/redrock_mac -o redrock
@@ -109,7 +110,9 @@ brew install lz4
 brew install rocksdb
 ```
 
-注：redrock_mac不需要tar解压，因为redrock_mac这个执行文件很小（不到2M，因为MacOS倾向于使用动态链接库），但你需要安装动态库lz4和RocksDB。
+注1：redrock_mac不需要tar解压，因为redrock_mac这个执行文件很小，不到2M，因为MacOS倾向于使用动态链接库，但你需要安装动态库lz4和RocksDB。
+
+注2：同时，需要chmod将文件设置为可执行。
 
 ### 安装方式二：源码编译
 
@@ -121,14 +124,14 @@ brew install rocksdb
 
 ### 测试说明
 
-我们将一个一百万条记录的String的数据放入到RedRock里（这一百万记录已预先做成一个Redis的备份RDB数据文件），然后再全部转到磁盘上，看服务器的内存的变化。
+我们将一百万条记录的String的数据启动时加载到RedRock里，这一百万记录已预先做成一个Redis的备份RDB数据文件可进行下载，在dl/目录下叫sample.rdb，然后再用一个全新的命令ROCKALL，将内存的数据全部转到磁盘上，看服务器的内存的变化。
 
 数据库记录说明：
 
 * 类型: string
 * 数量: 一百万
 * Key: k1, k2, ..., k1000000
-* Val: 随机大小2到2000。内容为数字，后面跟着这个数量的字符'v'。比如：2vv, 4vvvv ...
+* Val: 最开始是2到2000数字，后面跟着这个数量的字符'v'。比如：2vv, 4vvvv ...
 
 这样大概平均每条记录是1K字节以上。
 
