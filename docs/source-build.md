@@ -98,7 +98,7 @@ make install
 ```
 find /usr -name librocksdb.so
 ```
-注意：如果查不到，请冲更新执行```make shared_lib```和```make intall```
+注意：如果查不到，请重新执行```make shared_lib```和```make intall```一次。
 
 对于Mac
 ```
