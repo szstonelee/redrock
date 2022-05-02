@@ -4,7 +4,7 @@
 
 注：最好以root身份运行下面的命令，否则请加上sudo
 
-需要安装C/C++编译环境，需要gcc/g++ 7.0以上，以及git，make这两个工具
+需要安装C/C++编译环境，需要gcc/g++ 7.0以上，以及git，make, autoconf这几个工具
 
 ### CentOS安装编译环境
 
@@ -104,3 +104,41 @@ make server
 ```
 sudo ./redrock
 ```
+
+### 一些问题的解决办法
+
+#### 运行时找不到动态链接库
+
+首先确认上面的动态链接库已经正确编译和安装
+
+当运行redrock时，出现下面的提示librocksdb.so.7.2
+```
+error while loading shared libraries: librocksdb.so.7.2
+```
+
+可能是你的操作系统的环境中的动态链接库的路径不对，请找到动态库位置librocksdb.so.7.2
+```
+find /usr -name librocksdb.so.7.2
+```
+
+假设输出是：```/usr/local/lib/librocksdb.so```
+
+那么需要加入动态链接库的搜索，如下
+```
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
+```
+
+### 编译redrock/deps出错，然后总是出错
+
+首先根据出错安装或调整操作系统一些参数。
+
+然后，需要让deps重新编译，方法如下
+
+```
+cd redrock
+cd src
+make distclean
+```
+
+
+
