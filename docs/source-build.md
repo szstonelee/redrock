@@ -154,5 +154,10 @@ cd src
 make distclean
 ```
 
-
+这会清理deps/目录下的编译，然后重新执行
+```
+cd redrock
+cd src
+make server
+```
 
