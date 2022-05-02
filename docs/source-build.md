@@ -16,7 +16,7 @@ yum groupinstall 'Development Tools' -y
 
 这时，gcc和g++的version是4.8，可以用gcc -v和g++ -v检查。
 
-我们需要升级到gcc7和g++7，并且使其有效（否则，缺省仍是4.8）
+我们需要升级到gcc7和g++7，并且使其有效（否则，即使安装了gcc7，缺省仍是4.8）
 
 ```
 yum install centos-release-scl -y
@@ -33,10 +33,24 @@ scl enable devtoolset-7 bashs
 
 ### Ubuntu安装编译环境
 
+```
+apt update -y
+apt install build-essential -y
+```
+
 ### MacOS安装编译环境
 
+```
+brew update
+brew install autoconf
+brew install make
+brew install gcc
+```
 
-## 下载和编译支持库lz4和RocksDB
+check: gcc -v 和 g++ -v
+
+
+### 下载和编译支持库lz4和RocksDB
 
 需要至少两个库的支持，先是lz4，然后是RocksDB（RocksDB需要知道lz4安装成功）
 
@@ -128,7 +142,7 @@ find /usr -name librocksdb.so.7.2
 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
 ```
 
-### 编译redrock/deps出错，然后总是出错
+#### 编译redrock/deps出错，然后总是出错
 
 首先根据出错安装或调整操作系统一些参数。
 
