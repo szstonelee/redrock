@@ -40,6 +40,7 @@ scl enable devtoolset-7 bashs
 ```
 apt update -y
 apt install build-essential -y
+apt install autoconf -y
 ```
 
 #### MacOS安装编译环境
@@ -97,6 +98,7 @@ make install
 ```
 find /usr -name librocksdb.so
 ```
+注意：如果查不到，请冲更新执行```make shared_lib```和```make intall```
 
 对于Mac
 ```
