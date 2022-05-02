@@ -2,11 +2,15 @@
 
 ## RedRock源码编译
 
+
+
+### 一、安装编译环境
+
 注：最好以root身份运行下面的命令，否则请加上sudo
 
 需要安装C/C++编译环境，需要gcc/g++ 7.0以上，以及git，make, autoconf这几个工具
 
-### CentOS安装编译环境
+#### CentOS安装编译环境
 
 ```
 yum update -y
@@ -31,14 +35,14 @@ scl enable devtoolset-7 bash
 scl enable devtoolset-7 bashs
 ```
 
-### Ubuntu安装编译环境
+#### Ubuntu安装编译环境
 
 ```
 apt update -y
 apt install build-essential -y
 ```
 
-### MacOS安装编译环境
+#### MacOS安装编译环境
 
 ```
 brew update
@@ -50,7 +54,7 @@ brew install gcc
 check: gcc -v 和 g++ -v
 
 
-### 下载和编译支持库lz4和RocksDB
+### 二、下载和编译支持库lz4和RocksDB
 
 需要至少两个库的支持，先是lz4，然后是RocksDB（RocksDB需要知道lz4安装成功）
 
@@ -99,14 +103,14 @@ find /usr -name librocksdb.so
 find /usr -name librocksdb.dylib
 ```
 
-### 下载RedRock源代码
+### 三、下载RedRock源代码
 
 ```
 git clone https://github.com/szstonelee/redrock.git
 ```
 注：上面的github.com可以替换为hub.fastgit.xyz
 
-### 编译RedRock
+### 四、编译RedRock源码
 
 ```
 cd redrock
@@ -119,7 +123,7 @@ make server
 sudo ./redrock
 ```
 
-### 一些问题的解决办法
+### 五、一些问题的解决办法
 
 #### 运行时找不到动态链接库
 
