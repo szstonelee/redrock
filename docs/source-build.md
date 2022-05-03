@@ -125,6 +125,14 @@ make server
 sudo ./redrock
 ```
 
+你可以检查一下当前redrock的动态链接库是否正确，方法如下：
+```
+ldd redrock
+```
+注：如果是MacOS，请用```otool -L redrock```
+
+如果所有的动态链接库.so文件都可以找到，一般是没有问题的，否则，请看下面的一些问题的解决来处理。
+
 ### 五、一些问题的解决办法
 
 #### 运行时找不到动态链接库
@@ -145,7 +153,7 @@ find /usr -name librocksdb.so.7.2
 
 那么需要加入动态链接库的搜索，如下
 ```
-LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
+export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 ```
 
 #### 编译redrock/deps出错，然后总是出错
