@@ -57,7 +57,7 @@ check: gcc -v 和 g++ -v
 
 需要至少两个库的支持，先是lz4，然后是RocksDB（RocksDB需要知道lz4安装成功）
 
-### 安装lz4支持库
+### 先编译和安装lz4支持库
 
 ```
 git clone https://github.com/lz4/lz4.git
@@ -80,7 +80,7 @@ find /usr -name liblz4.a
 find /usr -name liblz4.dylib
 ```
 
-### 安装RocksDB支持库
+### 接着编译和安装RocksDB支持库
 
 ```
 git clone -b v7.2.0 https://github.com/facebook/rocksdb.git
@@ -103,14 +103,16 @@ find /usr -name librocksdb.so
 find /usr -name librocksdb.dylib
 ```
 
-## 三、下载RedRock源代码
+## 三、下载和编译RedRock源代码
+
+### 下载RedRock源码
 
 ```
 git clone https://github.com/szstonelee/redrock.git
 ```
 注：上面的github.com可以替换为hub.fastgit.xyz
 
-## 四、编译RedRock源码
+### 编译RedRock源码
 
 ```
 cd redrock
@@ -131,7 +133,7 @@ ldd redrock
 
 如果所有的动态链接库.so文件都可以找到，一般是没有问题的，否则，请看下面的一些问题的解决来处理。
 
-## 五、一些问题的解决办法
+## 四、一些问题的解决办法
 
 ### 运行时找不到动态链接库
 
