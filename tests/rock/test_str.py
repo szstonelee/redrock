@@ -141,11 +141,13 @@ def incrby():
 
 def incrbyfloat():
     num = 10.5
-    r.set(key, num)
+    cmd = f"set {key} {num}"
+    r.execute_command(cmd)
     rock_evict(key)
     increment = 0.1
-    res = r.incrbyfloat(key, increment)
-    if res != num + increment:
+    cmd = f"incrbyfloat {key} {increment}"
+    res = r.execute_command(cmd)
+    if float(res) != num + increment:
         print(res)
         raise Exception("incrbyfloat fail")
 
