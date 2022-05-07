@@ -988,18 +988,6 @@ static int incrbyfloat_command_check_and_reply(client *c)
     if (checkType(c,o,OBJ_STRING)) 
         return 1;
 
-    long double incr, value;
-    if (getLongDoubleFromObjectOrReply(c,o,&value,NULL) != C_OK ||
-        getLongDoubleFromObjectOrReply(c,c->argv[2],&incr,NULL) != C_OK)
-        return 1;
-
-    value += incr;
-    if (isnan(value) || isinf(value)) 
-    {
-        addReplyError(c,"increment would produce NaN or Infinity");
-        return 1;
-    }
-
     return 0;
 }
 
