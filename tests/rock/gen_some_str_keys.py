@@ -7,7 +7,7 @@ import random
 # This is for a simple sample test for RedRock for Readme.md
 # It will generage some string keys in database 0 of RedRock
 
-r_ip = "127.0.0.1"
+r_ip = "192.168.56.3"
 r_port = 6379
 pool = redis.ConnectionPool(host=r_ip,
                             port=r_port,
