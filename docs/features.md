@@ -6,6 +6,7 @@
 ## 一些新增的命令
 
 | 新增命令 | 说明 |
+| -- | -- |
 | rockevict | |
 | rockevicthash | |
 | rockstat | |
