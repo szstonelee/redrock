@@ -1,14 +1,14 @@
 [回主目录页](../README.md)
 
-## RedRock源码编译
+# RedRock源码编译
 
-### 一、安装编译环境
+## 一、安装编译环境
 
 注：最好以root身份运行下面的命令，否则请加上sudo
 
 需要安装C/C++编译环境，需要gcc/g++ 7.0以上，以及git，make, autoconf这几个工具
 
-#### CentOS安装编译环境
+### CentOS安装编译环境
 
 ```
 yum update -y
@@ -33,7 +33,7 @@ scl enable devtoolset-7 bash
 scl enable devtoolset-7 bashs
 ```
 
-#### Ubuntu安装编译环境
+### Ubuntu安装编译环境
 
 ```
 apt update -y
@@ -41,7 +41,7 @@ apt install build-essential -y
 apt install autoconf -y
 ```
 
-#### MacOS安装编译环境
+### MacOS安装编译环境
 
 ```
 brew update
@@ -53,11 +53,11 @@ brew install gcc
 check: gcc -v 和 g++ -v
 
 
-### 二、下载和编译支持库lz4和RocksDB
+## 二、下载和编译支持库lz4和RocksDB
 
 需要至少两个库的支持，先是lz4，然后是RocksDB（RocksDB需要知道lz4安装成功）
 
-#### 安装lz4支持库
+### 安装lz4支持库
 
 ```
 git clone https://github.com/lz4/lz4.git
@@ -80,7 +80,7 @@ find /usr -name liblz4.a
 find /usr -name liblz4.dylib
 ```
 
-#### 安装RocksDB支持库
+### 安装RocksDB支持库
 
 ```
 git clone -b v7.2.0 https://github.com/facebook/rocksdb.git
@@ -103,14 +103,14 @@ find /usr -name librocksdb.so
 find /usr -name librocksdb.dylib
 ```
 
-### 三、下载RedRock源代码
+## 三、下载RedRock源代码
 
 ```
 git clone https://github.com/szstonelee/redrock.git
 ```
 注：上面的github.com可以替换为hub.fastgit.xyz
 
-### 四、编译RedRock源码
+## 四、编译RedRock源码
 
 ```
 cd redrock
@@ -131,9 +131,9 @@ ldd redrock
 
 如果所有的动态链接库.so文件都可以找到，一般是没有问题的，否则，请看下面的一些问题的解决来处理。
 
-### 五、一些问题的解决办法
+## 五、一些问题的解决办法
 
-#### 运行时找不到动态链接库
+### 运行时找不到动态链接库
 
 首先确认上面的动态链接库已经正确编译和安装
 
@@ -154,7 +154,7 @@ find /usr -name librocksdb.so.7.2
 export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 ```
 
-#### 编译redrock/deps出错，然后总是出错
+### 编译redrock/deps出错，然后总是出错
 
 首先根据出错安装或调整操作系统一些参数。
 
