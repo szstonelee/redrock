@@ -96,12 +96,17 @@ make install
 ```
 find /usr -name librocksdb.so
 ```
+然后在用ls命令检查这个文件链接是到7.0以上正确的RocksDB库。
+
 注意：如果查不到，请重新执行```make shared_lib```和```make intall```一次。
 
 对于Mac
 ```
 find /usr -name librocksdb.dylib
 ```
+然后在用ls命令检查这个文件链接是到7.0以上正确的RocksDB库。
+
+注意：如果查不到，请重新执行```make shared_lib```和```make intall```一次。
 
 ## 三、下载和编译RedRock源代码
 
