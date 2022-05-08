@@ -98,7 +98,7 @@ find /usr -name librocksdb.so
 ```
 然后在用ls命令检查这个文件链接是到7.0以上正确的RocksDB库。
 
-注意：如果查不到，请重新执行```make shared_lib```和```make intall```一次。
+注意：如果查不到，请重新执行```make shared_lib```和```make install```一次。
 
 对于Mac
 ```
@@ -106,7 +106,7 @@ find /usr -name librocksdb.dylib
 ```
 然后在用ls命令检查这个文件链接是到7.0以上正确的RocksDB库。
 
-注意：如果查不到，请重新执行```make shared_lib```和```make intall```一次。
+注意：如果查不到，请重新执行```make shared_lib```和```make install```一次。
 
 ## 三、下载和编译RedRock源代码
 
@@ -161,11 +161,11 @@ find /usr -name librocksdb.so.7.2
 export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 ```
 
-### 编译redrock/deps出错，然后总是出错
+### 编译redrock/deps出错，然后之后也总是出错
 
 首先根据出错安装或调整操作系统一些参数。
 
-然后，需要让deps重新编译，方法如下
+然后，需要让deps重新编译，deps目录下是Redis依赖的一些自己的库，比如改写的Jemalloc等，方法如下
 
 ```
 cd redrock
@@ -179,4 +179,18 @@ cd redrock
 cd src
 make server
 ```
+
+### 运行redrock时出现这个提示：error while trying to create folder = /opt/redrock
+
+这说明你的redrock对于/opt/redrock没有权限。
+
+解决办法：请用```sudo ./redrock```。或者以root身份执行redrock。
+
+### 运行redrock出现这个提示：remove RocksDB folder failed, folder = /opt/redrock/rocksdb6379/
+
+一般是再次运行redrock时，忘了以sudo或root身份运行。
+
+原因：redrock每次执行时，如果发现/opt/redrock目录存在，都会全部删除，因为每次redrock运行都会重新建立RocksDB库，并不使用以前的。
+
+解决办法：请用```sudo ./redrock```。或者以root身份执行redrock。
 
