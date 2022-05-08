@@ -51,5 +51,6 @@ src/node*.conf
 dl/redrock_static_centos
 dl/redrock_static_ubuntu
 dl/redrock
+dl/redrock_static
 #dl/redrock.tar
 .gitattributes
