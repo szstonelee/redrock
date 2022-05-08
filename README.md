@@ -139,7 +139,7 @@ brew link --overwrite rocksdb
 * Key: k1, k2, ..., k1000000
 * Val: 最开始是2到2000数字，后面跟着这个数量的字符'v'。比如：2vv, 4vvvv ...
 
-这样大概平均每条记录是1K字节以上。
+这样大概平均每条记录是1K字节以上，整个数据记录在1G字节这个量级。
 
 ### 内存观测工具
 
@@ -167,7 +167,7 @@ ps -eo command -eo rss | grep redrock
 ```
 curl -L https://github.com/szstonelee/redrock/raw/master/dl/sample.rdb -o dump.rdb
 ```
-注：可以用镜像站点hub.fastgit.xyz替代github.com
+注：可以用镜像站点hub.fastgit.xyz替代github.com，也可以用wget得到这个备份文件。
 
 ### 如何将测试数据全部存盘
 
