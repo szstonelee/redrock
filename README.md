@@ -109,11 +109,14 @@ chmod +x redrock
 ```
 brew install lz4
 brew install rocksdb
+brew link --overwrite rocksdb
 ```
 
 注1：redrock_mac不需要tar解压，因为redrock_mac这个执行文件很小，不到2M，因为MacOS倾向于使用动态链接库，但你需要安装动态库lz4和RocksDB。
 
 注2：同时，需要chmod将文件设置为可执行。
+
+注3：最好check一下，方法，首先find /usr -name librocksdb.dylib，然后在找到的librocksdb.dylib，进行ls -all，看link到的RocksDB版本是否7以上。
 
 ### 安装方式二：源码编译
 

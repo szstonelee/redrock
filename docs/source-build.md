@@ -47,7 +47,7 @@ apt install autoconf -y
 brew update
 brew install autoconf
 brew install make
-brew install gcc
+brew install gcc@7
 ```
 
 check: gcc -v 和 g++ -v
