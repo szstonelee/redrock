@@ -76,7 +76,7 @@ tar -xzf redrock.tar
 sudo ./redrock
 ```
 
-如果客户端（如redis-cli）想从请其他机器连接服务器，请使用
+如果客户端（如redis-cli）想从其他机器连接服务器，请使用
 ```
 sudo ./redrock --bind 0.0.0.0
 ```
