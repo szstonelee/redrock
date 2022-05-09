@@ -195,7 +195,7 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 #### RedRock
 
 | | 空数据库 | 加载测试数据 | 数据全部存盘 |
-| -- | -- | -- | -- |
+| -- | :--: | :--: | :--: |
 | By Redis Info Command | 875K | 1.11G | 54.3M |
 | By Linux ps tool | 14M | 1.19G | 167.3M |
 
@@ -208,7 +208,7 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 我们用一个6.2.2版本的Redis作为对比参照（请自行下载和安装redis，但必须是6.2.2版本的，如果愿意：[可以点这里下载](https://github.com/szstonelee/redrock/raw/master/dl/redis-server-6.2.2)，当然，redis不支持ROCKALL命令进行存盘。所以只能做上面测试步骤的1和2。
 
 | | 空数据库 | 加载测试数据 |
-| -- | -- | -- | 
+| -- | :--: | :--: | 
 | By Redis Info Command | 853K | 1.08G |
 | By Linux ps tool | 10.2M | 1.16G |
 
