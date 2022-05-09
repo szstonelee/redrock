@@ -199,13 +199,13 @@ echo -e "*1\r\n\$7\r\nROCKALL\r\n" | nc 127.0.0.1 6379
 | By Redis Info Command | 875K | 1.11G | 54.3M |
 | By Linux ps tool | 14M | 1.19G | 167.3M |
 
-注1：Linux shell tool汇报的内存比Redis命令INOF要高，是因为Redis不能统计到RocksDB所占的内存（还包括操作系统提前分配的一些内存，比如加载的程序代码）。
+注1：Linux shell tool汇报的内存比Redis命令INFO要高，是因为Redis不能统计到RocksDB所占的内存（还包括操作系统提前分配的一些内存，比如加载的程序代码）。
 
 注2：不同操作系统下可能内存数字稍有不同，但数量级基本一致。
 
 #### Pure Redis对比参照
 
-我们用一个6.2.2版本的Redis作为对比参照（请自行下载和安装redis，但必须是6.2.2版本的，如果愿意：[可以点这里下载，也可以到dl/目录](https://github.com/szstonelee/redrock/raw/master/dl/redis-server-6.2.2)，当然，redis不支持ROCKALL命令进行存盘。所以只能做上面测试步骤的1和2。
+我们用一个6.2.2版本的Redis作为对比参照（请自行下载和安装redis，但必须是6.2.2版本的，如果愿意：[可以点这里下载，也可以到dl/目录](https://github.com/szstonelee/redrock/raw/master/dl/redis-server-6.2.2)，当然，Redis不支持ROCKALL命令进行存盘。所以只能做上面测试步骤的1和2。
 
 | | 空数据库 | 加载测试数据 |
 | -- | :--: | :--: | 
