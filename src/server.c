@@ -3189,7 +3189,8 @@ static void init_redrock()
 
     init_client_id_table();     // for rock common
 
-    init_rocksdb("/opt/redrock/rocksdb");
+    // init_rocksdb("/opt/redrock/rocksdb");
+    init_rocksdb();
       
     init_and_start_rock_write_thread();  // init rock write
     init_and_start_rock_read_thread();   // init rock read

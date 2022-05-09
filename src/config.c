@@ -2547,6 +2547,7 @@ standardConfig configs[] = {
     createStringConfig("ignore-warnings", NULL, MODIFIABLE_CONFIG, ALLOW_EMPTY_STRING, server.ignore_warnings, "", NULL, NULL),
     createStringConfig("proc-title-template", NULL, MODIFIABLE_CONFIG, ALLOW_EMPTY_STRING, server.proc_title_template, CONFIG_DEFAULT_PROC_TITLE_TEMPLATE, isValidProcTitleTemplate, updateProcTitleTemplate),
     createStringConfig("statsd", NULL, MODIFIABLE_CONFIG, ALLOW_EMPTY_STRING, statsd_config, "", is_valid_statsd_config, NULL), 
+    createStringConfig("rocksdb_folder", NULL, IMMUTABLE_CONFIG, EMPTY_STRING_IS_NULL, server.rocksdb_folder, "/opt/redrock", NULL, NULL),
 
     /* SDS Configs */
     createSDSConfig("masterauth", NULL, MODIFIABLE_CONFIG | SENSITIVE_CONFIG, EMPTY_STRING_IS_NULL, server.masterauth, NULL, NULL, NULL),

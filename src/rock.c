@@ -120,27 +120,50 @@ static void rek_mkdir(char *path)
         serverLog(LL_WARNING, "error while trying to create folder = %s", path); 
 }
 
-/* Init the global rocksdb handler, i.e., rockdb. */
-#define ROCKSDB_LEVEL_NUM   7
-void init_rocksdb(const char* folder_original_path)
+static sds get_rocksdb_folder()
 {
-    // We add listening port to folder_path
-    sds folder_path = sdsnewlen(folder_original_path, strlen(folder_original_path));
+    sds folder = NULL;
+
+    // first get parent folder from server.rocksdb_folder (exclude the last char '/' if exist)
+    if (server.rocksdb_folder == NULL)
+    {
+        folder = sdsnew("/opt/redrock");
+    }
+    else
+    {
+        size_t len = strlen(server.rocksdb_folder);
+        serverAssert(len > 0);
+        if (server.rocksdb_folder[len-1] != '/')
+        {
+            folder = sdsnewlen(server.rocksdb_folder, len);
+        }
+        else
+        {
+            folder = sdsnewlen(server.rocksdb_folder, len-1);
+        }
+    }
+
+    folder = sdscat(folder, "/rocksdb");
+
+    // then add listening port
     sds listen_port = sdsfromlonglong(server.port);
     serverLog(LL_NOTICE, "init rocksdb, server listen port = %s", listen_port);
-    folder_path = sdscatsds(folder_path, listen_port);
+    folder = sdscatsds(folder, listen_port);
     sdsfree(listen_port);
-    folder_path = sdscat(folder_path, "/");
+
+    // add the char '/' to the end
+    folder = sdscat(folder, "/");
+
+    return folder;
+}
+
+/* Init the global rocksdb handler, i.e., rockdb. */
+#define ROCKSDB_LEVEL_NUM   7
+void init_rocksdb(/*const char* folder_original_path*/)
+{
+    sds folder_path = get_rocksdb_folder(); 
 
     atomicSet(rock_threads_loop_forever, 1);
-
-    // verify last char, must be '/'
-    const size_t path_len = strlen(folder_path);
-    if (folder_path[path_len-1] != '/')
-    {
-        serverLog(LL_WARNING, "RocksDB folder path must be ended of slash char of /");
-        exit(1);
-    }
 
     // nftw(folder_path, unlink_cb, 64, FTW_DEPTH | FTW_PHYS);
     DIR *dir = opendir(folder_path);
@@ -178,7 +201,6 @@ void init_rocksdb(const char* folder_original_path)
             sds copy_folder = sdsnew(folder_path);
             rek_mkdir(copy_folder);
             sdsfree(copy_folder);
-            return;
         } 
         else 
         {
@@ -192,8 +214,9 @@ void init_rocksdb(const char* folder_original_path)
     const long cpus = sysconf(_SC_NPROCESSORS_ONLN);
     rocksdb_options_increase_parallelism(options, (int)(cpus));
     rocksdb_options_optimize_level_style_compaction(options, 0); 
-    // create the DB if it's not already present
+    // create the DB as a new one
     rocksdb_options_set_create_if_missing(options, 1);
+    rocksdb_options_set_error_if_exists(options, 1);
     // file size
     rocksdb_options_set_target_file_size_base(options, 4<<20);
     // memtable
@@ -255,7 +278,7 @@ void init_rocksdb(const char* folder_original_path)
     char *err = NULL;
     rockdb = rocksdb_open(options, folder_path, &err);
     if (err) 
-        serverPanic("initRocksdb() failed reason = %s", err);
+        serverPanic("initRocksdb() first time failed reason = %s", err);
 
     sdsfree(folder_path);
 }
