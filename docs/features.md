@@ -65,13 +65,13 @@ RedRock仍采用Redis的老式存盘方式，即RDB/AOF。这样，你的数据�
 
 ## 一些新增的命令
 
-| 新增命令 | 说明 |
-| -- | -- |
-| rockevict | 将某个key存盘 |
-| rockevicthash | 将Hash的某个field存盘 |
-| rockstat | 磁盘存盘的相关统计信息 |
-| rockall | 将所有的数据存盘 |
-| rockmem | 按某一内存标准进行存盘 |
+| 新增命令 | 说明 | 相关链接 |
+| -- | -- | -- |
+| rockevict | 将某个key存盘 | [内存磁盘管理](memory.md) |
+| rockevicthash | 将Hash的某个field存盘 | [内存磁盘管理](memory.md) |
+| rockstat | 磁盘存盘的相关统计信息 | [内存磁盘管理](memory.md) |
+| rockall | 将所有的数据存盘 | [内存磁盘管理](memory.md) |
+| rockmem | 按某一内存标准进行存盘 | [内存磁盘管理](memory.md) |
 
 注：swapdb命令不再支持
 
