@@ -63,28 +63,19 @@ RedRock仍采用Redis的老式存盘方式，即RDB/AOF。这样，你的数据�
 
 详细请参考：[集群管理](cluster.md)
 
-## 一些新增的命令
+## 简单替换redis-server
 
-| 新增命令 | 说明 | 相关链接 |
-| -- | -- | :--: |
-| rockevict | 将某个key存盘 | [内存磁盘管理](memory.md) |
-| rockevicthash | 将Hash的某个field存盘 | [内存磁盘管理](memory.md) |
-| rockstat | 磁盘存盘的相关统计信息 | [内存磁盘管理](memory.md) |
-| rockall | 将所有的数据存盘 | [内存磁盘管理](memory.md) |
-| rockmem | 按某一内存标准进行存盘 | [内存磁盘管理](memory.md) |
+因为RedRock全面兼容Redis所有特性，所以，只要用编译好的redrock执行程序，替换掉redis-server即可。
 
-注：swapdb命令不再支持
+RedRock可以读取Redis所有的配置参数，不管是用命令行启动，还是服务器配置文件redis.conf，同时可以读取和恢复原来Redis的存盘文件RDB/AOF。
 
-## 一些新增和修改的配置参数
+所以，如果你想进一步偷懒，可以将redrock改名为redis-server，并替换系统里的服务器执行文件，原来的配置都不用做任何修改。当然，不推荐这样做，特别是混搭系统（集群系统里既有reddrock，也有redis-server），还是用redrock会更清晰，当然，系统配置也要随之改变，不过工作量并不大。
 
-| 配置参数 | 新增 or 改变 | 说明 |
-| -- | :--: | -- |
-| maxrockmem | 新增 | 内存在什么情况下，将数据存取磁盘，详细请参考[内存磁盘管理](memory.md) |
-| maxrockpsmem | 新增 | 内存在什么情况下，对于可能产生内存新消耗的Redis命令拒绝执行，详细请参考[内存磁盘管理](memory.md) |
-| maxmemory | 改变 | maxrockpsmem替换了maxmemory，RedRock不支持自动Eviction功能 |
-| hash-max-rock-entries | 新增 | hash数据结构在什么情况下，将部分存盘而不是全部存盘，详细请参考[内存磁盘管理](memory.md) |
-| hash-max-ziplist-entries | 改变 | 和hash-max-rock-entries有一定的相关性，详细请参考[内存磁盘管理](memory.md) |
-| statsd | 新增 | 配置RedRock如何输出metric报告给StatsD服务器 |
-| hz | 改变 | 新增服务器定时清理内存到磁盘，详细请参考[内存磁盘管理](memory.md) |
-| rocksdb_folder | 新增 | RedRock工作时使用的临时目录，RocksDB存盘的父目录 |
+## 同一硬件记起你上，可以启动多个redrcok
+
+像redis-server一样，redrock可以在同一硬件服务器（或VM）上启动，只要监听的端口不同。对于RocksDB工作目录，redrock自动区分，不会产生冲突。
+
+这样，可以像redis-server一样，充分利用CPU多核的优势。
+
+唯一要注意的是：在这种应用场景下，请配置内存的参数，特别是maxrockmem，保证多个redrock进程在同一物理机器上正确工作，详细可参考[内存磁盘管理](memory.md)。
 
