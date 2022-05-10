@@ -1,6 +1,6 @@
-[回主目录页](../README.md)
+[回RedRock主目录页](../README.md)
 
-# 正在建设中 。。。
+# RedRock新增命令\配置参数\取消特性
 
 ## 一些新增的命令
 
@@ -12,7 +12,15 @@
 | rockall | 将所有的数据存盘 | [内存磁盘管理](memory.md) |
 | rockmem | 按某一内存标准进行存盘 | [内存磁盘管理](memory.md) |
 
-注：swapdb命令不再支持
+### rockevict
+
+### rockevicthash
+
+### rockstat
+
+### rockall
+
+### rockmem
 
 ## 一些新增和修改的配置参数
 
@@ -21,13 +29,112 @@
 | maxrockmem | 新增 | 内存在什么情况下，将数据存取磁盘，详细请参考[内存磁盘管理](memory.md) |
 | maxrockpsmem | 新增 | 内存在什么情况下，对于可能产生内存新消耗的Redis命令拒绝执行，详细请参考[内存磁盘管理](memory.md) |
 | maxmemory | 改变 | maxrockpsmem替换了maxmemory，RedRock不支持自动Eviction功能 |
+| maxmemory-policy | 改变 | 不再支持Eviction，而用于LRU/LFU算法进行磁盘转储 |
 | hash-max-rock-entries | 新增 | hash数据结构在什么情况下，将部分存盘而不是全部存盘，详细请参考[内存磁盘管理](memory.md) |
 | hash-max-ziplist-entries | 改变 | 和hash-max-rock-entries有一定的相关性，详细请参考[内存磁盘管理](memory.md) |
 | statsd | 新增 | 配置RedRock如何输出metric报告给StatsD服务器 |
 | hz | 改变 | 新增服务器定时清理内存到磁盘，详细请参考[内存磁盘管理](memory.md) |
 | rocksdb_folder | 新增 | RedRock工作时使用的临时目录，RocksDB存盘的父目录 |
 
+### maxrockmem
+
+设置什么内存条件下，RedRock将开始磁盘转储。
+
+缺省是0，这时将自动定义内存限额是：系统内存 - 2G。这时，RedRock进程认为这个机器上，只有它一个比较消耗内存的服务进程。
+
+注意，RedRock认为的内存使用，是Redis认为的内存消耗，主要是内存数据集，同时也包括TCP连接消耗、临时buffer（比如：Redis AOF Rewrite），但是不包括RocksDB所使用的动态内存（也不包括操作系统加载代码消耗的内存）。
+
+即用Redis INFO命令观测到的内存消耗，而不是诸如Linux ps, top命令观测到的进程内存消耗。
+
+所以，如果保守，应该让maxrockmem低一点。
+
+我的建议：如果你的机器上只用于RedRock，那么留出1G内存给操作系统，1G内存给RocksDB，是最少的。当然，maxrockmem越小越安全，因为RocksDB有可能会超出1G这个数量(RocksDB在大工作量情况下，内存使用可能很大，而且不好控制)。
+
+一个范例：
+
+如果你的机器是16G，那么让maxrockmem设置为14G，是最大限度。如果能更小，比如13G, 12G, 11G，系统会更安全（但内存可能没有全用满）。
+
+另外，如果机器上有其他很消耗内存的进程运行，比如还有其他Redis或RedRock进程，那么千万不要用maxrockmem的缺省数值0，因为这样，两个RedRock进程都认为它可以使用14G内存，从而会肯定导致至少一个进程被操作系统杀死。
+
+你可以定义maxrockmem为一个很大的数，远远超过系统内存，这时候，RedRock将不会发生磁盘转储，也就意味着RedRock会容纳足够多的内存数据，直到被操作系统杀死。
+
+### maxrockpsmem
+
+这个配置，是控制内存的进程最大容量。
+
+缺省是负值-1，表示不启用。
+
+当是其他正值时（如果是0，则是系统内存的90%），那么RedRock如果发现自己进程的内存（注意：不是Redis INFO命令汇报的，类似Linux ps命令获得的内存消耗）超过这个阀值时，RedRock将不执行一些可能导致内存增加的Redis命令，比如：APPEND、SET等。
+
+这时只读命令仍可以执行，因为只读命令不消耗内存。
+
+即RedRock开始保护整个进程的安全，在这个内存限额下禁止Write类型的命令。
+
+注：你可以使用DEL命令，这些命令是减少内存的。
+
+### maxmemory-policy
+
+如果指定LFU算法时，RedRock将使用LFU算法对于内存里多出的对象进行数据存盘。
+
+其他情况下，都是LRU算法转储磁盘。
+
+注意：这个配置本来Redis是用于Redis的eviction功能的。由于Eviction功能不再需要，因为磁盘已经扩展了内存，所以，对于eviction policy，除了LFU，其他诸如Random/NoEviction/Volatile等，RedRock都自动采用LRU算法。
+
+即RedRock总是将冷数据存盘，如果不是LFU算法（通过maxmemory-policy设置），那么就一定是LRU算法。
+
+### hash-max-rock-entries
+
+这个是设置大Hash存储field时，至少需要多少field number数。它必须大于hash-max-ziplist-entries这个参数。
+
+缺省值是0，表示不启用Hash只存储部分field到磁盘这个特性。
+
+Redis中，当一个Hash，其feild number超过hash-max-ziplist-entries时，Redis将不采用ZipList编码，而是纯HashMap编码。即hash-max-ziplist-entries是为小的Hash准备的内存压缩编码方式参数。
+
+而hash-max-rock-entries是为了让RedRock决定，什么样的Hash，采用全部入磁盘（全部field value都入盘），还是部分入磁盘（只入fiield对应的value值）。
+
+例如：
+
+设置hash-max-ziplist-entries为512，那么当Hash的field数量小于512时，它将用ZipList编码在内存。而超过这个field number，将使用纯HashMap在内存编码。
+
+如果RedRock需要对这个Hash存盘，它将参考另外一个参数：hash-max-rock-entries。
+
+比如：我们设置hash-max-rock-entries为1023。那么当这个Hash的field number达到1024或以上的时候，RedRock将只对部分field存盘，而不是整个Hash都存盘。
+
+这对于比较大的Hash非常有帮助。比如：有的Hash有百万个field，如果用整个Hash存盘，那么效率会非常低。这时，采用部分field 存盘会有助于内存/磁盘的真正优化。
+
+详细可以参考：[内存磁盘管理](memory.md)
+
+### statsd
+
+缺省情况下，或者参数为空字符串，不启用metric汇报给StatsD。
+
+如果想用StatsD存储监控指标metric，那么可以设置这个参数。样例如下：
+
+```127.0.0.1:8125```，或者```127.0.0.1:8125:myprefix```
+
+首先是IP地址，然后其后跟着字符:，然后是StatsD的端口。如果希望所汇报的metric有前缀，可以再加上:myprefix，myprefix是自己定义的metric前缀。
+
+注：StatsD服务器可以down掉，对于RedRock不受影响，因为走的是UDP协议。
+
+### rocksdb_folder
+
+这个是RedRock工作时，让RocksDB存盘的父目录。缺省是：/opt/redrock。
+
+注意：RedRock并不是直接在/opt/redrock下存取SST等文件，而是在其下的子目录，子目录名为rocksdb6379，其中后面是RedRock服务器监听端口号。这样，就可以保证多个RedRock进程同时在一台机器上运行，不形成冲突。
+
 ## 减少的命令和特性
+
+减少了一个Redis命令S[WAPDB](https://redis.io/commands/swapdb/)。
+
+因为涉及磁盘存取的一致性，所以，这个命令被取消。我认为这个命令被实际用到的概率并不高。
+
+减少了Redis的Eviction特性，因为不需要。
+
+Redis采用Eviction，是因为内存不够，所以要从内存里淘汰出一些Key，空出新的内存，否则Redis可能因为吃尽硬件内存被操作系统Kill掉，或者让系统陷入整体恶化近似死机。
+
+而RedRock采用了磁盘去扩展了内存，所以内存不够的数据全部转存磁盘，并保证不丢失（Redis Eviction则是肯定丢失，而且是随机的）。
+
+如果你实在手痒想清除一些内存，可以用[DEL](https://redis.io/commands/del/)、[UNLINK](https://redis.io/commands/unlink/)、[HDEL](https://redis.io/commands/hdel/)，这些删除命令来直接消灭内存里的对象。
 
 
 

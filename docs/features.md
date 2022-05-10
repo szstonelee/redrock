@@ -1,6 +1,6 @@
-[回主目录页](../README.md)
+[回RedRock主目录页](../README.md)
 
-# RedRock特性
+# RedRock的特性概括
 
 ## 支持所有Redis特性
 
@@ -85,7 +85,7 @@ RedRock可以读取Redis所有的配置参数，不管是用命令行启动，�
 
 像redis-server一样，redrock可以在同一硬件服务器（或VM）上启动，只要监听的端口不同。对于RocksDB工作目录，redrock自动区分，不会产生冲突。
 
-这样，可以像redis-server一样，充分利用CPU多核的优势。尽管从Redis6.0开始，Redis在通信上已经用到了多线程，而且之前Redis也有很多多线程特性（但主逻辑仍是单线程），而且RedRoock对于磁盘的读写，采用的是多线程。但由于当前很多服务器的CPU核很多，所以，在一些特定情况下，有用户还是希望能在一个硬件服务器上使用多Redis服务器从而充分利用CPU多核。因此，RedRock像Redis一样，也是支持多进程模式，从而利用到多核CPU。
+这样，可以像redis-server一样，充分利用CPU多核的优势。尽管从Redis6.0开始，Redis在通信上已经用到了多线程，而且之前Redis也有很多多线程特性（但主逻辑仍是单线程），而且RedRoock对于磁盘的读写，采用的是多线程。但由于当前很多服务器的CPU核很多，所以，在一些特定情况下，有用户还是希望能在一个硬件服务器上使用多Redis服务器进程，从而充分利用CPU多核。因此，RedRock像Redis一样，也是支持多进程运行，从而利用到多核CPU。
 
 不过，大部分应用情况下，RedRock服务器瓶颈和Redis一样，来自网络而不是CPU，因此，挑选合适的内存大小以及合适CPU核数的硬件服务器，运行单进程RedRock，仍是最好和最节省的硬件选择和资源利用。建议你根据自己的应用进程测试，尽可能选择单进程模式去运行RedRock，就像Redis一样。
 
@@ -98,4 +98,16 @@ RedRock可以自动汇报Redis的一些监控参数Metrics到StatsD，这样，�
 对于运维人员，这将大大简化我们的工作操作和相关成本。对于一些故障提前预警，对于整个系统的运行状况有可视化的感知。
 
 详细请参考：[新增命令\配置参数\取消特性](manual.md)
+
+## 可以针对大Hash进行部分Field存盘
+
+在Redis应用中，我们有时会用到比较大的Hash，比如百万记录的大Hash。
+
+如果我们针对一个key来存储磁盘，那么这个大Hash的读写盘，将会是非常大的代价。
+
+RedRock可以自动处理这种大的Hash，通过设置参数[hash-max-rock-entries](manual.md)，可以让RedRock对于大Hash进行部分存盘，即只针对field进行存盘。
+
+而且，算法仍是LRU/LFU，只是针对的是field的访问统计，而不是key的访问统计。
+
+详细可参考：[内存磁盘管理](memory.md)
 
