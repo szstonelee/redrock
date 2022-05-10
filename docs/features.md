@@ -4,11 +4,11 @@
 
 ## 支持所有Redis特性
 
-RedRock是基于Redis源码修改的，所以它继承了所有的Redis的特性，同时支持Redis所有的命令（除了swapdb）。
+RedRock是基于Redis源码修改的，所以它继承了所有的Redis的特性（除了eviction，因为不需要），同时支持Redis所有的命令（除了swapdb）。
 
 这样，你的客户端用用程序不需要做任何修改，加上RedRock服务器程序只是一个可执行文件redrock，所以只要像redis-server一样，进行简单替换即可。
 
-此时，RedRock将自动兼容支持所有的原有的正在运行的系统且不用做任何改变和设置，同时，自动开始利用磁盘进行读写，扩展你的数据集远超内存限制。
+此时，RedRock将自动兼容，支持所有的原有的正在运行的系统，不用做任何改变和特别设置，同时，自动开始利用磁盘进行读写，扩展你的数据集远超内存限制。
 
 你甚至可以将RedRock和Redis混用，比如：在Redis集群系统里，有的用RedRock，有的用Redis，没有任何问题。可参考： [集群管理](cluster.md)。
 
@@ -16,9 +16,9 @@ RedRock是基于Redis源码修改的，所以它继承了所有的Redis的特性
 
 RedRock将监视内存的使用，当内存快不够的时候，采用LRU/LFU算法，自动将多出的数据转到磁盘。
 
-这样，内存里永远都是最新和最热的数据。
+这样，内存里永远都是最新和最热的数据。这样，就保证了速度。因为RedRock本质上，还是内存数据库。
 
-如果万一客户端访问存在磁盘上的冷数据，RedRock将自动读出磁盘的冷数据放入内存。RedRock服务器程序采用定期的后台处理，自动将一些没有那么热的数据再转储到磁盘上。这样反复运行，保证你的系统总是热数据在内存中，而多出的冷数据自动转存到磁盘上。
+如果万一客户端访问到在磁盘上的冷数据，RedRock将自动读出磁盘的冷数，放入内存。RedRock服务器程序采用后台处理，自动将一些没有那么热的数据再转储到磁盘上。这样反复运行和自我调整，保证你的系统总是热数据在内存中，而多出的冷数据自动转存到磁盘上。
 
 ## 扩展数据到磁盘，但不降低性能
 
@@ -28,23 +28,23 @@ RedRock将监视内存的使用，当内存快不够的时候，采用LRU/LFU算
 
 注意：这并不需要99%的访问都是内存里的热数据，只要90%的访问都是常规数据即可（甚至可以更低，具体多低，需要根据应用的实际情况进行测试）。而90%的访问都是常规数据，这是典型的互联网应用的规律和大部分应用的实际场景。所以，基本上，绝大部分的应用的P99都可以达到1ms以下。这就和Redis的性能几乎一致，也就能让RedRock既扩大了数据到磁盘（因此数据大小可以有千倍的提升），同时也具有Redis的高性能。
 
-同时，它的磁盘访问就在本地，避免了通过网络访问带来的时延，相比一些计算/存储分离的类Redsi系统，时延要更好，同时更节省机器和内存。我个人觉得，对于Redis这种类型的应用，用存储和计算相分离的方案，并不好。
+同时，它的磁盘访问就在本地，避免了通过网络访问带来的时延，相比一些计算/存储分离的类Redis系统，时延要更好，同时更节省机器和内存。我个人觉得，对于Redis这种类型的应用，用存储和计算相分离的方案，并不好。
 
 有两个其他类似产品（都是Tony开发，而且用到一样的技术）的测试，证明了这个高性能保证：
 
 1. 老RedRock的性能测试报告
 
-当前系统是在我之前写的老程序基础上，升级而来，从代码的效能看，当前的系统要更高一些，因此，其性能将优于老的测试报告。而老的测试报告已经证明，这种处理方式的性能相比Redis不会有太呆的损失。
+当前系统是在我之前写的老程序基础上，升级而来，从代码的效能看，当前的系统要更高一些，因此，其性能将优于老的测试报告。而老的测试报告已经证明，这种处理方式的性能相比Redis不会有太多的损失。
 
 想参考老的性能测试报告，请点击这里：
-* [英文性能报告](https://github.com/szstonelee/redrock_old/blob/master/documents/performance_en.md)
-* [中文性能报告](https://github.com/szstonelee/redrock_old/blob/master/documents/performance_cn.md)
+* [老RedRock的英文性能报告](https://github.com/szstonelee/redrock_old/blob/master/documents/performance_en.md)
+* [老RedRock的中文性能报告](https://github.com/szstonelee/redrock_old/blob/master/documents/performance_cn.md)
 
 2. BunnyRedis的测试报告
 
 BunnyRedis是我写的一个让Redis集群实现强一致的Redis改进程序，它也用到了磁盘存储。从原理上看，BunnyRedis的性能会低于RedRock（特别是写命令）。
 
-BunnyRedis的测试报告已经证明其和Redis相当，所以RedRock的性能只能是更好。
+BunnyRedis的测试报告已经证明其和Redis相当，所以RedRock的性能只能是更好，也就更接近Redis的高性能。
 
 想参考BunnyRedis的性能测试报告，请点击
 * [BunnyRedis单机性能测试](https://github.com/szstonelee/bunnyredis/wiki/One-node-benchmark)
@@ -65,13 +65,13 @@ RedRock仍采用Redis的老式存盘方式，即RDB/AOF。这样，你的数据�
 
 而且，可以混用，即在现有的集群系统下，有的节点node延续用Redis，有的节点node替换为RedRock，没有任何不妥。
 
-一个好处在于：保证系统即可以提供绝对的Redis性能，同时又可以降低成本。
+一个好处在于：保证系统无故障时间可以提供真正的Redis性能，同时大大降低成本。
 
 比如：对于master/slave，master采用昂贵的大内存服务器并使用Redis，而slave采用低成本的小内存的RedRock（只要配备磁盘），这样，就能保证原有Redis性能的基础上，降低整个系统的成本，因为很多时候，slave的利用率实在是太低了，只有故障时才临时顶一下。
 
 详细请参考：[集群管理](cluster.md)
 
-## 简单替换redis-server，系统替换成本足够低
+## 简单替换redis-server，Redis系统替换足够简洁
 
 因为RedRock全面兼容Redis所有特性，所以，只要用编译好的redrock执行程序，替换掉redis-server即可。
 
@@ -79,7 +79,9 @@ RedRock可以读取Redis所有的配置参数，不管是用命令行启动，�
 
 所以，如果你想进一步偷懒，可以将redrock直接改名为redis-server，并替换系统里的Redis服务器执行文件，原来的所有的配置都不用做一个字的修改。当然，不推荐这样做，特别是混搭系统，还是用redrock会更清晰。不过，就算用redrock这个名字，系统配置改变的工作量并不大。
 
-## 同一硬件上，可以启动多个redrcok进程
+当然，如果你想根据自己的应用和硬件做最优定制，可以使用RedRock新增的命令和配置，可参考：[新增命令\配置参数\取消特性](manual.md)
+
+## 同一硬件上，支持多个redrcok进程并行
 
 像redis-server一样，redrock可以在同一硬件服务器（或VM）上启动，只要监听的端口不同。对于RocksDB工作目录，redrock自动区分，不会产生冲突。
 
@@ -88,4 +90,12 @@ RedRock可以读取Redis所有的配置参数，不管是用命令行启动，�
 不过，大部分应用情况下，RedRock服务器瓶颈和Redis一样，来自网络而不是CPU，因此，挑选合适的内存大小以及合适CPU核数的硬件服务器，运行单进程RedRock，仍是最好和最节省的硬件选择和资源利用。建议你根据自己的应用进程测试，尽可能选择单进程模式去运行RedRock，就像Redis一样。
 
 唯一要注意的是：在这种应用场景下，请配置内存的参数，特别是maxrockmem这个RedRock参数，保证多个redrock进程在同一物理机器上正确工作，详细可参考[内存磁盘管理](memory.md)。
+
+## 让Redis性能指标自动显示到监控面板
+
+RedRock可以自动汇报Redis的一些监控参数Metrics到StatsD，这样，就可以通过Grafana这样的工具实现服务器性能的自动监控。
+
+对于运维人员，这将大大简化我们的工作操作和相关成本。对于一些故障提前预警，对于整个系统的运行状况有可视化的感知。
+
+详细请参考：[新增命令\配置参数\取消特性](manual.md)
 
