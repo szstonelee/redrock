@@ -132,9 +132,9 @@ Redis中，当一个Hash，其feild number超过hash-max-ziplist-entries时，Re
 
 Redis采用Eviction，是因为内存不够，所以要从内存里淘汰出一些Key，空出新的内存，否则Redis可能因为吃尽硬件内存被操作系统Kill掉，或者让系统陷入整体恶化近似死机。
 
-而RedRock采用了磁盘去扩展了内存，所以内存不够的数据全部转存磁盘，并保证不丢失（Redis Eviction则是肯定丢失，而且是随机的）。
+而RedRock采用了磁盘去扩展了内存，所以内存不够的数据全部转存磁盘，并保证不丢失（Redis Eviction则是肯定丢失，而且是随机的或者近似随机的）。
 
-如果你实在手痒想清除一些内存，可以用[DEL](https://redis.io/commands/del/)、[UNLINK](https://redis.io/commands/unlink/)、[HDEL](https://redis.io/commands/hdel/)，这些删除命令来直接消灭内存里的对象。
+如果你实在手痒想清除一些内存，可以用[DEL](https://redis.io/commands/del/)、[UNLINK](https://redis.io/commands/unlink/)、[HDEL](https://redis.io/commands/hdel/)，这些删除命令来直接消灭内存里的对象，这时，就腾出了空间。
 
-
+当然，最好用新增的RedRock命令，比如rockevict\rockevicthash\rockall\rockmem，去主动清理内存到磁盘，同时不丢失任何一个key或hash field。
 
