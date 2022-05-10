@@ -146,6 +146,20 @@ Redis中，当一个Hash，其feild number超过hash-max-ziplist-entries时，Re
 
 注：StatsD服务器可以down掉，对于RedRock不受影响，因为走的是UDP协议。
 
+### hz
+
+RedRock将定期清理内存，这个定期，是由hz这个参数控制。
+
+比如；hz == 10，则1秒钟内，RedRock将定时清理10次内存到磁盘。
+
+注意：每次清理的幅度都很小，一般如果有需要（内存消耗超过maxrockmem），才进行清理，大部分清理的时间不到1ms，同时，最大timeout也被限制为4ms（不过偶尔会超过，因为RocksDB的特性）。所以，不会导致RedRock执行后台内存清理工作，让服务器陷死。
+
+一般情况下，redis.conf里这个值(缺省值为10)，不需要改变。
+
+如果你的应用内存增加的很频繁，导致RedRock经常由于内存不足而被操作系统杀死，可以调高这个值，但太高（比如超过100）不建议，这会导致RedRock花费太多的时间去处理内存清理工作。
+
+另外一个配搭的工具，就是用rockmem命令来主动清理一部分内存，但这会消耗比较大的时间，因为rockmem是命令，会执行完才返回。但rockmem的集中处理的效率，会高于后台清理，而且会保证完成一定量的内存清理。
+
 ### rocksdb_folder
 
 这个是RedRock工作时，让RocksDB存盘的父目录。缺省是：/opt/redrock。
