@@ -14,13 +14,43 @@
 
 ### rockevict
 
+ROCKEVICT key [key ...]
+
+将至少一个key（或多个key）存储到磁盘，如果可以，将提示成功，否则，提示不能转储和原因。
+
+注意：有些key是不能或无需转储到磁盘的，比如：有些Redis中有些key的值是共享的（e.g., set key 1），这时，对于这种值进行存盘，没有意义，因为节省不了磁盘。对于TTL的key，也不转储，因为TTL的key会在不久的将来自动消失，转储磁盘无太大的意义。
+
 ### rockevicthash
+
+ROCKEVICTHASH key field [field ...]
+
+对于大Hash的某个field（或多个fields）存储到磁盘。
 
 ### rockstat
 
+ROCKSTAT
+
+获得当前RedRock对于磁盘相关的一些统计信息。
+
+这个命令执行很快，不用担心它的耗时，类似Redis的INFO命令。
+
 ### rockall
 
+ROCKALL
+
+将所有的key（也包括大Hash的所有field）进行存盘。
+
+注意：如果数据记录集很大，这个将相当耗时（可能是分钟级的），因为需要全部写盘。
+
 ### rockmem
+
+ROCKMEM memsize [timeout_seconds]
+
+将内存量近似等于memsize（字节数）的数据转储到磁盘，从而腾出这么多的内存。
+
+如果不带附加参数timeout_seconds，那么RedRock将完成这个操作才能处理其他命令，即服务器会在这段时间block住（类似Redis的SAVE命令）。
+
+如果想在最多一个时间限额完成或者到时即未完成结束（没有完成足够量内存的磁盘转储，但至少发生了一部分转储），那么请带入timeout_seconds这个参数。则这个命令将不会超过这个时间限额，从而让存盘有时间保证，不会耽误整个系统的正常运行（比如：timeout_seconds == 3，这样此次操作，系统不会停止处理Redis命令超过3秒钟）。注意：timeout_seconds是近似秒数，一般大多数情况下，不会有1秒的误差，操作系统如果恶化则不能保证，操作系统恶化一般发生在内存很紧张，从而导致正常的系统调用超时完成。
 
 ## 一些新增和修改的配置参数
 
