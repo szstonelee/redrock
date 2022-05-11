@@ -50,11 +50,11 @@ ROCKMEM memsize [timeout_seconds]
 
 memsize必须是以下的格式：
 
-<num>m or <num>M or <num>g or <num>G
+num**m** or num**M** or num**g** or num**G**
 
 e.g. ```rockmem 77m``` ```rockmem 77M``` ```rockmem 77g``` ```rockmem 77G```
 
-上面的例子分别是将77M字节或77G字节的内存数据转储到磁盘从而腾出这么多的内存空间（如果有这么多的话，否则将尽可能转储这么多的内存）。
+上面的例子分别是将77M字节或77G字节的内存转储到磁盘从而腾出这么多的内存空间（如果有这么多的话，如果不够将全部数据转储）。
 
 如果不带附加参数timeout_seconds，那么RedRock将完成这个操作才能处理其他命令，即服务器会在这段时间block住（类似Redis的SAVE命令）。
 
