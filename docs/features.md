@@ -89,7 +89,7 @@ RedRock可以读取Redis所有的配置参数，不管是用命令行启动，�
 
 如果我们针对一个key整体来进行存储磁盘，那么这个大Hash的读写盘，将会是非常大的代价。
 
-RedRock可以自动处理这种大的Hash，通过设置参数[hash-max-rock-entries](manual.md)，可以让RedRock对于大Hash进行部分存盘，即只针对field进行存盘。
+RedRock可以自动处理这种大的Hash，通过设置参数[hash-max-rock-entries](manual.md#hash-max-rock-entries)，可以让RedRock对于大Hash进行部分存盘，即只针对field进行存盘。
 
 而且，算法仍是LRU/LFU，只是针对的是field的访问统计，而不是key的访问统计。
 
@@ -111,5 +111,5 @@ RedRock可以自动汇报Redis的一些监控参数Metrics到StatsD，这样，�
 
 对于运维人员，这将大大简化我们的工作操作和相关运维成本。对于一些故障提前预警，对于整个系统的运行状况有可视化的感知。
 
-详细请参考：[新增命令\配置参数\取消特性](manual.md)
+详细请参考：[新增命令\配置参数\取消特性](manual.md#statsd)
 
