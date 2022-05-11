@@ -99,7 +99,7 @@ RedRock可以自动处理这种大的Hash，通过设置参数[hash-max-rock-ent
 
 像redis-server一样，redrock可以在同一硬件服务器（或VM）上启动，只要监听的端口不同。对于RocksDB工作目录，redrock自动区分，不会产生冲突。
 
-这样，可以像redis-server一样，充分利用CPU多核的优势。尽管从Redis6.0开始，Redis在通信上已经用到了多线程，而且之前Redis也有很多多线程特性（但主逻辑仍是单线程），而且RedRoock对于磁盘的读写，采用的是多线程，而且RocksDB库也是希望能有多核CPU支持从而加速compaction，即RedRock对于CPU多核的依赖，会强于Redis。但由于当前很多服务器的CPU核非常多（比如我们看到过百的CPU核，甚至未来会出现过千的CPU核），所以，在一些特定情况下，有用户还是希望能在一个硬件服务器上使用多Redis服务器进程，从而充分利用CPU多核。因此，RedRock像Redis一样，也是支持多进程运行，从而利用到多核CPU。
+这样，可以像redis-server一样，充分利用CPU多核的优势。尽管从Redis6.0开始，Redis在通信上已经用到了多线程，而且之前Redis也有很多多线程特性（比如其他线程处理大对象的删除），但Redis主逻辑仍是单线程，也就是Redis更偏重于某个CPU核的使用。而RedRoock对于磁盘的读写，采用的是多线程，而且RocksDB库也是希望能有多核CPU支持从而加速其compaction任务，即RedRock对于CPU多核的依赖，会远高于Redis，但由于当前很多服务器的CPU核非常多（比如我们看到过百的CPU核，甚至未来会出现过千的CPU核），所以，在一些特定情况下，有用户还是希望能在一个硬件服务器上使用多Redis服务器进程，从而充分利用CPU多核。因此，RedRock像Redis一样，也是支持多进程运行，从而利用到多核CPU。
 
 不过，大部分应用情况下，RedRock服务器瓶颈和Redis一样，来自网络而不是CPU，因此，挑选合适的内存大小以及合适CPU核数的硬件服务器，运行单进程RedRock，仍是最好和最节省的硬件选择和资源利用。建议你根据自己的应用进行仔细的测试，尽可能选择单进程模式去运行RedRock，就像Redis一样。
 
