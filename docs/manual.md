@@ -42,13 +42,17 @@ ROCKSTAT
 | free_hmem | 当前操作系统认为的free memory，注意：操作系统的page cache不在这个统计之类，而且page cache如果较多，可以由操作系统自行判断，在未来转为free memory of OS |
 | max_rock_ps_hmem | 参考下面的maxrockpsmem |
 | max_rock_human | 参考下面的maxrockmem |
+| rss_hmem | 当前RedRock进程真正所使用的内存，类似ps，top命令的进程内存汇报 |
 | rocksdb(and other) | RocksDB（也包括其他Redis不知的内存，如程序代码）所占的内存 |
+| no_zero_dbnum | 有几个Redis库有数据，RedRock缺省也是16个库 |
 | key_num | 所有key的总数，注意，它并保证等于 evict_key_num + key_in_disk_num，因为有些key是不能转储到磁盘的，比如set k 1，此时k是共享状态 |
 | evict_key_num | 在内存中，未来可以被转储的key的数量（不含可以Field转储的Hash）|
 | key_in_disk_num | 已经被存储到磁盘上的key的数量（不含可以Field转储的Hash）|
 | evict_hash_num | 在内存中，未来可以被转储的Hash的数量 |
 | evict_field_num | 在内存中，可以转储Field的Hash中，还有value在内存的Field的总数 |
 | field_in_disk_num | 已经被转储到磁盘的Field的数量 |
+| hash-max-ziplist-entries | 参考下面的hash-max-rock-entries |
+| hash-max-rock-entries | 参考下面的hash-max-rock-entries |
 | stat_key_total | 一段时间内，所有的key的访问总数（不含涉及field的统计） |
 | stat_key_rock | 一段时间内，这些访问key的数量中，有多少key是位于磁盘 |
 | key_percent | stat_key_rock / stat_key_total * 100%，可以得知key miss in memory的百分率 |
@@ -87,7 +91,7 @@ e.g. ```rockmem 77m``` ```rockmem 77M``` ```rockmem 77g``` ```rockmem 77G```
 ## 一些新增和修改的配置参数
 
 | 配置参数 | 性质 | 说明 |
-| -- | :--: | -- |
+| -- | -- | -- |
 | maxrockmem | 新增，运行中可动态配置 | 内存在什么情况下，将数据存取磁盘，详细请参考[内存磁盘管理](memory.md) |
 | maxrockpsmem | 新增，运行中可动态配置 | 内存在什么情况下，对于可能产生内存新消耗的Redis命令拒绝执行，详细请参考[内存磁盘管理](memory.md) |
 | maxmemory | 改变，不可修改，永远disable | maxrockpsmem替换了maxmemory，RedRock不支持自动Eviction功能 |
