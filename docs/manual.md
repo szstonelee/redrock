@@ -6,11 +6,11 @@
 
 | 新增命令 | 说明 | 相关链接 |
 | -- | -- | :--: |
-| rockevict | 将某个key存盘 | [内存磁盘管理](memory.md) |
-| rockevicthash | 将Hash的某个field存盘 | [内存磁盘管理](memory.md) |
+| rockevict | 将某个（或某些）key存盘 | [内存磁盘管理](memory.md) |
+| rockevicthash | 将Hash的某个（或某些）field存盘 | [内存磁盘管理](memory.md) |
 | rockstat | 磁盘存盘的相关统计信息 | [内存磁盘管理](memory.md) |
 | rockall | 将所有的数据存盘 | [内存磁盘管理](memory.md) |
-| rockmem | 按某一内存标准进行存盘 | [内存磁盘管理](memory.md) |
+| rockmem | 按某一内存标准进行存盘从而腾出内存空间 | [内存磁盘管理](memory.md) |
 
 ### rockevict
 
@@ -33,6 +33,24 @@ ROCKSTAT
 获得当前RedRock对于磁盘相关的一些统计信息。
 
 这个命令执行很快，不用担心它的耗时，类似Redis的INFO命令。
+
+| 输出字段 | 意义 |
+| -- | -- |
+| rocksdb(and other) | RocksDB（也包括其他Redis不知的内存，如程序代码）所占的内存 |
+| key_num | 所有key的总数，注意，它并保证等于 evict_key_num + key_in_disk_num，因为有些key是不能转储到磁盘的，比如set k 1，此时k是共享状态 |
+| evict_key_num | 在内存中，未来可以被转储的key的数量（不含可以Field转储的Hash）|
+| key_in_disk_num | 已经被存储到磁盘上的key的数量（不含可以Field转储的Hash）|
+| evict_hash_num | 在内存中，未来可以被转储的Hash的数量 |
+| evict_field_num | 在内存中，可以转储Field的Hash中，还有value在内存的Field的总数 |
+| field_in_disk_num | 已经被转储到磁盘的Field的数量 |
+| stat_key_total | 一段时间内，所有的key的访问总数（不含涉及field的统计） |
+| stat_key_rock | 一段时间内，这些访问key的数量中，有多少key是位于磁盘 |
+| key_percent | stat_key_rock / stat_key_total * 100%，可以得知key miss in memory的百分率 |
+| stat_field_total | 一段时间内，所有涉及大Hash的field的访问总数 |
+| stat_field_rock | 一段时间内，这些访问field中，有多少field是位于磁盘 |
+| field_percent | stat_field_rock / stat_field_total * 100%，可以得知field miss in memory的百分率 |
+
+注意：CONFIG RESETSTAT将重置stat_key_total、stat_key_rock、stat_field_total、stat_field_roc为0。
 
 ### rockall
 
