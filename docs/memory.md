@@ -108,7 +108,52 @@ Redis采用的LRU/LFU算法，是一种很特别的算法，它的好处是，�
 
 ## 如何监测内存和磁盘情况以及相关处理应急
 
+RedRock提供了一个重要的命令ROCKSTAT，让你了解当前RedRock内存和磁盘状况，
 
+请先参考[[新增命令\配置参数\取消特性](manual.md#rockstat)里面对RORCKSTAT的详细说明。
 
+当我们发现RedRock恶化时，一般是free_hmem这个指标很低，我们就需要做些操作来弥补。
+
+弥补和检查的方法有以下几个：
+
+1. 设置合理（更低）的rockmem
+
+[rockmem的帮助请先看这里](manual.md#rockmem)
+
+rockmem缺省值是0，表示当前Redis消耗内存（注意：不是RedRock进程内存）为操作系统内存减去2G，这个值太高了。我们需要降低它，从而给操作系统以及RocksDB留出更多的空间。
+
+一般而言，这是读写盘的评率很高，可以观察ROCKSTAT里面的几个指数：
+
+key_percent 和 field_percent，如果这个值过高（多高我不知道，根据自己的应用观测），很可能是磁盘读写过多引发RocksDB太忙。
+
+注意：key_percent和field_percent，是从上次执行CONFIG RESETSTAT开始的所有时间的统计，如果从没有执行过CONFIG RESETSTAT，那么就是开机以来。所以，如果想统计忙时的情况，请在忙时执行一次CONFIG RESETSTAT，比如：应用的高峰期是晚上8点到11点。那么8点，需要执行这个清零动作。
+
+一般而言，rockmem是最重要的调整参数。它设置好了，一劳永逸。
+
+2. 调整hz
+
+[hz的帮助请先看这里](manual.md#hz)
+
+如果RocksDB并不是很剧烈地产生内存需求眼里，但在高峰时，我们会发现RedRock还是可能出现free_hmem有点危险，但相对上面的情况比较平滑没有那么剧烈，我们可以尝试调整hz这个参数，让它适当变大。
+
+这时，RedRock会用更多的后台时间去清理内存，但trade-off是，可能让客户端的相应时间变少（因此Latency可能边长，Throughput可能变低）。
+
+相比rockmem，hz是个比较和缓的解决办法，它可以保留足够多的rockmem内存给热数据，同时，让RedRock性能损失不大，但仅针对应用不发生剧烈QPS变动的情况下。
+
+3. 救急的ROCKMEM和maxrockpsmem
+
+[ROCKMEM的帮助在此](manual.md#rockmem)，[maxrockpsmem的帮助在此](manual.md#maxrockpsmem)
+
+不管是rockmem，还是hz，它都是需要RedRock通过后台处理方式，通过一段比较长的时间（可能是小时级）来缓解系统的压力。
+
+如果万一在短时间内有大量的输入融入，从而很可能导致RedRock恶化并死机，那么此时，唯一能解救的办法就是：
+
+ROCKMEM命令，立刻清理一批内存，注意，这个时间肯能会相当长（比如：分钟级甚至小时级），虽然你可以通过timeout来限定时间，但限定timemout时间后，可能降低的内存不足够从而无法挽救系统。同时，执行ROCKMEM命令后，这段执行时间，其他客户端的命令都不能得以执行。最后，如果操作系统实在恶化的厉害，ROCKMEM也可能失败（太慢或者RedRock进程还是内存不足被操作系统杀死，因为ROCKMEM还是要用到RocksDB存盘）
+
+或者 
+
+设置maxrockpsmem，拒绝此后所有的写入命令，直到观测到内存降低，系统恢复正常。但坏处是，所有客户端的写命令都被挡住了（读命令还可以继续，但如果读涉及大量读盘的话，仍可能导致RocksDB需要大量内存）。
+
+上面的工具没有任何一个是万能的，你只能在实践中不断模式，根据你自己的应用，找到最好的配置参数或者解决方案。
 
 
