@@ -36,6 +36,12 @@ ROCKSTAT
 
 | 输出字段 | 意义 |
 | -- | -- |
+| used_human | 就是Redis INFO命令中的memory相关字段，表示当前Redis正在使用的内存（注意：不含RocksDB内存）|
+| used_peak_human | 就是Redis INFO命令中的memory相关字段，历史发生的最高Redis正在使用的内存（注意：不含RocksDB内存）|
+| sys_human | 当前机器硬件（操作系统）的内存数量 |
+| free_hmem | 当前操作系统认为的free memory，注意：操作系统的page cache不在这个统计之类，而且page cache如果较多，可以由操作系统自行判断，在未来转为free memory of OS |
+| max_rock_ps_hmem | 参考下面的maxrockpsmem |
+| max_rock_human | 参考下面的maxrockmem |
 | rocksdb(and other) | RocksDB（也包括其他Redis不知的内存，如程序代码）所占的内存 |
 | key_num | 所有key的总数，注意，它并保证等于 evict_key_num + key_in_disk_num，因为有些key是不能转储到磁盘的，比如set k 1，此时k是共享状态 |
 | evict_key_num | 在内存中，未来可以被转储的key的数量（不含可以Field转储的Hash）|
@@ -80,17 +86,17 @@ e.g. ```rockmem 77m``` ```rockmem 77M``` ```rockmem 77g``` ```rockmem 77G```
 
 ## 一些新增和修改的配置参数
 
-| 配置参数 | 新增 or 改变 | 说明 |
+| 配置参数 | 性质 | 说明 |
 | -- | :--: | -- |
-| maxrockmem | 新增 | 内存在什么情况下，将数据存取磁盘，详细请参考[内存磁盘管理](memory.md) |
-| maxrockpsmem | 新增 | 内存在什么情况下，对于可能产生内存新消耗的Redis命令拒绝执行，详细请参考[内存磁盘管理](memory.md) |
-| maxmemory | 改变 | maxrockpsmem替换了maxmemory，RedRock不支持自动Eviction功能 |
-| maxmemory-policy | 改变 | 不再支持Eviction，而用于LRU/LFU算法进行磁盘转储 |
-| hash-max-rock-entries | 新增 | hash数据结构在什么情况下，将部分存盘而不是全部存盘，详细请参考[内存磁盘管理](memory.md) |
-| hash-max-ziplist-entries | 改变 | 和hash-max-rock-entries有一定的相关性，详细请参考[内存磁盘管理](memory.md) |
-| statsd | 新增 | 配置RedRock如何输出metric报告给StatsD服务器 |
-| hz | 改变 | 新增服务器定时清理内存到磁盘，详细请参考[内存磁盘管理](memory.md) |
-| rocksdb_folder | 新增 | RedRock工作时使用的临时目录，RocksDB存盘的父目录 |
+| maxrockmem | 新增，运行中可动态配置 | 内存在什么情况下，将数据存取磁盘，详细请参考[内存磁盘管理](memory.md) |
+| maxrockpsmem | 新增，运行中可动态配置 | 内存在什么情况下，对于可能产生内存新消耗的Redis命令拒绝执行，详细请参考[内存磁盘管理](memory.md) |
+| maxmemory | 改变，不可修改，永远disable | maxrockpsmem替换了maxmemory，RedRock不支持自动Eviction功能 |
+| maxmemory-policy | 改变，运行中可动态配置 | 不再支持Eviction，而用于LRU/LFU算法进行磁盘转储 |
+| hash-max-rock-entries | 新增，运行中可动态配置 | hash数据结构在什么情况下，将部分存盘而不是全部存盘，详细请参考[内存磁盘管理](memory.md) |
+| hash-max-ziplist-entries | 改变，运行中可动态配置 | 和hash-max-rock-entries有一定的相关性，详细请参考[内存磁盘管理](memory.md) |
+| statsd | 新增，运行中可动态配置 | 配置RedRock如何输出metric报告给StatsD服务器 |
+| hz | 改变，运行中可动态配置 | 新增服务器定时清理内存到磁盘，详细请参考[内存磁盘管理](memory.md) |
+| rocksdb_folder | 新增，运行中不可改变，只能启动命令行或redis.conf中修改 | RedRock工作时使用的临时目录，RocksDB存盘的父目录 |
 
 ### maxrockmem
 
