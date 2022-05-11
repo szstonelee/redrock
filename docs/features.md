@@ -40,9 +40,9 @@ RedRock将监视内存的使用，当内存快不够的时候，采用LRU/LFU算
 * [老RedRock的英文性能报告](https://github.com/szstonelee/redrock_old/blob/master/documents/performance_en.md)
 * [老RedRock的中文性能报告](https://github.com/szstonelee/redrock_old/blob/master/documents/performance_cn.md)
 
-2. BunnyRedis的测试报告
+2. BunnyRedis的性能测试报告
 
-BunnyRedis是我写的一个让Redis集群实现强一致的Redis改进程序，它也用到了磁盘存储。从原理上看，BunnyRedis的性能会略低于RedRock（特别是写命令）。
+BunnyRedis是我写的一个让Redis实现强一致和Half Master/Master集群的Redis改进程序，它也用到了磁盘存储。从原理上看，BunnyRedis的性能会略低于RedRock（特别是写命令）。
 
 BunnyRedis的测试报告已经证明其和Redis相当，所以RedRock的性能只能是更好，也就更接近Redis的高性能。
 
@@ -55,7 +55,7 @@ BunnyRedis的测试报告已经证明其和Redis相当，所以RedRock的性能�
 
 RedRock仍采用Redis的老式存盘方式，即RDB/AOF。这样，你的数据可以保存磁盘，以防止万一掉电、系统崩溃等错误导致的数据完全丢失。
 
-同时，这些备份文件，完全是Redis格式，因此，它可以被转移到其他机器上，让这些机器上新的RedRock服务器，甚至是Redis服务器启动时自动恢复数据。
+同时，这些备份文件，完全是Redis格式，因此，它可以被转移到其他机器上，让这些机器上新的RedRock服务器，甚至是原有的Redis服务器启动时自动恢复数据。
 
 这种兼容模式，保证了RedRock的数据可以自由迁移，混合使用。
 
@@ -103,7 +103,7 @@ RedRock可以自动处理这种大的Hash，通过设置参数[hash-max-rock-ent
 
 不过，大部分应用情况下，RedRock服务器瓶颈和Redis一样，来自网络而不是CPU，因此，挑选合适的内存大小以及合适CPU核数的硬件服务器，运行单进程RedRock，仍是最好和最节省的硬件选择和资源利用。建议你根据自己的应用进行仔细的测试，尽可能选择单进程模式去运行RedRock，就像Redis一样。
 
-唯一要注意的是：在多进程并发这种应用场景下，请配置内存的参数，特别是maxrockmem这个RedRock参数，保证多个redrock进程在同一物理机器上正确工作，详细可参考[内存磁盘管理](memory.md)。
+唯一要注意的是：在多进程并发这种应用场景下，请配置内存的参数，特别是maxrockmem这个RedRock参数，保证多个redrock进程在同一物理机器上正确工作，详细可参考[新增命令\配置参数\取消特性](manual.md#maxrockmem)。
 
 ## 让Redis性能指标自动显示到监控面板
 
