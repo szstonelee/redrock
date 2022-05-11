@@ -18,7 +18,7 @@ ROCKEVICT key [key ...]
 
 将至少一个key（或多个key）存储到磁盘，如果可以，将提示成功，否则，提示不能转储和原因。
 
-注意：有些key是不能或无需转储到磁盘的，比如：有些Redis中有些key的值是共享的（e.g., set key 1），这时，对于这种值进行存盘，没有意义，因为节省不了磁盘。对于TTL的key，也不转储，因为TTL的key会在不久的将来自动消失，转储磁盘无太大的意义。
+注意：有些key是不能或无需转储到磁盘的，比如：有些Redis中有些key的值是共享的（e.g., set key 1），这时，对于这种值进行存盘，没有意义，因为节省不了磁盘。对于TTL的key，也不转储，因为TTL的key会在不久的将来自动消失，转储磁盘无太大的意义。但rockall和rockmem，以及RedRock自动后台处理，是可以将TTL的key转储到磁盘上的。
 
 ### rockevicthash
 
@@ -46,7 +46,15 @@ ROCKALL
 
 ROCKMEM memsize [timeout_seconds]
 
-将内存量近似等于memsize（字节数）的数据转储到磁盘，从而腾出这么多的内存。
+将内存量近似等于memsize的数据转储到磁盘，从而腾出这么多的内存。
+
+memsize必须是以下的格式：
+
+<num>m or <num>M or <num>g or <num>G
+
+e.g. ```rockmem 77m``` ```rockmem 77M``` ```rockmem 77g``` ```rockmem 77G```
+
+上面的例子分别是将77M字节或77G字节的内存数据转储到磁盘从而腾出这么多的内存空间（如果有这么多的话，否则将尽可能转储这么多的内存）。
 
 如果不带附加参数timeout_seconds，那么RedRock将完成这个操作才能处理其他命令，即服务器会在这段时间block住（类似Redis的SAVE命令）。
 
@@ -90,17 +98,17 @@ ROCKMEM memsize [timeout_seconds]
 
 ### maxrockpsmem
 
-这个配置，是控制内存的进程最大容量。
+这个配置，是控制内存的进程最大容量。ps，是process的缩写。
 
 缺省是负值-1，表示不启用。
 
-当是其他正值时（如果是0，则是系统内存的90%），那么RedRock如果发现自己进程的内存（注意：不是Redis INFO命令汇报的，类似Linux ps命令获得的内存消耗）超过这个阀值时，RedRock将不执行一些可能导致内存增加的Redis命令，比如：APPEND、SET等。
+当是其他正值时（如果是0，则是系统内存的90%），那么RedRock如果发现自己进程的内存（注意：不是Redis INFO命令汇报的，而是类似Linux ps命令获得的内存消耗）超过这个阀值时，RedRock将不执行一些可能导致内存增加的Redis命令，比如：APPEND、SET等。
 
 这时只读命令仍可以执行，因为只读命令不消耗内存。
 
 即RedRock开始保护整个进程的安全，在这个内存限额下禁止Write类型的命令。
 
-注：你可以使用DEL命令，这些命令是减少内存的。
+注：当内存消耗超过maxrockpsmem，你可以继续使用DEL命令，因为这些命令是减少内存的。
 
 ### maxmemory-policy
 
@@ -108,25 +116,27 @@ ROCKMEM memsize [timeout_seconds]
 
 其他情况下，都是LRU算法转储磁盘。
 
-注意：这个配置本来Redis是用于Redis的eviction功能的。由于Eviction功能不再需要，因为磁盘已经扩展了内存，所以，对于eviction policy，除了LFU，其他诸如Random/NoEviction/Volatile等，RedRock都自动采用LRU算法。
+注意：这个配置本来Redis是用于eviction功能的。由于Eviction功能在RedRock不再需要，因为磁盘已经扩展了内存，所以，对于eviction policy，除了LFU，其他诸如Random/NoEviction/Volatile等，RedRock都自动采用LRU算法。
 
 即RedRock总是将冷数据存盘，如果不是LFU算法（通过maxmemory-policy设置），那么就一定是LRU算法。
 
 ### hash-max-rock-entries
 
-这个是设置大Hash存储field时，至少需要多少field number数。它必须大于hash-max-ziplist-entries这个参数。
+这个是设置大Hash存储field时，至少需要多少field number数。
 
-缺省值是0，表示不启用Hash只存储部分field到磁盘这个特性。
+它必须大于hash-max-ziplist-entries这个参数。
+
+缺省值是0，表示不启用Hash只存储部分field到磁盘这个特性。这时，整个hash都作为一个整体进行存储，即使这个hash有上百万个field。
 
 Redis中，当一个Hash，其feild number超过hash-max-ziplist-entries时，Redis将不采用ZipList编码，而是纯HashMap编码。即hash-max-ziplist-entries是为小的Hash准备的内存压缩编码方式参数。
 
-而hash-max-rock-entries是为了让RedRock决定，什么样的Hash，采用全部入磁盘（全部field value都入盘），还是部分入磁盘（只入fiield对应的value值）。
+而hash-max-rock-entries是为了让RedRock决定，什么样的Hash，采用全部入磁盘（全部field value都入盘），还是部分入磁盘（只入部分fiield对应的value值）。
 
 例如：
 
 设置hash-max-ziplist-entries为512，那么当Hash的field数量小于512时，它将用ZipList编码在内存。而超过这个field number，将使用纯HashMap在内存编码。
 
-如果RedRock需要对这个Hash存盘，它将参考另外一个参数：hash-max-rock-entries。
+如果RedRock需要对这个Hash进行部分field存盘，它将参考另外一个参数：hash-max-rock-entries。
 
 比如：我们设置hash-max-rock-entries为1023。那么当这个Hash的field number达到1024或以上的时候，RedRock将只对部分field存盘，而不是整个Hash都存盘。
 
