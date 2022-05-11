@@ -10,7 +10,7 @@ RedRock是基于Redis源码修改的，所以它继承了所有的Redis的特性
 
 此时，RedRock将自动兼容，支持所有的原有的正在运行的功能，且不用做任何大的改变和特别设置，同时，自动开始利用磁盘进行读写，扩展你的数据集远超内存限制。
 
-你甚至可以将RedRock和Redis混用，比如：在Redis集群系统里，有的用RedRock，有的用Redis，没有任何问题。可参考： [集群管理](cluster.md)。
+你甚至可以将RedRock和Redis混用，比如：在Redis集群系统里，有的用RedRock，有的用Redis，没有任何问题。
 
 ## 自动内存/磁盘冷热转化
 
