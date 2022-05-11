@@ -102,11 +102,13 @@ e.g. ```rockmem 77m``` ```rockmem 77M``` ```rockmem 77g``` ```rockmem 77G```
 | hz | 改变，运行中可动态配置 | 新增服务器定时清理内存到磁盘，详细请参考[内存磁盘管理](memory.md) |
 | rocksdb_folder | 新增，运行中不可改变 | RedRock工作时使用的临时目录，RocksDB存盘的父目录 |
 
-注：和Redis一样，这些参数都可以在命令行启动时加入，或则直接写到redis.conf文件里，例如：
+注1：和Redis一样，这些参数都可以在命令行启动时加入，或则直接写到redis.conf文件里，例如：
 
 ```
 sudo ./redrock --rocksdb_folder /opt/temp/myfolder --bind 0.0.0.0
 ```
+
+注2：可动态配置参数，像Redis一样，请使用CONFIG GET和CONFIG SET命令。
 
 ### maxrockmem
 
