@@ -100,7 +100,13 @@ e.g. ```rockmem 77m``` ```rockmem 77M``` ```rockmem 77g``` ```rockmem 77G```
 | hash-max-ziplist-entries | 改变，运行中可动态配置 | 和hash-max-rock-entries有一定的相关性，详细请参考[内存磁盘管理](memory.md) |
 | statsd | 新增，运行中可动态配置 | 配置RedRock如何输出metric报告给StatsD服务器 |
 | hz | 改变，运行中可动态配置 | 新增服务器定时清理内存到磁盘，详细请参考[内存磁盘管理](memory.md) |
-| rocksdb_folder | 新增，运行中不可改变，只能启动命令行或redis.conf中修改 | RedRock工作时使用的临时目录，RocksDB存盘的父目录 |
+| rocksdb_folder | 新增，运行中不可改变 | RedRock工作时使用的临时目录，RocksDB存盘的父目录 |
+
+注：和Redis一样，这些参数都可以在命令行启动时加入，或则直接写到redis.conf文件里，例如：
+
+```
+sudo ./redrock --rocksdb_folder /opt/temp/myfolder --bind 0.0.0.0
+```
 
 ### maxrockmem
 
