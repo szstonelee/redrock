@@ -184,6 +184,39 @@ Redis中，当一个Hash，其feild number超过hash-max-ziplist-entries时，Re
 
 注：StatsD服务器可以down掉，对于RedRock不受影响，因为走的是UDP协议。
 
+当设置了statsd参数后，RedRock将每秒向StatsD服务器汇报下面的metric(.前面会是myprefix):
+
+* .FreeMem，当前操作系统free的内存
+* .UsedMem，RedRock所获得的Redis使用内存（不含RocksDB内存）
+* .Rss，RedRock进程内存
+* .TotalKey，所有的key数量
+* .TotalEvictKey，所有可以入磁盘的key的数量
+* .TotalDiskKey，所有已如磁盘的key的数量
+* .TotalHash，所有可以如磁盘的大Hash的数量
+* .TotalHashField，所有field的数量
+* .TotalDiskField，所有如磁盘的field的数量
+* .KeyTotalVisits，一段时间内，所有key的访问数量
+* .KeyDiskVisits，一段时间内，这些key访问到磁盘的数量
+* .FieldTotalVisits，一段时间内，所有field的访问数量
+* .FieldDiskVisits，一段时间内，这些field访问到磁盘的数量
+* .KeySpaceHits，参考Redis的统计说明
+* .KeySpaceMisses，参考Redis的统计说明
+* .TotalReads，参考Redis的统计说明
+* .TotalWrites，参考Redis的统计说明
+* .ConnectedClients，参考Redis的统计说明
+* .MaxClients，参考Redis的统计说明
+* .BlockedClients，参考Redis的统计说明
+* .RdbSaveSecs，参考Redis的统计说明
+* .RdbCowBytes，参考Redis的统计说明
+* .AofRewriteSecs，参考Redis的统计说明
+* .AofCowBytes，参考Redis的统计说明
+* .TotalReceivedConnections，参考Redis的统计说明
+* .TotalProcessedCommands，参考Redis的统计说明
+* .InstantOpsPerSecond，参考Redis的统计说明
+* .LatestForkUsec，参考Redis的统计说明
+* .cmds.%s.calls，注：%s是每个用到的命令，比如GET，SET，其他参考Redis的统计说明
+* .cmds.%s.usecPerCall，注：%s是每个用到的命令，比如GET，SET，其他参考Redis的统计说明
+
 ### hz
 
 RedRock将定期清理内存，这个定期，是由hz这个参数控制。
