@@ -116,17 +116,17 @@ RedRock像Redis一样，也采用RDB/AOF备份数据，但是，它对内存的�
 
 不管是哪种，RDB会对于整个数据集进行备份，写盘。
 
-Redis的后台模式，是利用Linux的COW特性，只生成memeroy table的一个备份，让Redis进程和RDB后台进程共享一份内存。如果Redis在RDB备份时间，数据集不发生改变，那么内存没有太多的增加（理论上，只是多了一个RDB后台进程、一个memory table的copy）。即使在备份期间，一些数据集发生了修改，由于Linux COW特性，只有被该干的内存页（memory modified page）才生成，所增加的内存页不多。
+Redis的后台模式，是利用Linux的COW特性，只生成memeroy page table的一个备份，让Redis进程和RDB后台进程共享一份内存。如果Redis在RDB备份时间，数据集不发生改变，那么内存没有太多的增加（理论上，只是多了一个RDB后台进程、一个memory page table的copy）。即使在备份期间，一些数据集发生了修改，由于Linux COW特性，只有被该修改的内存页（memory modified page）才生成，因此总体所增加的内存页并不会多。
 
-但到了RedRock这里，就有很多改变。虽然RedRock像Redis一样，也是新开一个RDB备份进程，采用COW来处理内存的page table，但是，有下面呢的因素影响：
+但到了RedRock这里，就有很多改变。虽然RedRock像Redis一样，也是新开一个RDB备份进程，采用COW来处理内存的page table，但是，有下面几个因素的影响：
 
 1. RocksDB有大量的读盘。因为很多value其实不在内存里，必须从磁盘读出，所以RocksDB要参与工作，而RocksDB工作很忙时，对于内存的需求会变得很大。
 2. RocksDB从磁盘读出的数据必须进入内存，因此，RDB备份进程所看到的数据集，并不是一个静态不变的内存区块，而是需要动态增加的。
 3. 备份时间长（因为一是数据集远大于内存，二是读盘是个慢速动作），从而导致主进程修改的内存更多。如COW原理一样，备份这段时间，主进程仍继续处理客户端的命令处理，从而需要新的内存页。
 
-上面3点，都导致RDB备份时，RedRock对于内存的需求，会远大于Redis的RDB进程本分所需内存。
+上面3点，都导致RDB备份时，RedRock对于内存的需求，会远大于Redis的RDB进程备份所需内存。
 
-这就存在一个风险，当用RDB备份模式，RedRock需要的内存会非常大，导致操作系统分配不到足够的内存，从而出现要么内存不足有进程被杀（而且用内存最多的RedRock最可能被杀），要么是操作系统内存不足，从而导致常规的调用也会很慢，即操作系统陷入恶化死机状态。
+这就存在一个风险，当用RDB备份模式，RedRock需要的内存可能会非常大，导致操作系统分配不到足够的内存，从而出现要么内存不足有进程被杀（而且用内存最多的RedRock最可能被杀），要么是操作系统内存不足，从而导致常规的调用也会很慢，即操作系统陷入恶化死机状态。
 
 所以，如果你对RedRock启用RDB备份功能，必须注意到这个风险，建议解决的方案如下：
 
@@ -142,11 +142,11 @@ Redis的后台模式，是利用Linux的COW特性，只生成memeroy table的一
 ```
 或者，通过redis.conf文件里对应的参数，或者redis-cli在线连接执行CONFIG SET SAVE ""
 
-### RedRock推荐使用AOF备份
+### RedRock推荐只使用AOF备份
 
 而AOF备份和RDB备份不同，它是将客户端的命令原型写入AOF备份文件。
 
-这个动作的内存消耗就很低，因为每来一个写命令（读命令都不需要存盘），才写入，而且AOF可以设置为不是每次写入都sycn磁盘，磁盘效率非常高。
+这个动作的内存消耗就很低，因为每来一个写命令（读命令都不需要存盘），才追加写入AOF文件尾部，而且AOF可以设置为不是每次写入都sycn磁盘，磁盘效率非常高。
 
 不过AOF相比RDB也有不利的地方，比如：SET key val123被执行1百万次，对于RDB来说，它只存一个数据即可，但对于AOF来，如果没有压缩，将会存百万个记录。
 
@@ -167,7 +167,7 @@ Redis的后台模式，是利用Linux的COW特性，只生成memeroy table的一
 也可以在redis.conf里配置，或者通过redis-cli在线修改，用CONFIG SET appendonly yes。
 如果想关闭AOF：请用no替代yes
 
-关闭AOF Rewrite
+如果想关闭AOF Rewrite（不受AOF Rewrie的内存影响，代价是很大的AOF文件）
 ```
 ./redrock --auto-aof-rewrite-percentage 0
 ```
@@ -181,9 +181,9 @@ Redis的后台模式，是利用Linux的COW特性，只生成memeroy table的一
 
 包括master/slave和cluster两种模式。
 
-比如对于master/slave，可以挂接多个slave，如果master死了，升级其中一个slave为master即可。只要集群里还有一台机器活着，那么数据就没有丢。
+比如对于master/slave，可以挂接多个slave（而且可以系统运行期间自由增减slave），如果master死了，升级其中一个slave为master即可。只要集群里还有一台机器活着，那么数据就没有丢。
 
-这时，数据不完全丢失，并不通过RDB/AOF来保证，而是通过集群的有效来保证。
+这时，数据不完全丢失的保证，并不是通过RDB/AOF，而是通过集群的有效（或者说，足够的数量）来保证。
 
 ## 如何监测内存和磁盘情况以及相关处理应急
 
