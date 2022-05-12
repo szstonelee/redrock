@@ -24,7 +24,7 @@ RedRock是自动监视内存的使用情况，一旦发现内存超过某个阀�
 
 这也是缺省情况下(maxrockmem == 0)，RedRock认为内存阀值是：操作系统内存 - 2G。
 
-你可以更改RedRock这个参数maxrockmem，不用缺省值0，给maxrockmem一个足够安全的低值，留出更多的内存空间给RocksDB和操作系统，从而让RedRock更安全，更不易导致操作系统Kill服务器进程。具体多少，因为涉及每个应用程序实际的工作环境不一样，只有实践中不断调试和观测中获得。
+你可以更改RedRock这个参数maxrockmem，不用缺省值0，给maxrockmem一个足够安全的低值，留出更多的内存空间给RocksDB和操作系统，从而让RedRock更安全，更不易导致操作系统Kill服务器进程。具体多少，因为涉及每个应用程序实际的工作环境不一样，只有实践中不断调试和观测中获得（请参考本文中下面的“如何监测内存和磁盘情况以及相关处理应急”）。
 
 记住：这是个trade-off。
 
@@ -106,6 +106,85 @@ Redis采用的LRU/LFU算法，是一种很特别的算法，它的好处是，�
 
 因此，可能某个时刻，RedRock在对key进行LRU/LFU写盘，当key降低到一定程度（没有足够的key所对应的对象在内存），它转而去处理大Hash里的各个field。这样来回反复，保证整体上，对于key和大Hash是公平的。
 
+## RDB/AOF的影响
+
+RedRock像Redis一样，也采用RDB/AOF备份数据，但是，它对内存的影响是不同的。
+
+### 先看RDB
+
+对于RDB，RedRock也是像Redis一样，有两种模式，一个是前台命令，即[SAVE](https://redis.io/commands/save/)命令，还有一个是后台模式，要么通过[BGSAVE](https://redis.io/commands/bgsave/)主动进行，要么是自动在后台进行，通过配置参数CONFIG SET SAVE或redis.conf（也包含启动命令参数）来设置。
+
+不管是哪种，RDB会对于整个数据集进行备份，写盘。
+
+Redis的后台模式，是利用Linux的COW特性，只生成memeroy table的一个备份，让Redis进程和RDB后台进程共享一份内存。如果Redis在RDB备份时间，数据集不发生改变，那么内存没有太多的增加（理论上，只是多了一个RDB后台进程、一个memory table的copy）。即使在备份期间，一些数据集发生了修改，由于Linux COW特性，只有被该干的内存页（memory modified page）才生成，所增加的内存页不多。
+
+但到了RedRock这里，就有很多改变。虽然RedRock像Redis一样，也是新开一个RDB备份进程，采用COW来处理内存的page table，但是，有下面呢的因素影响：
+
+1. RocksDB有大量的读盘。因为很多value其实不在内存里，必须从磁盘读出，所以RocksDB要参与工作，而RocksDB工作很忙时，对于内存的需求会变得很大。
+2. RocksDB从磁盘读出的数据必须进入内存，因此，RDB备份进程所看到的数据集，并不是一个静态不变的内存区块，而是需要动态增加的。
+3. 备份时间长（因为一是数据集远大于内存，二是读盘是个慢速动作），从而导致主进程修改的内存更多。如COW原理一样，备份这段时间，主进程仍继续处理客户端的命令处理，从而需要新的内存页。
+
+上面3点，都导致RDB备份时，RedRock对于内存的需求，会远大于Redis的RDB进程本分所需内存。
+
+这就存在一个风险，当用RDB备份模式，RedRock需要的内存会非常大，导致操作系统分配不到足够的内存，从而出现要么内存不足有进程被杀（而且用内存最多的RedRock最可能被杀），要么是操作系统内存不足，从而导致常规的调用也会很慢，即操作系统陷入恶化死机状态。
+
+所以，如果你对RedRock启用RDB备份功能，必须注意到这个风险，建议解决的方案如下：
+
+1. 在系统不忙的时候启动RDB备份。
+2. 给RocksDB留出足够的内存，这个请设置maxrockmem为一个较低的值。
+
+我的建议，如果可以，最好不使用RDB备份，而使用AOF备份。
+
+关闭RDB备份很简单，可以命令行启动带入如下的参数
+
+```
+./redrock --save 0
+```
+或者，通过redis.conf文件里对应的参数，或者redis-cli在线连接执行CONFIG SET SAVE ""
+
+### RedRock推荐使用AOF备份
+
+而AOF备份和RDB备份不同，它是将客户端的命令原型写入AOF备份文件。
+
+这个动作的内存消耗就很低，因为每来一个写命令（读命令都不需要存盘），才写入，而且AOF可以设置为不是每次写入都sycn磁盘，磁盘效率非常高。
+
+不过AOF相比RDB也有不利的地方，比如：SET key val123被执行1百万次，对于RDB来说，它只存一个数据即可，但对于AOF来，如果没有压缩，将会存百万个记录。
+
+当然，AOF做了优化，会定期执行AOF Rewrite，将一些重复的操作合并，降低AOF磁盘的大小（但不可能做到RDB那么彻底，比如SET key中间有其他操作）。
+
+同时AOF Rewrite会导致对内存的需求变大，因为需要分析多个写操作，然后做合并压缩。但相比RDB对内存的需求要好很多。
+
+不管如何，AOF的文件一般而言，都大于RDB文件，同时会导致用AOF文件恢复数据的时间更长。但trade-off是，对于内存的需求降低。
+
+所以，RedRock运行时，我们推荐只用AOF备份模式，因为内存还是整个系统的最大命门，特别是对于RedRock这种数据大小远远超过内存大小的应用场景而言。
+
+一些相关的AOF配置命令如下:
+
+启动（或关闭AOF）
+```
+./redrock --appendonly yes
+```
+也可以在redis.conf里配置，或者通过redis-cli在线修改，用CONFIG SET appendonly yes。
+如果想关闭AOF：请用no替代yes
+
+关闭AOF Rewrite
+```
+./redrock --auto-aof-rewrite-percentage 0
+```
+也可以在redis.conf里配置，或者通过redis-cli在线修改（用CONFIG SET auto-aof-rewrite-percentage 0）。
+
+### 不采用RDB/AOF的解决方案
+
+还有一种策略，可以彻底抛弃RDB/AOF。
+
+就是用RedRock的集群方案（也就是Redis的集群方案）。
+
+包括master/slave和cluster两种模式。
+
+比如对于master/slave，可以挂接多个slave，如果master死了，升级其中一个slave为master即可。只要集群里还有一台机器活着，那么数据就没有丢。
+
+这时，数据不完全丢失，并不通过RDB/AOF来保证，而是通过集群的有效来保证。
+
 ## 如何监测内存和磁盘情况以及相关处理应急
 
 RedRock提供了一个重要的命令ROCKSTAT，让你了解当前RedRock内存和磁盘状况，
@@ -154,6 +233,6 @@ ROCKMEM命令，立刻清理一批内存，注意，这个时间肯能会相当�
 
 设置maxrockpsmem，拒绝此后所有的写入命令，直到观测到内存降低，系统恢复正常。但坏处是，所有客户端的写命令都被挡住了（读命令还可以继续，但如果读涉及大量读盘的话，仍可能导致RocksDB需要大量内存）。
 
-上面的工具没有任何一个是万能的，你只能在实践中不断模式，根据你自己的应用，找到最好的配置参数或者解决方案。
+上面的工具没有任何一个是万能的，你只能在实践中不断探索，根据你自己的应用，找到最好的配置参数或者解决方案。
 
 
