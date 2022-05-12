@@ -246,7 +246,7 @@ echo -e "*2\r\n\$3\r\nGET\r\n\$4\r\nk123\r\n" | nc 127.0.0.1 6379
 
 Link is here: https://github.com/szstonelee/redrock_old
 
-Note: The RedRock project is completedly re-written for code. I suggest the new one for RedRock. But the documents of RedRock are now only for Chinese. Please use some translation tool for the documents. I am sorry about that. 
+Note: The RedRock project is completely re-written for code. I suggest the new one for RedRock. But the documents of RedRock are now only for Chinese. Please use some translation tool for the documents. I am sorry about that. 
 
 
 
