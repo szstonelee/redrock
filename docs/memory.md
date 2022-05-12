@@ -185,7 +185,7 @@ Redis的后台模式，是利用Linux的COW特性，只生成memeroy page table�
 
 还有一种策略，可以彻底抛弃RDB/AOF。
 
-就是用RedRock的集群方案（也就是Redis的集群方案）来替代RDB/AOF方案。
+就是用RedRock的集群方案（也就是Redis的集群方案）来替代RDB/AOF方案，然后集群中的每个RedRock节点node，都被设置为既不采用RDB，也不采用AOF.
 
 集群模式包括master/slave和cluster两种模式。
 
@@ -235,7 +235,7 @@ key_percent 和 field_percent，如果这个值过高（多高我不知道，根
 
 如果万一在短时间内有大量的输入（Write）涌入，从而很可能导致RedRock恶化并死机，那么此时，唯一能解救的办法就是：
 
-ROCKMEM命令，立刻清理一批内存，注意，这个时间肯能会相当长（比如：分钟级甚至小时级），虽然你可以通过timeout来限定时间，但限定timemout时间后，可能降低的内存不足够从而无法挽救系统。同时，执行ROCKMEM命令后，这段执行时间，其他客户端的命令都不能得以执行。最后，如果操作系统实在恶化的厉害，ROCKMEM也可能失败（太慢或者RedRock进程还是内存不足被操作系统杀死，因为ROCKMEM还是要用到RocksDB存盘）
+ROCKMEM命令，立刻清理一批内存，注意，这个命令全部完成的时间可能会相当长（比如：分钟级甚至小时级），虽然你可以通过timeout来限定时间，但限定timemout时间后，可能降低的内存不足够从而无法挽救系统。同时，执行ROCKMEM命令后，这段执行时间，其他客户端的命令都不能得以执行。最后，如果操作系统实在恶化的厉害，ROCKMEM也可能失败（太慢或者RedRock进程还是内存不足被操作系统杀死，因为ROCKMEM还是要用到RocksDB存盘）
 
 或者 
 
