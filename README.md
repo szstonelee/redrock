@@ -242,6 +242,12 @@ echo -e "*2\r\n\$3\r\nGET\r\n\$4\r\nk123\r\n" | nc 127.0.0.1 6379
 
 你甚至可以在步骤2时，就先用GET命令先读出一部分key，然后执行测试步骤3，全部存盘后，再用同样的命令读出，最后进行结果比对。
 
+### The old RedRock project
+
+Link is here: https://github.com/szstonelee/redrock_old
+
+Note: The RedRock project is completedly re-written for code. I suggest the new one for RedRock. But the documents of RedRock are now only for Chinese. Please use some translation tool for the documents. I am sorry about that. 
+
 
 
 
