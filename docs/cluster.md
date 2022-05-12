@@ -49,7 +49,7 @@ slave采用RedRock系统，只需配备16G内存，然后配有本地的高速�
 
 这个方案的一个风险在于：
 
-如果客户端访问的负载QPS很大，而且是访问的key是散列到整个数据集600多G，那么当RedRock顶替为master时，其性能可能堪忧，因为会有大量的磁盘曹组。
+如果客户端访问的负载QPS很大，而且是访问的key是散列到整个数据集600多G，那么当RedRock顶替为master时，其性能可能堪忧，因为会有大量的磁盘读写，因为RedRock适合的应用场景是必须有热数据（大部分应用都遵从有热数据这个规律，可以根据自己的应用环境，测试判断）。
 
 所以，建议在下面两个限定条件下用这个方案（满足其一即可）
 
@@ -60,7 +60,7 @@ slave采用RedRock系统，只需配备16G内存，然后配有本地的高速�
 
 因为RedRock全面兼容Redis，Sentinel的方案也没有什么不同。
 
-你可以用redis-sserver（建议用6.2.2版本）作为Sentinel进程，也可以用RedRock作为Sentinel进程。
+你可以用redis-server（建议用6.2.2版本）作为Sentinel进程，也可以用RedRock作为Sentinel进程。
 
 详细可参考：[Redis Sentinel](https://redis.io/docs/manual/sentinel/)
 
