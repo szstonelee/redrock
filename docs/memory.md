@@ -238,7 +238,7 @@ maxrockmem是0或者自己定义的某个上限值，这个值太高了。我们
 
 这时，RedRock会用更多的后台时间去清理内存，但trade-off是，可能让客户端的相应时间变少（因此Latency可能边长，Throughput可能变低）。
 
-相比rockmem，hz是个比较和缓的解决办法，它可以保留足够多的rockmem内存给热数据，同时，让RedRock性能损失不大，但仅针对应用不发生剧烈QPS变动的情况下。
+相比rockmem，hz是个比较和缓的解决办法，它可以保留足够多的maxrockmem内存给热数据，同时，让RedRock性能损失不大，但仅针对应用不发生剧烈QPS变动的情况下。
 
 3. 救急的ROCKMEM和maxrockpsmem
 
