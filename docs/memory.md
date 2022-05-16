@@ -222,13 +222,13 @@ key_percent 和 field_percent，如果这个值过高（多高我不知道，根
 
 弥补的方法有以下几个：
 
-1. 设置合理（更低）的rockmem
+1. 设置合理（更低）的maxrockmem
 
-[rockmem的帮助请先看这里](manual.md#rockmem)
+[maxrockmem的帮助请先看这里](manual.md#maxrockmem)
 
-rockmem是0或者自己定义的某个上限值，这个值太高了。我们需要降低它，从而给操作系统以及RocksDB留出更多的空间。
+maxrockmem是0或者自己定义的某个上限值，这个值太高了。我们需要降低它，从而给操作系统以及RocksDB留出更多的空间。
 
-一般而言，rockmem是最重要的调整参数。它设置好了，一劳永逸。
+一般而言，maxrockmem是最重要的调整参数。它设置好了，一劳永逸。
 
 2. 调整hz
 
