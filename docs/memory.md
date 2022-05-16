@@ -68,9 +68,9 @@ RedRock新增了ROCKMEM等命令，可以主动清理内存。但这也是个tra
 
 预了解maxrockmem\maxrockpsmem\hz\ROCKMEM更多信息，详细可参考：[新增命令\配置参数\取消特性](manual.md)以及下面的[如何监测内存和磁盘情况以及相关处理应急](#如何监测内存和磁盘情况以及相关处理应急)
 
-另外，当RedRock服务器是多个进程同时运行在一台硬件服务器上，或者操作系统里还有其他可能巨大消耗内存的进程（比如Redis的redis-server），那么，你绝对不能使用缺省的maxrockmem，因为这个参数是为单进程RedRock使用的环境准备的。
+另外，当RedRock服务器是多个进程同时运行在一台硬件服务器上，或者操作系统里还有其他可能巨大消耗内存的进程（比如Redis的redis-server），那么，你绝对不能使用缺省的maxrockmem，因为这个参数的缺省值（即0）是为本操作系统里只有一个进程RedRock使用大量内存的工作环境准备的。
 
-## Key和大Hash（Field）
+## Key整体存盘和大Hash（部分Field存盘）
 
 缺省情况下，RedRock只对key进行整体的写盘，即每个key都是全部写盘或读盘，这包括所有的Redis内部的Redis数据结构，比如：string, hash, set, list, zset等。
 
@@ -78,16 +78,16 @@ RedRock新增了ROCKMEM等命令，可以主动清理内存。但这也是个tra
 
 所以，RedRock还做了特别的优化，当设置了一个特别参数hash-max-rock-entries后，RedRock将对这些大的Hash进行Field部分存储盘。
 
-比如：设置hash-max-rock-entries为1023，那么当某个Hash的Field数达到或超过1024时，它将自动进行部分field存盘，即整个大Hash的Field会一直保留在内存，而部分field对应的value会存盘，从而腾出内存空间。此时，Hash里的field，有点像Redis里的key。
+比如：设置hash-max-rock-entries为1023，那么当某个Hash的Field数达到或超过1024时，它将自动进行部分field存盘，即整个大Hash的Field会一直保留在内存，而部分fieldf对应的value会存盘，从而腾出内存空间。此时，Hash里的field处理，有点类似key了。
 
-所以，这还是一个trade-off。相比整个Hash key存盘，当设置了hash-max-rock-entries从而启用部分field存盘，整个field仍会占内存空间，但对应的value却可以存盘并腾出内存。所以，我们应该：
+所以，这还是一个trade-off。相比整个Hash key存盘，当设置了hash-max-rock-entries从而启用部分field存盘，整个field仍会占内存空间，但field对应的value却可以存盘并腾出内存。所以，我们应该：
 
-1. hash-max-rock-entrie设置一个比较大的数，从而区分哪些是大Hash，哪些不是大Hash。具体多大合适，请根据应用场景进行调试。
+1. hash-max-rock-entrie设置一个比较大的数，从而区分哪些是大Hash，哪些不是大Hash。具体多大合适，请根据应用场景进行调试。一般建议至少过千。
 2. 大Hash里的Field尽可能短，类似Redis的key的设计
 
 而对于set没有这样的设计，因为set没有对应的value值。
 
-list和zset也没有这样的设计，因为1，这两个数据结构，很难短时确定某个部分并分解存盘；2，其对应的值要么不存在，要么很小。而且list和zset如果使用，一般都是经常访问的key，所以，其不太可能会被存储到磁盘上，可参考下面的LRU/LFU算法说明。
+list和zset也没有这样的设计，因为1，这两个数据结构，很难短时确定某个部分并分解存盘；2，其对应的values值要么不存在，要么很小。而且list和zset如果使用，一般都是经常访问的key，所以，其不太可能会被存储到磁盘上，可参考下面的LRU/LFU算法说明。
 
 另外，stream是不会被存盘的。道理显而易见。
 
@@ -111,7 +111,7 @@ Redis采用的LRU/LFU算法，是一种很特别的算法，它的好处是，�
 
 不像Redis，它的LRU和LFU，只针对key。在RedRock里，如果我们设置了hash-max-rock-entries，RedRock将对大的Hash里的field对应的value进行磁盘转储。
 
-这时，LRU/LFU是针对Hash的field而去的，比如：某个大Hash，名字叫myhash，它有两个field，一个是f1, f2。如果f1最近被访问了，那么f2对应的value可能会先被转储到磁盘。
+这时，LRU/LFU是针对Hash的field而去的，比如：某个大Hash，名字叫myhash，它有两个field，一个是f1, f2。如果f1最近被访问了，那么f2对应的value可能会先被转储到磁盘(概率比f1要大些)。
 
 那么，RedRock进行key和大Hash转储时，又是如何整体对待的呢？
 
@@ -127,9 +127,9 @@ RedRock像Redis一样，也采用RDB/AOF备份数据，但是，它对内存的�
 
 对于RDB，RedRock也是像Redis一样，有两种模式，一个是前台命令，即[SAVE](https://redis.io/commands/save/)命令，还有一个是后台模式，要么通过[BGSAVE](https://redis.io/commands/bgsave/)主动进行，要么是自动在后台进行，通过配置参数CONFIG SET SAVE或redis.conf（也包含启动命令参数）来设置。
 
-不管是哪种，RDB会对于整个数据集进行备份，写盘，就如snapshot backup。
+不管是哪种，RDB会对于整个数据集进行备份，写盘，就是一个snapshot backup。
 
-Redis的后台模式，是利用Linux的COW特性，只生成memeroy page table的一个备份，让Redis进程和RDB后台进程共享一份内存。如果Redis在RDB备份时间，数据集不发生改变，那么内存没有太多的增加（理论上，只是多了一个RDB后台进程、一个memory page table的copy）。即使在备份期间，一些数据集发生了修改，由于Linux COW特性，只有被该修改的内存页（memory modified page）才生成，因此总体所增加的内存页并不会多。
+Redis的后台模式，是利用Linux的COW特性，只生成memeroy page table的一个备份，让Redis进程和RDB后台进程共享一份内存。如果Redis在RDB备份时间，数据集不发生改变，那么内存没有太多的增加（理论上，只是多了一个RDB后台进程、一个memory page table的copy）。即使在备份期间，一些数据集发生了修改，由于Linux COW特性，只有被该修改的内存页（memory modified page）才会产生新增内存，因此总体所增加的内存页并不会太多。
 
 但到了RedRock这里，就有很多顾虑。虽然RedRock像Redis一样，也是新开一个RDB备份进程，采用COW来处理内存的page table，但是，有下面几个因素的影响：
 
@@ -159,7 +159,7 @@ Redis的后台模式，是利用Linux的COW特性，只生成memeroy page table�
 ```
 或者，通过redis.conf文件里对应的参数，或者redis-cli在线连接执行CONFIG SET SAVE ""
 
-### RedRock推荐只使用AOF备份
+### RedRock推荐最好只使用AOF备份
 
 而AOF备份和RDB备份不同，它是将客户端的命令原型写入AOF备份文件。
 
@@ -173,7 +173,7 @@ Redis的后台模式，是利用Linux的COW特性，只生成memeroy page table�
 
 不管如何，AOF的文件一般而言，都大于RDB文件，会导致用AOF文件恢复数据的时间更长。但trade-off是，相比RDB，对于内存的需求会少很多。
 
-所以，RedRock运行时，我推荐只用AOF备份模式，因为内存还是整个系统的最大命门，特别是对于RedRock这种数据大小远远超过内存大小的应用场景而言。
+所以，RedRock运行时，我推荐只用AOF备份模式，因为内存还是整个系统的最大命门，特别是对于RedRock这种数据大小远远超过内存大小的应用场景而言。可以考虑作为一个补充，在系统不忙时（比如：深夜），由系统管理员做一下人工的RDB备份作为，如果觉得AOF文件太大的话，但前提是上面的RDB各种顾虑要充分考虑到。
 
 一些相关的AOF配置命令如下:
 
@@ -200,29 +200,31 @@ Redis的后台模式，是利用Linux的COW特性，只生成memeroy page table�
 
 比如对于master/slave，可以挂接多个slave（而且可以系统运行期间自由增减slave），如果master死了，升级其中一个slave为master即可。只要集群里还有一台机器活着，那么数据就没有丢。
 
-这时，数据不完全丢失的保证，并不是通过RDB/AOF，而是通过集群的有效（或者说，足够的数量）来保证。而且，这也节省了磁盘空间，同时也免除了RDB/AOF和RocksDB对于磁盘的竞争。
+这时，数据不完全丢失的保证，并不是通过RDB/AOF，而是通过集群的有效（或者说，足够安全的node机器数量）来保证。而且，这也节省了磁盘空间，同时也免除了RDB/AOF和RocksDB对于磁盘的竞争。
+
+当然，也可以用集群技术，同时辅助RDB/AOF模式。比如：slave在不忙的时候做定时的RDB备份，但master不开启RDB/AOF。
 
 ## 如何监测内存和磁盘情况以及相关处理应急
 
-RedRock提供了一个重要的命令ROCKSTAT，让你了解当前RedRock内存和磁盘状况，
+RedRock提供了一个重要的命令ROCKSTAT，让你了解当前RedRock内存和磁盘状况。
 
 请先参考[新增命令\配置参数\取消特性](manual.md#rockstat)里面对RORCKSTAT的详细说明。
 
 当我们发现RedRock恶化时，一般是free_hmem这个指标很低，我们就需要做些操作来弥补。
 
-弥补和检查的方法有以下几个：
+弥补的方法有以下几个：
 
 1. 设置合理（更低）的rockmem
 
 [rockmem的帮助请先看这里](manual.md#rockmem)
 
-rockmem缺省值是0，表示当前Redis消耗内存（注意：不是RedRock进程内存）为操作系统内存减去2G，这个值太高了。我们需要降低它，从而给操作系统以及RocksDB留出更多的空间。
+rockmem是0或者自己定义的某个上限值，这个值太高了。我们需要降低它，从而给操作系统以及RocksDB留出更多的空间。
 
-一般而言，这是读写盘的频率很高，可以观察ROCKSTAT里面的几个指数：
+一般而言，这时对应的读写盘的频率很高，可以观察ROCKSTAT里面的几个指数：
 
 key_percent 和 field_percent，如果这个值过高（多高我不知道，根据自己的应用观测），很可能是磁盘读写过多引发RocksDB太忙。
 
-注意：key_percent和field_percent，是从上次执行CONFIG RESETSTAT开始的所有时间的统计，如果从没有执行过CONFIG RESETSTAT，那么就是开机以来。所以，如果想统计忙时的情况，请在忙时执行一次CONFIG RESETSTAT，比如：应用的高峰期是晚上8点到11点。那么8点，需要执行这个清零动作。
+注意：key_percent和field_percent，是从上次执行CONFIG RESETSTAT开始的所有时间的统计，如果从没有执行过CONFIG RESETSTAT，那么就是开机以来。所以，如果想统计忙时的情况，请在忙时开始时，执行一次CONFIG RESETSTAT，比如：应用的高峰期是晚上8点到11点。那么8点，需要执行这个清零动作。
 
 一般而言，rockmem是最重要的调整参数。它设置好了，一劳永逸。
 
