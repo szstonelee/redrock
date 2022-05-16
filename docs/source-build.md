@@ -30,7 +30,7 @@ scl enable devtoolset-7 bash
 
 同时，最好让每次登录都能自动切换到gcc7，请修改~/.bash_profile，加入下面
 ```
-scl enable devtoolset-7 bashs
+scl enable devtoolset-7 bash
 ```
 
 ### Ubuntu安装编译环境
