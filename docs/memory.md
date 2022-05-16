@@ -18,6 +18,8 @@ RedRock是自动监视内存的使用情况，一旦发现内存超过某个阀�
 
 但有一些内存，是不通过Redis进行分配的，比如：加载的代码。更麻烦的是：RocksDB。
 
+注意：**maxrockmem并不考虑RocksDB所用的内存**。
+
 当RedRock读写磁盘时，它是用RocksDB进行的，而RocksDB读写磁盘所用到的内存消耗，并不好控制，因为涉及它的一个特性，LSM tree compaction。详细可自行了解LSM tree的工作原理。
 
 一般情况下，我们给RocksDB留出1G内存空间，大部分情况下都够用了。但如果发生RocksDB大量的读写和compaction，那么1G内存空间会不够。要多少才够RocksDB使用，对不起，我不知道（可能Facebook也不知道），因为它是极其动态的（而且和你的负载load直接相关）。如果你发现RedRock由于磁盘大量读写导致RocksDB所需内存远超过1G，从而发生操作系统Kill掉RedRock进程，那么，你就需要留出更多的内存给RocksDB，以应付高峰QPS时刻。
