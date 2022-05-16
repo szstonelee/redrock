@@ -32,7 +32,7 @@ RedRock是自动监视内存的使用情况，一旦发现内存超过某个阀�
 
 注意：如果RedRock系统被长时间运行后，导致有大量的page cache占用内存，从而导致重新启动空余内存不够，RedRock会拒绝启动，这时，只要根据提示，手工清理一下page cache即可。
 
-你可以更改RedRock这个参数maxrockmem，不用缺省值0，给maxrockmem一个足够安全的低值，留出更多的内存空间给RocksDB和操作系统，从而让RedRock更安全，更不易导致操作系统Kill服务器进程。具体多少，因为涉及每个应用程序实际的工作环境不一样，只有实践中不断调试和观测中获得（请参考本文中下面的“如何监测内存和磁盘情况以及相关处理应急”）。
+你可以更改RedRock这个参数maxrockmem，不用缺省值0，给maxrockmem一个足够安全的低值，留出更多的内存空间给RocksDB和操作系统，从而让RedRock更安全，更不易导致操作系统Kill服务器进程。具体多少，因为涉及每个应用程序实际的工作环境不一样，只有实践中不断调试和观测中获得（请参考本文中下面的“如何监测内存和磁盘情况以及相关应急处理”）。
 
 记住：这是个trade-off。
 
@@ -66,7 +66,7 @@ RedRock新增了ROCKMEM等命令，可以主动清理内存。但这也是个tra
 
 所以，你只能用maxrockmem\maxrockpsmem\hz\ROCKMEM这几个工具，共同解决RocsDB和操作系统所需的内存不够，这个大QPS高峰状况下可能发生的危机。没有一个是最好的，都有trade-off，根据你的应用情况，选择关键的参数或命令，进行组合才是最佳的。
 
-预了解maxrockmem\maxrockpsmem\hz\ROCKMEM更多信息，详细可参考：[新增命令\配置参数\取消特性](manual.md)以及下面的[如何监测内存和磁盘情况以及相关处理应急](#如何监测内存和磁盘情况以及相关处理应急)
+预了解maxrockmem\maxrockpsmem\hz\ROCKMEM更多信息，详细可参考：[新增命令\配置参数\取消特性](manual.md)以及下面的[如何监测内存和磁盘情况以及相关应急处理](#如何监测内存和磁盘情况以及相关应急处理)
 
 另外，当RedRock服务器是多个进程同时运行在一台硬件服务器上，或者操作系统里还有其他可能巨大消耗内存的进程（比如Redis的redis-server），那么，你绝对不能使用缺省的maxrockmem，因为这个参数的缺省值（即0）是为本操作系统里只有一个进程RedRock使用大量内存的工作环境准备的。
 
@@ -83,7 +83,8 @@ RedRock新增了ROCKMEM等命令，可以主动清理内存。但这也是个tra
 所以，这还是一个trade-off。相比整个Hash key存盘，当设置了hash-max-rock-entries从而启用部分field存盘，整个field仍会占内存空间，但field对应的value却可以存盘并腾出内存。所以，我们应该：
 
 1. hash-max-rock-entrie设置一个比较大的数，从而区分哪些是大Hash，哪些不是大Hash。具体多大合适，请根据应用场景进行调试。一般建议至少过千。
-2. 大Hash里的Field尽可能短，类似Redis的key的设计
+
+2. 大Hash里的Field尽可能短，类似Redis的key的设计。
 
 而对于set没有这样的设计，因为set没有对应的value值。
 
@@ -134,7 +135,9 @@ Redis的后台模式，是利用Linux的COW特性，只生成memeroy page table�
 但到了RedRock这里，就有很多顾虑。虽然RedRock像Redis一样，也是新开一个RDB备份进程，采用COW来处理内存的page table，但是，有下面几个因素的影响：
 
 1. RocksDB有大量的读盘。因为很多value其实不在内存里，必须从磁盘读出，所以RocksDB要参与工作，而RocksDB工作很忙时，对于内存的需求会变得很大。
+
 2. RocksDB从磁盘读出的数据必须进入内存，因此，RDB备份进程所看到的数据集，并不是一个静态不变的内存区块，而是需要动态增加的（注意：RedRock还是尽可能动态释放这些新增内存已保证内存够用）。
+
 3. 备份时间长（因为一是数据集远大于内存，二是读盘是个慢速动作），从而导致主进程修改的内存更多。如COW原理一样，备份这段时间，主进程仍继续处理客户端的命令处理，从而需要新的内存页（即COW共享内存页的效能降低）。
 
 上面3点，都导致RDB备份时，RedRock对于内存的需求，会远大于Redis的RDB进程备份所需内存。
@@ -148,6 +151,7 @@ Redis的后台模式，是利用Linux的COW特性，只生成memeroy page table�
 所以，如果你对RedRock启用RDB备份功能，必须注意到这个风险，建议解决的方案如下：
 
 * 在系统不忙的时候启动RDB备份。
+
 * 给RocksDB留出足够的内存，这个请设置maxrockmem为一个较低的值。
 
 我的建议，如果可以，最好不使用RDB备份，而使用AOF备份。
