@@ -1476,7 +1476,7 @@ void check_mem_requirement_on_startup()
 
 /* return the config max processs memory for RedRock in bytes.
  * 
- * 1) if server.maxrockpsmem negative, 
+ * 1) if server.maxpsmem negative, 
  * it means dissable the feature of max rock process mmemory check,
  * so we return LONG_LONG_MAX.
  * 
@@ -1487,16 +1487,16 @@ void check_mem_requirement_on_startup()
  * 3) otherwise, it is up to the administrator. 
  *    Any thing possible for the user responsibility. 
  */
-static size_t get_max_rock_process_mem_in_bytes()
+static size_t get_max_process_mem_in_bytes()
 {
-    const long long max_mem = server.maxrockpsmem;
+    const long long max_mem = server.maxpsmem;
     if (max_mem < 0)
     {
         return LONG_LONG_MAX;
     }
     else if (max_mem == 0)
     {
-        return server.system_memory_size * 90 / 1000;
+        return server.system_memory_size * 90 / 100;
     }
     else
     {
@@ -1556,16 +1556,24 @@ void rock_stat(client *c)
     char peak_hmem[64];
     bytesToHuman(peak_hmem, server.stat_peak_memory);
     char free_hmem[64];
-    bytesToHuman(free_hmem, get_free_mem_of_os());
-    char max_rock_ps_hmem[64];
-    const size_t max_rock_ps_mem = get_max_rock_process_mem_in_bytes();
-    if (max_rock_ps_mem != LONG_LONG_MAX)
+    size_t free_mem_of_os = get_free_mem_of_os();
+    if (free_mem_of_os != SIZE_MAX)
     {
-        bytesToHuman(max_rock_ps_hmem, max_rock_ps_mem);
+        bytesToHuman(free_hmem, free_mem_of_os);
     }
     else
     {
-        sprintf(max_rock_ps_hmem, "disabled");
+        sprintf(free_hmem, "MacOS(unknown)");
+    }
+    char max_ps_hmem[64];
+    const size_t max_ps_mem = get_max_process_mem_in_bytes();
+    if (max_ps_mem != LONG_LONG_MAX)
+    {
+        bytesToHuman(max_ps_hmem, max_ps_mem);
+    }
+    else
+    {
+        sprintf(max_ps_hmem, "disabled");
     }    
     char max_rock_hmem[64];
     bytesToHuman(max_rock_hmem, get_max_rock_mem_of_os());
@@ -1577,10 +1585,10 @@ void rock_stat(client *c)
     bytesToHuman(rocksdb_hmem, rocksdb_mem);
     s = sdscatprintf(s, 
                     "used_human = %s, used_peak_human = %s, sys_human = %s, "
-                    "free_hmem = %s, max_rock_ps_hmem = %s, max_rock_human = %s, "
+                    "free_hmem = %s, max_ps_hmem = %s, max_rock_human = %s, "
                     "rss_hmem = %s, rocksdb(and other) = %s", 
                     hmem, peak_hmem, total_system_hmem, 
-                    free_hmem, max_rock_ps_hmem, max_rock_hmem,
+                    free_hmem, max_ps_hmem, max_rock_hmem,
                     used_memory_rss_hmem, rocksdb_hmem);
     addReplyBulkCString(c, s);
     sdsfree(s);
@@ -2060,7 +2068,7 @@ void rock_all(client *c)
  */
 int check_free_mem_for_command(const client *c, const int is_denyoom_command)
 {
-    const size_t config_max_rock_mem = get_max_rock_process_mem_in_bytes();
+    const size_t config_max_rock_mem = get_max_process_mem_in_bytes();
     const size_t rss_mem = server.cron_malloc_stats.process_rss;
     if (rss_mem < config_max_rock_mem)
         return 1;       

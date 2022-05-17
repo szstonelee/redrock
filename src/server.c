@@ -2562,7 +2562,7 @@ void createSharedObjects(void) {
         "-OOM command not allowed when free memory is less than 'leastfreemem'.\r\n"));
 */
     shared.oomerr = createObject(OBJ_STRING,sdsnew(
-        "-OOM command not allowed when process memory is more than 'maxrockpsmem'.\r\n"));
+        "-OOM command not allowed when process memory is more than 'maxpsmem'.\r\n"));
     shared.execaborterr = createObject(OBJ_STRING,sdsnew(
         "-EXECABORT Transaction discarded because of previous errors.\r\n"));
     shared.noreplicaserr = createObject(OBJ_STRING,sdsnew(

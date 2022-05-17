@@ -28,7 +28,10 @@ RedRock是自动监视内存的使用情况，一旦发现内存超过某个阀�
 
 缺省情况下(maxrockmem == 0)，RedRock认为内存阀值是：启动加载后操作系统的空余内存 - 2G。这是一个比较高的阀值，也就是相对风险比较高的阀值，但好处是，系统不忙时，内存被充分留给RedRock的热数据。
 
-注意：如果RedRock系统被长时间运行后，导致有大量的page cache占用内存，从而导致RedRock重新启动空余内存不够，此时，RedRock会拒绝启动。只要根据提示，手工清理一下page cache即可。
+注意：如果RedRock系统被长时间运行后，导致有大量的page cache占用内存，从而导致RedRock重新启动空余内存不够，此时，RedRock会拒绝启动。只要根据提示，手工清理一下page cache即可。方法如下：
+```
+sync; echo 1 > /proc/sys/vm/drop_caches
+```
 
 你可以更改RedRock这个参数maxrockmem，不用缺省值0，给maxrockmem一个足够安全的低值，留出更多的内存空间给RocksDB和操作系统，从而让RedRock更安全，更不易导致操作系统Kill服务器进程。具体多少，因为涉及每个应用程序实际的工作环境不一样，只有实践中不断调试和观测中获得（请参考本文中下面的“如何监测内存和磁盘情况以及相关应急处理”）。
 
@@ -46,11 +49,11 @@ RedRock是自动监视内存的使用情况，一旦发现内存超过某个阀�
 
 为了防止这种现象的发生，除了设置maxrockmem外，我们还有几个解救办法：
 
-1. 设置maxrockpsmem
+1. 设置maxpsmem
 
-这样，一旦服务器进程内存（注意：不是Redis通过Jemalloc分配的内存，而是整个进程消耗的内存，含RocksDB）超过这个限度，那么RedRock将拒绝新key的进入。（也包括很多Redis的写命令，因为它也可能导致内存增长，比如APPEND命令）。即执行这些命令的客户端都会获得错误反馈，直到内存得到缓解，i.e., 整个RedRock进程的内存使用低于maxrockpsmem这个值。
+这样，一旦服务器进程内存（注意：不是Redis通过Jemalloc分配的内存，而是整个进程消耗的内存，含RocksDB）超过这个限度，那么RedRock将拒绝新key的进入。（也包括很多Redis的写命令，因为它也可能导致内存增长，比如APPEND命令）。即执行这些命令的客户端都会获得错误反馈，直到内存得到缓解，i.e., 整个RedRock进程的内存使用低于maxpsmem这个值。
 
-如果想取消maxrockpsmem特性，设置它为负数即可，缺省情况下，它是-1，即disabled。
+如果想取消maxpsmem特性，设置它为负数即可，缺省情况下，它是-1，即disabled。
 
 2. 提高后台的清理速度
 
@@ -62,9 +65,9 @@ RedRock是自动监视内存的使用情况，一旦发现内存超过某个阀�
 
 RedRock新增了ROCKMEM等命令，可以主动清理内存。但这也是个trade-off，因为执行这个命令可能会需要不少时间，这个时间内，RedRock是无法响应其他客户端的其他命令。
 
-所以，你只能用maxrockmem\maxrockpsmem\hz\ROCKMEM这几个工具，共同解决RocsDB和操作系统所需的内存不够，这个大QPS高峰状况下可能发生的危机。没有一个是最好的，都有trade-off，根据你的应用情况，选择关键的参数或命令，进行组合才是最佳的。
+所以，你只能用maxrockmem\maxpsmem\hz\ROCKMEM这几个工具，共同解决RocsDB和操作系统所需的内存不够，这个大QPS高峰状况下可能发生的危机。没有一个是最好的，都有trade-off，根据你的应用情况，选择关键的参数或命令，进行组合才是最佳的。
 
-预了解maxrockmem\maxrockpsmem\hz\ROCKMEM更多信息，详细可参考：[新增命令\配置参数\取消特性](manual.md)以及下面的[如何监测内存和磁盘情况以及相关应急处理](#如何监测内存和磁盘情况以及相关应急处理)
+预了解maxrockmem\maxpsmem\hz\ROCKMEM更多信息，详细可参考：[新增命令\配置参数\取消特性](manual.md)以及下面的[如何监测内存和磁盘情况以及相关应急处理](#如何监测内存和磁盘情况以及相关应急处理)
 
 另外，当RedRock服务器是多个进程同时运行在一台硬件服务器上，或者操作系统里还有其他可能巨大消耗内存的进程（比如Redis的redis-server），那么，你绝对不能使用缺省的maxrockmem，因为这个参数的缺省值（即0）是为本操作系统里只有一个进程RedRock使用大量内存的工作环境准备的。
 
@@ -240,9 +243,9 @@ maxrockmem是0或者自己定义的某个上限值，这个值太高了。我们
 
 相比rockmem，hz是个比较和缓的解决办法，它可以保留足够多的maxrockmem内存给热数据，同时，让RedRock性能损失不大，但仅针对应用不发生剧烈QPS变动的情况下。
 
-3. 救急的ROCKMEM和maxrockpsmem
+3. 救急的ROCKMEM和maxpsmem
 
-[ROCKMEM的帮助在此](manual.md#rockmem)，[maxrockpsmem的帮助在此](manual.md#maxrockpsmem)
+[ROCKMEM的帮助在此](manual.md#rockmem)，[maxpsmem的帮助在此](manual.md#maxpsmem)
 
 不管是rockmem，还是hz，它都是需要RedRock通过后台处理方式，通过一段比较长的时间（可能是小时级）来缓解系统的压力。
 
@@ -252,7 +255,7 @@ ROCKMEM命令，立刻清理一批内存，注意，这个命令全部完成的�
 
 或者 
 
-设置maxrockpsmem，拒绝此后所有的写入命令，直到进程内存降低，系统恢复正常。但坏处是，所有客户端的写命令都被挡住了（读命令还可以继续，但如果读涉及大量读盘的话，仍可能导致RocksDB需要大量内存）。
+设置maxpsmem，拒绝此后所有的写入命令，直到进程内存降低，系统恢复正常。但坏处是，所有客户端的写命令都被挡住了（读命令还可以继续，但如果读涉及大量读盘的话，仍可能导致RocksDB需要大量内存）。
 
 上面的工具没有任何一个是万能的，你只能在实践中不断探索，根据你自己的应用，找到最好的配置参数或者解决方案。
 

@@ -1,5 +1,10 @@
 # RedRock version history:
 
+## 6.2.2~3
+
+Date: 17.5.2022
+change maxrockpsmem to maxpsmem for config
+
 ## 6.2.2~2
 
 Date: 9.5.2022

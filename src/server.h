@@ -1516,7 +1516,7 @@ struct redisServer {
     unsigned int maxclients;            /* Max number of simultaneous clients */
     unsigned long long maxmemory;   /* Max number of memory bytes to use */
     unsigned long long maxrockmem;  /* Max number of memory bytes for RedRock to use */
-    long long maxrockpsmem;         /* max rock process memory bytes for RedRock to process memory-consumed command */
+    long long maxpsmem;             /* max rock process memory bytes for RedRock to process memory-consumed command */
     int maxmemory_policy;           /* Policy for key eviction */
     int maxmemory_samples;          /* Precision of random sampling */
     int maxmemory_eviction_tenacity;/* Aggressiveness of eviction processing */

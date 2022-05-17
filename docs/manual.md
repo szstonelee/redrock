@@ -40,7 +40,7 @@ ROCKSTAT
 | used_peak_human | 就是Redis INFO命令中的memory相关字段，历史发生的最高Redis正在使用的内存（注意：不含RocksDB内存）|
 | sys_human | 当前机器硬件（操作系统）的内存数量 |
 | free_hmem | 当前操作系统认为的free memory，注意：操作系统的page cache不在这个统计之类，而且page cache如果较多，可以由操作系统自行判断，在未来转为free memory of OS |
-| max_rock_ps_hmem | 参考下面的maxrockpsmem |
+| max_ps_hmem | 参考下面的maxpsmem |
 | max_rock_human | 参考下面的maxrockmem |
 | rss_hmem | 当前RedRock进程真正所使用的内存，类似ps，top命令的进程内存汇报 |
 | rocksdb(and other) | RocksDB（也包括其他Redis不知的内存，如程序代码）所占的内存 |
@@ -93,8 +93,8 @@ e.g. ```rockmem 77m``` ```rockmem 77M``` ```rockmem 77g``` ```rockmem 77G```
 | 配置参数 | 性质 | 说明 |
 | -- | -- | -- |
 | maxrockmem | 新增，运行中可动态配置 | 内存在什么情况下，将数据存取磁盘，详细请参考[内存磁盘管理](memory.md) |
-| maxrockpsmem | 新增，运行中可动态配置 | 内存在什么情况下，对于可能产生内存新消耗的Redis命令拒绝执行，详细请参考[内存磁盘管理](memory.md) |
-| maxmemory | 改变，不可修改，永远disable | maxrockpsmem替换了maxmemory，RedRock不支持自动Eviction功能 |
+| maxpsmem | 新增，运行中可动态配置 | 内存在什么情况下，对于可能产生内存新消耗的Redis命令拒绝执行，详细请参考[内存磁盘管理](memory.md) |
+| maxmemory | 改变，不可修改，永远disable | maxpsmem替换了maxmemory，RedRock不支持自动Eviction功能 |
 | maxmemory-policy | 改变，运行中可动态配置 | 不再支持Eviction，而用于LRU/LFU算法进行磁盘转储 |
 | hash-max-rock-entries | 新增，运行中可动态配置 | hash数据结构在什么情况下，将部分存盘而不是全部存盘，详细请参考[内存磁盘管理](memory.md) |
 | hash-max-ziplist-entries | 改变，运行中可动态配置 | 和hash-max-rock-entries有一定的相关性，详细请参考[内存磁盘管理](memory.md) |
@@ -120,7 +120,11 @@ sudo ./redrock --rocksdb_folder /opt/temp/myfolder --bind 0.0.0.0
 
 启动加载后操作系统的空余内存 约等于 硬件的内存。
 
-注意1：如果RedRock系统被长时间运行后，导致有大量的page cache占用内存，从而导致重新启动空余内存不够，RedRock会拒绝启动，这时，只要根据提示，手工清理一下page cache即可。
+注意1：如果RedRock系统被长时间运行后，导致有大量的page cache占用内存，从而导致重新启动空余内存不够，RedRock会拒绝启动，这时，只要根据提示，手工清理一下page cache即可。方法如下：
+```
+sync; echo 1 > /proc/sys/vm/drop_caches
+```
+同时，如果是重启RedRock进程而且maxrockmem是缺省值为0的情况下，建议提前用这个命令清除一下操作系统的page cache。
 
 注意2，RedRock认为的内存使用，是Redis认为的内存消耗，主要是内存数据集，同时也包括TCP连接消耗、临时buffer（比如：Redis AOF Rewrite），但是不包括RocksDB所使用的动态内存（也不包括操作系统加载代码消耗的内存）。
 
@@ -138,7 +142,7 @@ sudo ./redrock --rocksdb_folder /opt/temp/myfolder --bind 0.0.0.0
 
 你可以定义maxrockmem为一个很大的数，远远超过系统内存，这时候，RedRock将不会发生磁盘转储，也就意味着RedRock会容纳足够多的内存数据，直到被操作系统杀死。
 
-### maxrockpsmem
+### maxpsmem
 
 这个配置，是控制内存的进程最大容量。ps，是process的缩写。
 
@@ -146,11 +150,16 @@ sudo ./redrock --rocksdb_folder /opt/temp/myfolder --bind 0.0.0.0
 
 当是其他正值时（如果是0，则是系统内存的90%），那么RedRock如果发现自己进程的内存（注意：不是Redis INFO命令汇报的，而是类似Linux ps命令获得的内存消耗）超过这个阀值时，RedRock将不执行一些可能导致内存增加的Redis命令，比如：APPEND、SET等。
 
+客户端你不能执行这些Write命令的提示如下：
+```
+(error) OOM command not allowed when process memory is more than 'maxpsmem'.
+```
+
 这时只读命令仍可以执行，因为只读命令不消耗内存。
 
 即RedRock开始保护整个进程的安全，在这个内存限额下禁止Write类型的命令。
 
-注：当内存消耗超过maxrockpsmem，你可以继续使用DEL命令，因为这些命令是减少内存的。
+注：当内存消耗超过maxpsmem，你可以继续使用DEL命令，因为这些Write命令是减少内存的。
 
 ### maxmemory-policy
 
