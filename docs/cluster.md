@@ -41,7 +41,7 @@ slave采用RedRock系统，只需配备16G内存，然后配有本地的高速�
 
 这样，即使我们的数据集大小达到了600多G，整个系统仍旧安全工作。
 
-万一master死机，或者需要停机维护，我们可以提升RedRock服务器成为master，这样系统仍然正常工作，同时绝大部分数据不会丢失（注意：Redis的Replication并不保证所有数据一个都不会丢失）。
+万一master死机，或者需要停机维护，我们可以提升RedRock服务器成为master，这样系统仍然正常工作，同时绝大部分数据不会丢失（注意：Redis的Replication并不保证灾难时，i.e., master突然crash，所有数据一个都不会丢失）。
 
 当Redis机器检修回来（或者新启动另外一个大内存服务器），它可以先做成slave同步RedRock，再重新切换为master。
 
