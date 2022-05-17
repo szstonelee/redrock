@@ -2,7 +2,7 @@
 
 # RedRock的集群管理
 
-RedRock支持Redis的所有集群模式，包括：Master/Slave, Sentinel, Cluster。而且可以混用
+RedRock支持Redis的所有集群模式，包括：Master/Slave, Sentinel, Cluster，而且可以混用。
 
 ## Master/Slave
 
@@ -29,10 +29,10 @@ RedRock支持Redis的所有集群模式，包括：Master/Slave, Sentinel, Clust
 范例：
 
 ```                             
-*****************************                          *****************************            
-*       Redis master        *                          *     RedRock slave         *
-* 640G内存，(云盘或小HDD磁盘)  *           。。。          *   16G内存，本地SSD磁盘      *
-*****************************                          *****************************
+*****************************                       *****************************            
+*       Redis master        *                       *      RedRock slave        *
+* 640G内存，云盘或小HDD磁盘    *         。。。         *    16G内存, 本地SSD磁盘     *
+*****************************                       *****************************
 ```
 
 上图中，master采用Redis系统（redis-server），配备640G的大内存，客户端的读写都发生于此。本地可以无磁盘（比如用云盘）或者很小的HDD磁盘。
