@@ -142,6 +142,8 @@ sync; echo 1 > /proc/sys/vm/drop_caches
 
 你可以定义maxrockmem为一个很大的数，远远超过系统内存，这时候，RedRock将不会发生磁盘转储，也就意味着RedRock会容纳足够多的内存数据，直到被操作系统杀死。
 
+一般而言，相比其他配置参数，maxrockmem是最重要的安全参数，保护RedRock出现内存突然不足导致被操作系统杀死。所以，请根据自己的应用情况设定好此值（一开始可以用缺省值0）。如果设置好了maxrockmem，基本上是一劳永逸的。详细请参考：[内存磁盘管理](memory.md)
+
 ### maxpsmem
 
 这个配置，是控制内存的进程最大容量。ps，是process的缩写。
@@ -192,6 +194,8 @@ Redis中，当一个Hash，其feild number超过hash-max-ziplist-entries时，Re
 比如：我们设置hash-max-rock-entries为1023。那么当这个Hash的field number达到1024或以上的时候，RedRock将只对部分field存盘，而不是整个Hash都存盘。
 
 这对于比较大的Hash非常有帮助。比如：有的Hash有百万个field，如果用整个Hash存盘，那么效率会非常低。这时，采用部分field 存盘会有助于内存/磁盘的真正优化。
+
+hash-max-rock-entries设置多少合适，需要根据自己应用的数据情况决定，一般不应该太小，至少过千。
 
 详细可以参考：[内存磁盘管理](memory.md)
 
