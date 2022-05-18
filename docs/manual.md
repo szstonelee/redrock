@@ -4,13 +4,15 @@
 
 ## 一些新增的命令
 
-| 新增命令 | 说明 | 相关参考 |
+| 新增命令 | 说明 | 
 | -- | -- | :--: |
-| rockevict | 将某个（或某些）key存盘 | [内存磁盘管理](memory.md) |
-| rockevicthash | 将Hash的某个（或某些）field存盘 | [内存磁盘管理](memory.md) |
-| rockstat | 内存和磁盘的相关统计信息 | [内存磁盘管理](memory.md) |
-| rockall | 将所有内存里的数据value存盘 | [内存磁盘管理](memory.md) |
-| rockmem | 按某一内存额度进行存盘从而腾出内存空间 | [内存磁盘管理](memory.md) |
+| rockevict | 将某个（或某些）key存盘 |
+| rockevicthash | 将Hash的某个（或某些）field存盘 |
+| rockstat | 内存和磁盘的相关统计信息 |
+| rockall | 将所有内存里的数据value存盘 |
+| rockmem | 按某一内存额度进行存盘从而腾出内存空间 |
+
+原理可参考：[内存磁盘管理](memory.md)
 
 ### rockevict
 
