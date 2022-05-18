@@ -5,7 +5,7 @@
 ## 一些新增的命令
 
 | 新增命令 | 说明 | 
-| -- | -- | :--: |
+| -- | -- |
 | rockevict | 将某个（或某些）key存盘 |
 | rockevicthash | 将Hash的某个（或某些）field存盘 |
 | rockstat | 内存和磁盘的相关统计信息 |
