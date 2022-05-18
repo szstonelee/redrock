@@ -2,7 +2,7 @@
 
 # 简化Redis系统和动态扩展
 
-## Redis + Relational DB系统的简化
+## Redis + Relational DB系统（关系型数据库）的简化
 
 在我们的实际应用中，很多时候，是用下面的架构去使用Redis
 
@@ -26,17 +26,17 @@
 1. 我们用Redis Server是因为它快，但缺陷是它内存有限
 2. 所以，为了保证Redis Server的安全，也包括能获得较新的数据，我们需要写入时给数据带入TTL，过时失效
 3. 同时，Redis Server也很可能需要设置Eviction，保证内存不会消耗光
-4. 那么被TTL和Eviction删除的Redis数据，需要在另外一个地方存储，就是Relation DB
+4. 那么被TTL和Eviction删除的Redis数据，需要在另外一个地方存储，就是上面的Relational DB
 5. 于是Redis Client还必须增加一个逻辑，就是Redis找不到数据，还必须到DB去找并到Redis里恢复
 
-以上可以看出，Redis Client比较复杂，整个系统也涉及两类Server，Redis Server和Relational DB Server，我们都要不同的API去处理，还需要不同的管理，成本也不小。
+以上可以看出，Redis Client比较复杂，整个系统也涉及两类Server，Redis Server和Relational DB Server，我们都要不同的API去处理，还需要不同的管理，开发和管理的成本都不小。
 
 同时，还有一些潜在的问题去要处理：
 
 * 一致性问题：即Redis Server和DB Server存有同一数据，如果修改，可能带来读写的不一致
 * 缓存击穿：如果Redis Server万一死掉，Relational DB Server会出现顶不住原来的大负载，导致连锁恶化
 
-假设：我们不用到Relation DB Server的一些功能，比如关系数据结构、事务原子保证，只是简单的Key/Value数据，那么上面两类Server，更像下面的结合体
+假设：我们不用到Relational DB Server的一些功能，比如关系数据结构、事务原子保证等，只是简单的Key/Value数据，那么上面两类Server，更像下面的结合体
 
 ```
           *********************        ************************
@@ -45,6 +45,14 @@
 ```
 
 这就是一个RedRock，也是RedRock要解决的问题和对应的应用环境。
+
+于是，我们可以简单将上面的系统替换为：
+
+```
+         ******************
+         *    RedRock     *
+         ****************** 
+```
 
 当然，如果你说Redis + Relational DB使数据有更多安全，或者有两个机器所以HA更高，那么，对应地，RedRock支持RDB/AOF磁盘备份，同时可以使用Redis集群技术（Master/Slave, Sentinel, Redis Cluster）来加强这个保护。
 
