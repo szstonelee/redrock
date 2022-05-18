@@ -54,7 +54,7 @@
 ****************** 
 ```
 
-当然，如果你说Redis + Relational DB使数据有更多安全，或者有两个机器从而坚固性HA更高，那么，对应地，RedRock支持RDB/AOF磁盘备份，同时可以使用Redis集群技术（Master/Slave, Sentinel, Redis Cluster），所以RedRock可以达到同样的HA效果。
+当然，如果你说Redis + Relational DB使数据有更多安全，或者有两个机器从而坚固性HA更高，那么，对应地，RedRock支持RDB/AOF磁盘备份，同时可以使用Redis集群技术（Master/Slave, Sentinel, Redis Cluster），所以RedRock可以达到同样的数据安全和HA效果。
 
 ## 动态扩展
 
@@ -88,7 +88,7 @@
 
 在这个超级硬件服务器上，可以容纳20个RedRock进程，每个都是32G的热数据限额，并提供20个日常服务。
 
-而所有的数据查询和修改（含大促销或热点爆料）继续支持（在第一个RedRock进程上，对应的IP地址和服务器监听端口没有任何改变，所以客户端也不用改变）。
+而所有的数据查询和修改（含大促销或热点爆料）继续支持。含大促销或热点爆料的所有数据，在第一个RedRock进程上，对应的IP地址和服务器监听端口没有任何改变，所以客户端也不用改变。
 
 具体服务进程的迁移和管理，可以用容器docker技术或者Redis集群技术加以实现，不再详述。
 
