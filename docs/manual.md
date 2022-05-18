@@ -94,15 +94,17 @@ e.g. ```rockmem 77m``` ```rockmem 77M``` ```rockmem 77g``` ```rockmem 77G```
 
 | 配置参数 | 性质 | 说明 |
 | -- | -- | -- |
-| maxrockmem | 新增，运行中可动态配置 | 内存在什么情况下，将数据存取磁盘，原理可参考[内存磁盘管理](memory.md) |
-| maxpsmem | 新增，运行中可动态配置 | 内存在什么情况下，对于可能产生内存新消耗的Redis命令拒绝执行，原理可参考[内存磁盘管理](memory.md) |
+| maxrockmem | 新增，运行中可动态配置 | 内存在什么情况下，将数据存取磁盘 |
+| maxpsmem | 新增，运行中可动态配置 | 内存在什么情况下，对于可能产生内存新消耗的Redis命令拒绝执行 |
 | maxmemory | 改变，不可修改，永远disable | maxpsmem替换了maxmemory，RedRock不支持自动Eviction功能 |
 | maxmemory-policy | 改变，运行中可动态配置 | 不再支持Eviction，而用于LRU/LFU算法进行磁盘转储 |
-| hash-max-rock-entries | 新增，运行中可动态配置 | hash数据结构在什么情况下，将部分存盘而不是全部存盘，原理可参考[内存磁盘管理](memory.md) |
-| hash-max-ziplist-entries | 改变，运行中可动态配置 | 和hash-max-rock-entries有一定的相关性，原理可参考[内存磁盘管理](memory.md) |
+| hash-max-rock-entries | 新增，运行中可动态配置 | hash数据结构在什么情况下，将部分存盘而不是全部存盘 |
+| hash-max-ziplist-entries | 改变，运行中可动态配置 | 和hash-max-rock-entries有一定的相关性 |
 | statsd | 新增，运行中可动态配置 | 配置RedRock如何输出metric报告给StatsD服务器 |
-| hz | 改变，运行中可动态配置 | 新增服务器定时清理内存到磁盘，原理可参考[内存磁盘管理](memory.md) |
+| hz | 改变，运行中可动态配置 | 新增服务器定时清理内存到磁盘 |
 | rocksdb_folder | 新增，运行中不可改变 | RedRock工作时使用的临时目录，RocksDB存盘的父目录 |
+
+上面的原理可参考：[内存磁盘管理](memory.md)
 
 注1：和Redis一样，这些参数都可以在命令行启动时加入，或则直接写到redis.conf文件里，例如：
 
