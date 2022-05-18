@@ -112,7 +112,7 @@ e.g. ```rockmem 77m``` ```rockmem 77M``` ```rockmem 77g``` ```rockmem 77G```
 sudo ./redrock --rocksdb_folder /opt/temp/myfolder --bind 0.0.0.0
 ```
 
-注2：可动态配置参数，像Redis一样，请使用CONFIG GET和CONFIG SET命令。
+注2：运行中可动态配置参数，像Redis一样，请使用CONFIG GET和CONFIG SET命令。
 
 ### maxrockmem
 
@@ -122,7 +122,7 @@ sudo ./redrock --rocksdb_folder /opt/temp/myfolder --bind 0.0.0.0
 
 对于新启动的操作系统，而且只有一个RedRock服务进程的硬件环境，我们可以认为：
 
-启动加载后操作系统的空余内存 约等于 硬件的内存。
+一般情况下，程序启动时的系统剩余内存 约等于 硬件的内存。
 
 注意1：如果RedRock系统被长时间运行后，导致有大量的page cache占用内存，从而导致重新启动空余内存不够，RedRock会拒绝启动，这时，只要根据提示，手工清理一下page cache即可。方法如下：
 ```
@@ -165,7 +165,7 @@ sync; echo 1 > /proc/sys/vm/drop_caches
 
 即RedRock开始保护整个进程的安全，在这个内存限额下禁止Write类型的命令。
 
-注：当内存消耗超过maxpsmem，你可以继续使用DEL命令，因为这些Write命令是减少内存的。
+注：当内存消耗超过maxpsmem，你可以继续使用DEL等删除命令，因为这些Write命令是减少内存的。
 
 ### maxmemory-policy
 
@@ -195,7 +195,7 @@ Redis中，当一个Hash，其feild number超过hash-max-ziplist-entries时，Re
 
 如果RedRock需要对这个Hash进行部分field存盘，它将参考另外一个参数：hash-max-rock-entries。
 
-比如：我们设置hash-max-rock-entries为1023。那么当这个Hash的field number达到1024或以上的时候，RedRock将只对部分field存盘，而不是整个Hash都存盘。
+比如：我们设置hash-max-rock-entries为1023（必须大于hash-max-ziplist-entries）。那么当这个Hash的field number达到1024或以上的时候，RedRock将只对部分field存盘，而不是整个Hash都存盘。
 
 这对于比较大的Hash非常有帮助。比如：有的Hash有百万个field，如果用整个Hash存盘，那么效率会非常低。这时，采用部分field 存盘会有助于内存/磁盘的真正优化。
 
@@ -211,40 +211,40 @@ hash-max-rock-entries设置多少合适，需要根据自己应用的数据情�
 
 ```127.0.0.1:8125```，或者```127.0.0.1:8125:myprefix```
 
-首先是IP地址，然后其后跟着字符:，然后是StatsD的端口。如果希望所汇报的metric有前缀，可以再加上:myprefix，myprefix是自己定义的metric前缀。
+首先是IP地址，然后其后跟着字符:，然后是StatsD的端口（上例中的8125）。如果希望所汇报的metric有前缀，可以再加上:myprefix，myprefix是自己定义的metric前缀字符串。
 
 注：StatsD服务器可以down掉，对于RedRock不受影响，因为走的是UDP协议。
 
-当设置了statsd参数后，RedRock将每秒向StatsD服务器汇报下面的metric(.前面会是myprefix):
+当设置了statsd参数后，RedRock将每秒向StatsD服务器汇报下面的metric(注：.前面会是myprefix，如果有myprefix的话):
 
 * .FreeMem，当前操作系统free的内存
 * .UsedMem，RedRock所获得的Redis使用内存（不含RocksDB内存）
 * .Rss，RedRock进程内存
 * .TotalKey，所有的key数量
 * .TotalEvictKey，所有可以入磁盘的key的数量
-* .TotalDiskKey，所有已如磁盘的key的数量
-* .TotalHash，所有可以如磁盘的大Hash的数量
+* .TotalDiskKey，所有已入磁盘的key的数量
+* .TotalHash，所有可以入磁盘的大Hash的数量
 * .TotalHashField，所有field的数量
-* .TotalDiskField，所有如磁盘的field的数量
+* .TotalDiskField，所有入磁盘的field的数量
 * .KeyTotalVisits，一段时间内，所有key的访问数量
 * .KeyDiskVisits，一段时间内，这些key访问到磁盘的数量
 * .FieldTotalVisits，一段时间内，所有field的访问数量
 * .FieldDiskVisits，一段时间内，这些field访问到磁盘的数量
-* .KeySpaceHits，参考Redis的统计说明
-* .KeySpaceMisses，参考Redis的统计说明
-* .TotalReads，参考Redis的统计说明
-* .TotalWrites，参考Redis的统计说明
+* .KeySpaceHits，请参考Redis的统计说明，Redis INFO命令
+* .KeySpaceMisses，请参考Redis的统计说明，Redis INFO命令
+* .TotalReads，请参考Redis的统计说明，Redis INFO命令
+* .TotalWrites，请参考Redis的统计说明，Redis INFO命令
 * .ConnectedClients，参考Redis的统计说明
-* .MaxClients，参考Redis的统计说明
-* .BlockedClients，参考Redis的统计说明
-* .RdbSaveSecs，参考Redis的统计说明
-* .RdbCowBytes，参考Redis的统计说明
-* .AofRewriteSecs，参考Redis的统计说明
-* .AofCowBytes，参考Redis的统计说明
-* .TotalReceivedConnections，参考Redis的统计说明
-* .TotalProcessedCommands，参考Redis的统计说明
-* .InstantOpsPerSecond，参考Redis的统计说明
-* .LatestForkUsec，参考Redis的统计说明
+* .MaxClients，请参考Redis的统计说明，Redis INFO命令
+* .BlockedClients，请参考Redis的统计说明，Redis INFO命令
+* .RdbSaveSecs，请参考Redis的统计说明，Redis INFO命令
+* .RdbCowBytes，请参考Redis的统计说明，Redis INFO命令
+* .AofRewriteSecs，请参考Redis的统计说明，Redis INFO命令
+* .AofCowBytes，请参考Redis的统计说明，Redis INFO命令
+* .TotalReceivedConnections，请参考Redis的统计说明，Redis INFO命令
+* .TotalProcessedCommands，请参考Redis的统计说明，Redis INFO命令
+* .InstantOpsPerSecond，请参考Redis的统计说明，Redis INFO命令
+* .LatestForkUsec，请参考Redis的统计说明，Redis INFO命令
 * .cmds.%s.calls，注：%s是每个用到的命令，比如GET，SET，其他参考Redis的统计说明
 * .cmds.%s.usecPerCall，注：%s是每个用到的命令，比如GET，SET，其他参考Redis的统计说明
 
