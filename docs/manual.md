@@ -4,13 +4,13 @@
 
 ## 一些新增的命令
 
-| 新增命令 | 说明 | 相关链接 |
+| 新增命令 | 说明 | 相关参考 |
 | -- | -- | :--: |
 | rockevict | 将某个（或某些）key存盘 | [内存磁盘管理](memory.md) |
 | rockevicthash | 将Hash的某个（或某些）field存盘 | [内存磁盘管理](memory.md) |
-| rockstat | 磁盘存盘的相关统计信息 | [内存磁盘管理](memory.md) |
-| rockall | 将所有的数据存盘 | [内存磁盘管理](memory.md) |
-| rockmem | 按某一内存标准进行存盘从而腾出内存空间 | [内存磁盘管理](memory.md) |
+| rockstat | 内存和磁盘的相关统计信息 | [内存磁盘管理](memory.md) |
+| rockall | 将所有内存里的数据value存盘 | [内存磁盘管理](memory.md) |
+| rockmem | 按某一内存额度进行存盘从而腾出内存空间 | [内存磁盘管理](memory.md) |
 
 ### rockevict
 
@@ -18,46 +18,46 @@ ROCKEVICT key [key ...]
 
 将至少一个key（或多个key）存储到磁盘，如果可以，将提示成功，否则，提示不能转储和原因。
 
-注意：有些key是不能或无需转储到磁盘的，比如：有些Redis中有些key的值是共享的（e.g., set key 1），这时，对于这种值进行存盘，没有意义，因为节省不了磁盘。对于TTL的key，也不转储，因为TTL的key会在不久的将来自动消失，转储磁盘无太大的意义。但rockall和rockmem，以及RedRock自动后台处理，是可以将TTL的key转储到磁盘上的。
+注意：有些key是不能或无需转储到磁盘的，比如：有些Redis中有些key的值是共享的（e.g., set key 1），这时，对于这种值进行存盘，没有意义，因为节省不了内存。对于TTL的key，也不转储，因为TTL的key会在不久的将来自动消失，转储磁盘无太大的意义。注：rockall和rockmem，以及RedRock自动后台处理，是可以将TTL的key转储到磁盘上的。
 
 ### rockevicthash
 
 ROCKEVICTHASH key field [field ...]
 
-对于大Hash的某个field（或多个fields）存储到磁盘。
+对于大Hash的某个field（或多个fields）对应的value存储到磁盘。
 
 ### rockstat
 
 ROCKSTAT
 
-获得当前RedRock对于磁盘相关的一些统计信息。
+获得当前RedRock对于内存和磁盘相关的一些统计信息。
 
 这个命令执行很快，不用担心它的耗时，类似Redis的INFO命令。
 
 | 输出字段 | 意义 |
 | -- | -- |
-| used_human | 就是Redis INFO命令中的memory相关字段，表示当前Redis正在使用的内存（注意：不含RocksDB内存）|
-| used_peak_human | 就是Redis INFO命令中的memory相关字段，历史发生的最高Redis正在使用的内存（注意：不含RocksDB内存）|
+| used_human | 就是Redis INFO命令中的memory相关字段used_memory_human，表示当前Redis正在使用的内存（注意：不含RocksDB内存）|
+| used_peak_human | 就是Redis INFO命令中的memory相关字段used_memory_peak_human，历史发生的最高Redis正在使用的内存（注意：不含RocksDB内存）|
 | sys_human | 当前机器硬件（操作系统）的内存数量 |
 | free_hmem | 当前操作系统认为的free memory，注意：操作系统的page cache不在这个统计之类，而且page cache如果较多，可以由操作系统自行判断，在未来转为free memory of OS |
 | max_ps_hmem | 参考下面的maxpsmem |
 | max_rock_human | 参考下面的maxrockmem |
 | rss_hmem | 当前RedRock进程真正所使用的内存，类似ps，top命令的进程内存汇报 |
-| rocksdb(and other) | RocksDB（也包括其他Redis不知的内存，如程序代码）所占的内存 |
+| rocksdb(and other) | RocksDB（也包括其他Redis不知的内存，如程序代码，但主要是RocksDB）所占的内存 |
 | no_zero_dbnum | 有几个Redis库有数据，RedRock缺省也是16个库 |
 | key_num | 所有key的总数，注意，它并保证等于 evict_key_num + key_in_disk_num，因为有些key是不能转储到磁盘的，比如set k 1，此时k是共享状态 |
 | evict_key_num | 在内存中，未来可以被转储的key的数量（不含可以Field转储的Hash）|
 | key_in_disk_num | 已经被存储到磁盘上的key的数量（不含可以Field转储的Hash）|
-| evict_hash_num | 在内存中，未来可以被转储的Hash的数量 |
+| evict_hash_num | 在内存中，未来可以被转储部分field的Hash key的数量 |
 | evict_field_num | 在内存中，可以转储Field的Hash中，还有value在内存的Field的总数 |
 | field_in_disk_num | 已经被转储到磁盘的Field的数量 |
 | hash-max-ziplist-entries | 参考下面的hash-max-rock-entries |
 | hash-max-rock-entries | 参考下面的hash-max-rock-entries |
-| stat_key_total | 一段时间内，所有的key的访问总数（不含涉及field的统计） |
-| stat_key_rock | 一段时间内，这些访问key的数量中，有多少key是位于磁盘 |
+| stat_key_total | 一段时间内，所有的key的访问总数（不含涉及field的hash key的统计） |
+| stat_key_rock | 一段时间内，这些访问key的数量中，有多少key是位于磁盘从而需要读出的 |
 | key_percent | stat_key_rock / stat_key_total * 100%，可以得知key miss in memory的百分率 |
-| stat_field_total | 一段时间内，所有涉及大Hash的field的访问总数 |
-| stat_field_rock | 一段时间内，这些访问field中，有多少field是位于磁盘 |
+| stat_field_total | 一段时间内，所有涉及大Hash(可部分转储field的hash key)的field的访问总数 |
+| stat_field_rock | 一段时间内，这些访问field中，有多少field对应的value是位于磁盘而且需要读出的 |
 | field_percent | stat_field_rock / stat_field_total * 100%，可以得知field miss in memory的百分率 |
 
 注意：CONFIG RESETSTAT将重置stat_key_total、stat_key_rock、stat_field_total、stat_field_roc为0。
@@ -66,7 +66,7 @@ ROCKSTAT
 
 ROCKALL
 
-将所有的key（也包括大Hash的所有field）进行存盘。
+将所有的key（也包括大Hash的所有field）中对应的value进行存盘从而腾出内存空间。
 
 注意：如果数据记录集很大，这个将相当耗时（可能是分钟级的），因为需要全部写盘。
 
@@ -92,14 +92,14 @@ e.g. ```rockmem 77m``` ```rockmem 77M``` ```rockmem 77g``` ```rockmem 77G```
 
 | 配置参数 | 性质 | 说明 |
 | -- | -- | -- |
-| maxrockmem | 新增，运行中可动态配置 | 内存在什么情况下，将数据存取磁盘，详细请参考[内存磁盘管理](memory.md) |
-| maxpsmem | 新增，运行中可动态配置 | 内存在什么情况下，对于可能产生内存新消耗的Redis命令拒绝执行，详细请参考[内存磁盘管理](memory.md) |
+| maxrockmem | 新增，运行中可动态配置 | 内存在什么情况下，将数据存取磁盘，原理可参考[内存磁盘管理](memory.md) |
+| maxpsmem | 新增，运行中可动态配置 | 内存在什么情况下，对于可能产生内存新消耗的Redis命令拒绝执行，原理可参考[内存磁盘管理](memory.md) |
 | maxmemory | 改变，不可修改，永远disable | maxpsmem替换了maxmemory，RedRock不支持自动Eviction功能 |
 | maxmemory-policy | 改变，运行中可动态配置 | 不再支持Eviction，而用于LRU/LFU算法进行磁盘转储 |
-| hash-max-rock-entries | 新增，运行中可动态配置 | hash数据结构在什么情况下，将部分存盘而不是全部存盘，详细请参考[内存磁盘管理](memory.md) |
-| hash-max-ziplist-entries | 改变，运行中可动态配置 | 和hash-max-rock-entries有一定的相关性，详细请参考[内存磁盘管理](memory.md) |
+| hash-max-rock-entries | 新增，运行中可动态配置 | hash数据结构在什么情况下，将部分存盘而不是全部存盘，原理可参考[内存磁盘管理](memory.md) |
+| hash-max-ziplist-entries | 改变，运行中可动态配置 | 和hash-max-rock-entries有一定的相关性，原理可参考[内存磁盘管理](memory.md) |
 | statsd | 新增，运行中可动态配置 | 配置RedRock如何输出metric报告给StatsD服务器 |
-| hz | 改变，运行中可动态配置 | 新增服务器定时清理内存到磁盘，详细请参考[内存磁盘管理](memory.md) |
+| hz | 改变，运行中可动态配置 | 新增服务器定时清理内存到磁盘，原理可参考[内存磁盘管理](memory.md) |
 | rocksdb_folder | 新增，运行中不可改变 | RedRock工作时使用的临时目录，RocksDB存盘的父目录 |
 
 注1：和Redis一样，这些参数都可以在命令行启动时加入，或则直接写到redis.conf文件里，例如：
