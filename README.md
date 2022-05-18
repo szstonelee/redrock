@@ -8,6 +8,7 @@
 * [内存磁盘管理](docs/memory.md)
 * [集群管理](docs/cluster.md)
 * [新增命令\配置参数\取消特性](docs/manual.md)
+* [简化Redis系统和动态扩展](docs/replacement.md)
 
 ## RedRock是什么？
 
