@@ -234,7 +234,7 @@ hash-max-rock-entries设置多少合适，需要根据自己应用的数据情�
 * .KeySpaceMisses，请参考Redis的统计说明，Redis INFO命令
 * .TotalReads，请参考Redis的统计说明，Redis INFO命令
 * .TotalWrites，请参考Redis的统计说明，Redis INFO命令
-* .ConnectedClients，参考Redis的统计说明
+* .ConnectedClients，请参考Redis的统计说明，Redis INFO命令
 * .MaxClients，请参考Redis的统计说明，Redis INFO命令
 * .BlockedClients，请参考Redis的统计说明，Redis INFO命令
 * .RdbSaveSecs，请参考Redis的统计说明，Redis INFO命令
