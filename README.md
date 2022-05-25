@@ -9,6 +9,7 @@
 * [集群管理](docs/cluster.md)
 * [新增命令\配置参数\取消特性](docs/manual.md)
 * [简化Redis系统和动态扩展](docs/replacement.md)
+* [五千万高访问Redis的破解](docs/50M_qps_problem.md)
 
 ## RedRock是什么？
 
