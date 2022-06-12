@@ -44,6 +44,7 @@
 // #include "server.h"
 #include "rock_write.h"
 #include "rock_read.h"
+#include "rock_purge.h"
 #include "rock_hash.h"
 #include "rock_marshal.h"
 #include "rock_evict.h"
@@ -172,7 +173,7 @@ void init_rocksdb(/*const char* folder_original_path*/)
         closedir(dir);
         if (nftw(folder_path, unlink_cb, 10, FTW_DEPTH | FTW_MOUNT | FTW_PHYS) < 0)
         {
-            serverLog(LL_WARNING, "remove RocksDB folder failed, folder = %s", folder_path);
+            serverLog(LL_WARNING, "remove RocksDB folder failed, folder = %s. Please run as root or use sudo or grant 777 full permission (including all subfolders), e.g., sudo chmod -R 777 %s.", folder_path, server.rocksdb_folder);
             perror("ERROR: ntfw");
             exit(1);
         }
@@ -278,7 +279,11 @@ void init_rocksdb(/*const char* folder_original_path*/)
     char *err = NULL;
     rockdb = rocksdb_open(options, folder_path, &err);
     if (err) 
-        serverPanic("initRocksdb() first time failed reason = %s", err);
+    {
+        // serverPanic("initRocksdb() first time failed reason = %s. Please try run redrock with sudo or as root permission.", err);
+        serverLog(LL_WARNING, "initRocksdb() first time failed reason = %s. Please try run redrock with sudo or as root permission.", err);
+        exit(1);
+    }
 
     sdsfree(folder_path);
 }
@@ -1026,6 +1031,8 @@ void wait_rock_threads_exit()
 
     join_read_thread();
 
+    join_purge_thread();
+
     if (rockdb)
         rocksdb_close(rockdb);
 }
@@ -1542,7 +1549,7 @@ void rock_stat(client *c)
 {
     void bytesToHuman(char *s, unsigned long long n);   // declaration in server.c
 
-    addReplyArrayLen(c, 4);
+    addReplyArrayLen(c, 5);
 
     sds s; 
 
@@ -1630,82 +1637,30 @@ void rock_stat(client *c)
                      stat_field_total, stat_field_rock, stat_field_total == 0 ? 0 : (int)(100*stat_field_rock/stat_field_total));
     addReplyBulkCString(c, s);
     sdsfree(s);
+
+    // line 5: rocksdb stat
+    s = sdsempty();
+    char rocksdb_disk_sz_hmem[64];
+    bytesToHuman(rocksdb_disk_sz_hmem, server.rocksdb_disk_size);
+    char rocksdb_key_num_hmem[64];
+    bytesToHuman(rocksdb_key_num_hmem, server.rocksdb_key_num);
+    s = sdscatprintf(s, "estimate rocksdb disk size = %s, estimate rocksdb key num = %s",
+                     rocksdb_disk_sz_hmem, rocksdb_key_num_hmem);
+    addReplyBulkCString(c, s);
+    sdsfree(s);
 }
 
-#define EVICT_OUTPUT_PERCENTTAGE 100
+#define EVICT_OUTPUT_LIMIT_FOR_PENCENTAGE 100000         // if lower than this number show one line, otherwise show in percentage
 
-static int cal_rock_all_for_evict()
-{
-    int total = 0;
-
-    int all_empty = 1;
-
-    for (int i = 0; i < server.dbnum; ++i)
-    {
-        redisDb *db = server.db + i;
-        size_t num = dictSize(db->rock_evict);
-        
-        if (num == 0)
-            continue;
-
-        all_empty = 0;
-
-        total += 1;     // this db info if size is not zero
-        
-        if (num < EVICT_OUTPUT_PERCENTTAGE)
-        {
-            total += 1;     // one line output for small db
-        }
-        else
-        {
-            total += EVICT_OUTPUT_PERCENTTAGE;       // percentage output
-        }
-    }
-
-    if (all_empty)
-        total = 1;      // all empty, one line output
-
-    return total;
-}
-
-static int cal_rock_all_for_hash()
-{
-    int total = 0;
-
-    int all_empty = 1;
-
-    for (int i = 0; i < server.dbnum; ++i)
-    {
-        redisDb *db = server.db + i;
-        size_t num = db->rock_hash_field_cnt;
-        
-        if (num == 0)
-            continue;
-
-        all_empty = 0;
-
-        total += 1;     // this db info if size is not zero
-        
-        if (num < EVICT_OUTPUT_PERCENTTAGE)
-        {
-            total += 1;     // one line output for small db
-        }
-        else
-        {
-            total += EVICT_OUTPUT_PERCENTTAGE;       // percentage output
-        }
-    }
-
-    if (all_empty)
-        total = 1;      // all empty, one line output
-
-    return total;
-}
-
-static void rock_all_for_evict_for_db(const int dbid)
+/* For small db of rock evict (not empty), rock all and return the output result in one line */
+static sds rock_all_for_evict_for_small_db(const int dbid)
 {
     redisDb *db = server.db + dbid;
-    serverAssert(dictSize(db->rock_evict) != 0 && dictSize(db->rock_evict) < EVICT_OUTPUT_PERCENTTAGE);
+    const size_t cnt = dictSize(db->rock_evict);
+    serverAssert(cnt != 0 && cnt < EVICT_OUTPUT_LIMIT_FOR_PENCENTAGE);
+
+    monotime timer;
+    elapsedStart(&timer);
 
     list *l = listCreate();
 
@@ -1714,7 +1669,7 @@ static void rock_all_for_evict_for_db(const int dbid)
     while ((de = dictNext(di)))
     {
         const sds key = dictGetKey(de);
-        listAddNodeTail(l, key);
+        listAddNodeTail(l, key);        
     }
     dictReleaseIterator(di);
 
@@ -1724,20 +1679,37 @@ static void rock_all_for_evict_for_db(const int dbid)
     while ((ln = listNext(&li)))
     {
         const sds key = listNodeValue(ln);
+        // NOTE: try_evict_one_key_to_rocksdb() wlll modify dict of db->rock_evict
         while (try_evict_one_key_to_rocksdb(dbid, key, NULL) != TRY_EVICT_ONE_SUCCESS);
     }
 
     listRelease(l);
+
+    sds s = sdsempty();
+    const long long unsigned us = (long long unsigned)(elapsedUs(timer));
+    if (us < 1000)
+    {
+        s = sdscatprintf(s, "   small db with key num = %zu to disk, time = %llu (us)", cnt, us);
+    }
+    else
+    {
+        s = sdscatprintf(s, "   small db with key num = %zu to disk, time = %llu (ms)", cnt, us/1000);
+    }
+    return s;
 }
 
-
-static void rock_all_for_hash_for_db(const int dbid)
+/* For small db of rock hash (not empty), rock all and return the output result in one line */
+static sds rock_all_for_hash_for_small_db(const int dbid)
 {
     redisDb *db = server.db + dbid;
-    serverAssert(db->rock_hash_field_cnt != 0 && db->rock_hash_field_cnt < EVICT_OUTPUT_PERCENTTAGE);
+    const size_t cnt = db->rock_hash_field_cnt;
+    serverAssert(cnt != 0 && cnt < EVICT_OUTPUT_LIMIT_FOR_PENCENTAGE);
 
-    list *l_key = listCreate();
-    list *l_field = listCreate();
+    monotime timer;
+    elapsedStart(&timer);
+
+    list *l_keys = listCreate();
+    list *l_fields = listCreate();
 
     dictIterator *di = dictGetIterator(db->rock_hash);
     dictEntry *de;
@@ -1751,8 +1723,8 @@ static void rock_all_for_hash_for_db(const int dbid)
         while ((de_lrus = dictNext(di_lrus)))
         {
             const sds field = dictGetKey(de_lrus);
-            listAddNodeTail(l_key, key);
-            listAddNodeTail(l_field, field);
+            listAddNodeTail(l_keys, key);
+            listAddNodeTail(l_fields, field);            
         }
         dictReleaseIterator(di_lrus);        
     }
@@ -1760,11 +1732,11 @@ static void rock_all_for_hash_for_db(const int dbid)
 
     listIter li_key;
     listNode *ln_key;
-    listRewind(l_key, &li_key);
-
     listIter li_field;
     listNode *ln_field;
-    listRewind(l_field, &li_field);
+
+    listRewind(l_keys, &li_key);
+    listRewind(l_fields, &li_field);
 
     while ((ln_key = listNext(&li_key)))
     {
@@ -1772,16 +1744,31 @@ static void rock_all_for_hash_for_db(const int dbid)
 
         const sds key = listNodeValue(ln_key);
         const sds field = listNodeValue(ln_field);
+
+        // NOTE: try_evict_one_field_to_rocksdb() will modify dict lrus
         while (try_evict_one_field_to_rocksdb(dbid, key, field, NULL) != TRY_EVICT_ONE_SUCCESS);
     }
 
-    listRelease(l_key);
-    listRelease(l_field);
+    listRelease(l_keys);
+    listRelease(l_fields);
+
+    sds s = sdsempty();
+    const long long unsigned us = (long long unsigned)(elapsedUs(timer));
+    if (us < 1000)
+    {
+        s = sdscatprintf(s, "   small db with field num = %zu to disk, time = %llu (us)", cnt, us);
+    }
+    else
+    {
+         s = sdscatprintf(s, "   small db with field num = %zu to disk, time = %llu (ms)", cnt, us/1000);
+    }
+    return s;
 }
 
-static void rock_all_for_evict_for_db_by_one_percentage(client *c, const int dbid,
-                                                        const int p_index, const size_t scope,
-                                                        listIter *li, listNode **ln)
+/* Rock all for rock evict only one percentage, return output result as one line sds */
+static sds rock_all_for_evict_by_one_percentage(const int dbid,
+                                                const int p_index, const size_t scope,
+                                                listIter *li, listNode **ln)
 {
     monotime timer;
     elapsedStart(&timer);
@@ -1793,28 +1780,27 @@ static void rock_all_for_evict_for_db_by_one_percentage(client *c, const int dbi
         while (try_evict_one_key_to_rocksdb(dbid, key, NULL) != TRY_EVICT_ONE_SUCCESS);
     }
 
-    sds s = sdsempty();
-    if (EVICT_OUTPUT_PERCENTTAGE != 100)
+    sds line = sdsempty();
+    const long long unsigned us = (long long unsigned)(elapsedUs(timer));
+    if (us < 1000)
     {
-        s = sdscatprintf(s, "key evict %d (1/%d), scope = %zu, time = %llu (ms)", 
-                            p_index, EVICT_OUTPUT_PERCENTTAGE, scope, (long long unsigned)elapsedMs(timer));
+        line = sdscatprintf(line, "   key evict %d%%, scope = %zu, time = %llu (us)", 
+                                  p_index, scope, us);
     }
     else
     {
-        s = sdscatprintf(s, "key evict %d%%, scope = %zu, time = %llu (ms)", 
-                            p_index, scope, (long long unsigned)elapsedMs(timer));
+        line = sdscatprintf(line, "   key evict %d%%, scope = %zu, time = %llu (ms)", 
+                                  p_index, scope, us/1000);
     }
 
-    if (!server.cluster_enabled)
-        addReplyBulkCString(c, s);
-
-    sdsfree(s);
+    return line;
 }
 
-static void rock_all_for_hash_for_db_by_one_percentage(client *c, const int dbid,
-                                                       const int p_index, const size_t scope,
-                                                       listIter *li_key, listNode **ln_key,
-                                                       listIter *li_field, listNode **ln_field)
+/* Rock all for rock hash only one percentage, return output result as one line sds */
+static sds rock_all_for_hash_by_one_percentage(const int dbid,
+                                               const int p_index, const size_t scope,
+                                               listIter *li_key, listNode **ln_key,
+                                               listIter *li_field, listNode **ln_field)
 {
     monotime timer;
     elapsedStart(&timer);
@@ -1830,28 +1816,31 @@ static void rock_all_for_hash_for_db_by_one_percentage(client *c, const int dbid
         while (try_evict_one_field_to_rocksdb(dbid, key, field, NULL) != TRY_EVICT_ONE_SUCCESS);
     }
 
-    sds s = sdsempty();
-    if (EVICT_OUTPUT_PERCENTTAGE != 100)
+    sds line = sdsempty();
+    const long long unsigned us = (long long unsigned)(elapsedUs(timer));
+    if (us < 1000)
     {
-        s = sdscatprintf(s, "field evict %d (1/%d), scope = %zu, time = %llu (ms)", 
-                            p_index, EVICT_OUTPUT_PERCENTTAGE, scope, (long long unsigned)elapsedMs(timer));
+        line = sdscatprintf(line, "   field evict %d%%, scope = %zu, time = %llu (us)", 
+                                  p_index, scope, us);
     }
     else
     {
-        s = sdscatprintf(s, "field evict %d%%, scope = %zu, time = %llu (ms)", 
-                            p_index, scope, (long long unsigned)elapsedMs(timer));
+        line = sdscatprintf(line, "   field evict %d%%, scope = %zu, time = %llu (ms)", 
+                                  p_index, scope, us/1000);
     }
 
-    if (!server.cluster_enabled)
-        addReplyBulkCString(c, s);
-
-    sdsfree(s);
+    return line;
 }
 
-static void rock_all_for_evict_for_db_by_percentage(client *c, const int dbid)
+/* Rock all rock evict for specific db (dbid).
+ * Return a list of output (one line for one percentage)
+ */
+static list* rock_all_for_evict_by_percentage(const int dbid)
 {
+    list *output = listCreate();
+
     redisDb *db = server.db + dbid;
-    serverAssert(dictSize(db->rock_evict) >= EVICT_OUTPUT_PERCENTTAGE);
+    serverAssert(dictSize(db->rock_evict) >= EVICT_OUTPUT_LIMIT_FOR_PENCENTAGE);
 
     list *l = listCreate();
 
@@ -1869,29 +1858,36 @@ static void rock_all_for_evict_for_db_by_percentage(client *c, const int dbid)
     listRewind(l, &li);
 
     const size_t total = dictSize(db->rock_evict);
-    const size_t scope = total / EVICT_OUTPUT_PERCENTTAGE;
+    const size_t scope = total / 100;
     serverAssert(scope > 0);
-    for (int i = 1; i <= EVICT_OUTPUT_PERCENTTAGE; ++i)
+    for (int i = 1; i <= 100; ++i)
     {
-        if (i != EVICT_OUTPUT_PERCENTTAGE)
+        if (i != 100)
         {
-            rock_all_for_evict_for_db_by_one_percentage(c, dbid, i, scope, &li, &ln);
+            listAddNodeTail(output, rock_all_for_evict_by_one_percentage(dbid, i, scope, &li, &ln));
         }
         else
         {
-            const size_t last_scope = total - scope * (EVICT_OUTPUT_PERCENTTAGE-1);
+            const size_t last_scope = total - scope * 99;
             serverAssert(last_scope > 0);
-            rock_all_for_evict_for_db_by_one_percentage(c, dbid, i, last_scope, &li, &ln);            
+            listAddNodeTail(output, rock_all_for_evict_by_one_percentage(dbid, i, last_scope, &li, &ln));            
         }
     }
 
     listRelease(l);
+
+    return output;
 }
 
-static void rock_all_for_hash_for_db_by_percentage(client *c, const int dbid)
+/* Rock all rock hash for specific db (dbid).
+ * Return a list of output (one line for one percentage)
+ */
+static list* rock_all_for_hash_by_percentage(const int dbid)
 {
+    list *output = listCreate();
+
     redisDb *db = server.db + dbid;
-    serverAssert(db->rock_hash_field_cnt >= EVICT_OUTPUT_PERCENTTAGE);
+    serverAssert(db->rock_hash_field_cnt >= EVICT_OUTPUT_LIMIT_FOR_PENCENTAGE);
 
     list *l_key = listCreate();
     list *l_field = listCreate();
@@ -1926,135 +1922,165 @@ static void rock_all_for_hash_for_db_by_percentage(client *c, const int dbid)
     listRewind(l_field, &li_field);
 
     const size_t total = db->rock_hash_field_cnt;
-    const size_t scope = total / EVICT_OUTPUT_PERCENTTAGE;
+    const size_t scope = total / 100;
     serverAssert(scope > 0);
-    for (int i = 1; i <= EVICT_OUTPUT_PERCENTTAGE; ++i)
+    for (int i = 1; i <= 100; ++i)
     {
-        if (i != EVICT_OUTPUT_PERCENTTAGE)
+        if (i != 100)
         {
-            rock_all_for_hash_for_db_by_one_percentage(c, dbid, i, scope, 
-                                                       &li_key, &ln_key, &li_field, &ln_field);
+            sds s = rock_all_for_hash_by_one_percentage(dbid, i, scope, 
+                                                        &li_key, &ln_key, &li_field, &ln_field);
+            listAddNodeTail(output, s);
         }
         else
         {
-            const size_t last_scope = total - scope * (EVICT_OUTPUT_PERCENTTAGE-1);
+            const size_t last_scope = total - scope * 99;
             serverAssert(last_scope > 0);
-            rock_all_for_hash_for_db_by_one_percentage(c, dbid, i, last_scope, 
-                                                       &li_key, &ln_key, &li_field, &ln_field);            
+            sds s = rock_all_for_hash_by_one_percentage(dbid, i, last_scope, 
+                                                        &li_key, &ln_key, &li_field, &ln_field);
+            listAddNodeTail(output, s);            
         }
     }
 
     listRelease(l_key);
     listRelease(l_field);
+
+    return output;
 }
 
-static void rock_all_for_evict(client *c)
+/* Rock all rock_evict for all dbs
+ * return is the output for client in a list for all dbs
+ * If one db is small, it is one line output in the list
+ * Otherwise, it is percentage(100 lines) output in the list  
+ */ 
+static list* rock_all_for_evict()
 {
-    int all_empty = 1;
+    list *output = listCreate();
 
+    int all_empty = 1;
     for (int i = 0; i < server.dbnum; ++i)
     {
         redisDb *db = server.db + i;
         size_t num = dictSize(db->rock_evict);
         if (num == 0)
-            continue;
+            continue;       // We skip empty db (rock_evict is empty)
 
         all_empty = 0;
 
-        // This db head line for this db
-        sds s = sdsempty();
-        s = sdscatprintf(s, "key evict for dbid = %d, number = %zu", i, num);
+        // This db head line
+        sds headline = sdsempty();
+        headline = sdscatprintf(headline, "** key's value evict to disk for dbid = %d, total keys = %zu **", i, num);
+        listAddNodeTail(output, headline);
 
-        if (!server.cluster_enabled)
-            addReplyBulkCString(c, s);
-
-        sdsfree(s);
-
-        if (num < EVICT_OUTPUT_PERCENTTAGE)
+        if (num < EVICT_OUTPUT_LIMIT_FOR_PENCENTAGE)
         {
             // one line output for small db
-            rock_all_for_evict_for_db(i);
+            listAddNodeTail(output, rock_all_for_evict_for_small_db(i));
         }
         else
         {
             // 100 lines output for big db
-            rock_all_for_evict_for_db_by_percentage(c, i);
+            list *percent_output = rock_all_for_evict_by_percentage(i);
+            listJoin(output, percent_output);
+            listRelease(percent_output);
         }
     }
 
     if (all_empty)
     {
         sds s = sdsempty();
-        s = sdscatprintf(s, "All db key eviction are empty!");
-
-        if (!server.cluster_enabled)
-            addReplyBulkCString(c, s);
-
-        sdsfree(s);
+        s = sdscatprintf(s, "** All %d DB key evictions to disk are empty! **", server.dbnum);
+        listAddNodeTail(output, s);
     }
+
+    return output;
 }
 
-static void rock_all_for_hash(client *c)
+/* Rock all rock_hash for all dbs
+ * return is the output for client in a list for all dbs
+ * If one db is small, it is one line output in the list
+ * Otherwise, it is percentage(100 lines) output in the list  
+ */ 
+static list* rock_all_for_hash()
 {
-    int all_empty = 1;
+    list *output = listCreate();
 
+    int all_empty = 1;
     for (int i = 0; i < server.dbnum; ++i)
     {
         redisDb *db = server.db + i;
         size_t num = db->rock_hash_field_cnt;
         if (num == 0)
-            continue;
+            continue;       // We skip empty db (all rock_hash lurs are empty)
 
         all_empty = 0;
 
-        // This db head line for this db
-        sds s = sdsempty();
-        s = sdscatprintf(s, "field evict for dbid = %d, number = %zu", i, num);
+        // This db head line
+        sds headline = sdsempty();
+        headline = sdscatprintf(headline, "** field's value evict to disk for dbid = %d, total fields = %zu **", i, num);
+        listAddNodeTail(output, headline);
 
-        if (!server.cluster_enabled)
-            addReplyBulkCString(c, s);
-
-        sdsfree(s);
-
-        if (num < EVICT_OUTPUT_PERCENTTAGE)
+        if (num < EVICT_OUTPUT_LIMIT_FOR_PENCENTAGE)
         {
             // one line output for small db
-            rock_all_for_hash_for_db(i);
+            listAddNodeTail(output, rock_all_for_hash_for_small_db(i));
         }
         else
         {
             // 100 lines output for big db
-            rock_all_for_hash_for_db_by_percentage(c, i);
+            list *percent_output = rock_all_for_hash_by_percentage(i);
+            listJoin(output, percent_output);
+            listRelease(percent_output);
         }
     }
 
     if (all_empty)
     {
         sds s = sdsempty();
-        s = sdscatprintf(s, "All db field eviction are empty!");
-
-        if (!server.cluster_enabled)
-            addReplyBulkCString(c, s);
-
-        sdsfree(s);
+        s = sdscatprintf(s, "** All %d DB field evictions to disk are empty! **", server.dbnum);
+        listAddNodeTail(output, s);
     }
+
+    return output;
 }
 
-
+/* Command ROCKALL */
 void rock_all(client *c)
 {
-    int total = 0;
-    total += cal_rock_all_for_evict();
-    total += cal_rock_all_for_hash();
+    list *output = listCreate();
 
-    if (!server.cluster_enabled)
-        addReplyArrayLen(c, total);
+    const sds headline = sdsnew("------- ROCKALL command result -------");
+    listAddNodeTail(output, headline);
 
-    rock_all_for_evict(c);
-    rock_all_for_hash(c);
+    list *evict_output = rock_all_for_evict();      // rock all for evict whole key
+    listJoin(output, evict_output);
+    listRelease(evict_output);
+
+    list *hash_output = rock_all_for_hash();       // rock all for evict whole hash
+    listJoin(output, hash_output);
+    listRelease(hash_output);
 
     if (server.cluster_enabled)
+    {
         addReply(c, shared.ok);
+    }
+    else
+    {
+        addReplyArrayLen(c, listLength(output));        // multi lines output
+        
+        listIter li;
+        listNode *ln;
+        listRewind(output, &li);
+        while ((ln = listNext(&li)))
+        {
+            const sds line = listNodeValue(ln);
+            addReplyBulkCString(c, line);
+        }
+    }
+
+    // free output
+    listSetFreeMethod(output, (void (*)(void*))sdsfree);
+    listRelease(output);
 }
 
 /* Check current free memory is OK for continue(or execute) the command.

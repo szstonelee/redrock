@@ -108,8 +108,6 @@ void get_visit_stat_for_rock(size_t *key_total_visits, size_t *key_rock_visits,
 int check_valid_evict_of_key_for_db(const int dbid, const sds redis_key);
 int check_valid_evict_of_key_for_hash(const int dbid, const sds hash_key, const sds hash_field);
 
-// list* get_keys_in_rock_for_command(const client *c);
-
 // int process_cmd_in_processInputBuffer(client *c);
 #define CHECK_ROCK_GO_ON_TO_CALL    0
 #define CHECK_ROCK_ASYNC_WAIT       1

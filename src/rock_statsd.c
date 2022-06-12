@@ -242,22 +242,19 @@ static void send_command_metric(const sds prefix, const char *fmt, const char *c
     sendto(statsd_sock, msg, sdslen(msg), 0, (struct sockaddr*)&statsd_address, sizeof(statsd_address));
 }
 
-void send_metrics_to_statsd()
+void send_metrics_to_statsd_in_cron()
 {
     if (config_ip == NULL)
         return;     // no config for statsd server
 
     // report to StatsD once for every second
     static int cron_cnt = 0;
+
     ++cron_cnt;
     if (cron_cnt != server.hz)
-    {
         return;
-    }
-    else
-    {
-        cron_cnt = 0;
-    }
+
+    cron_cnt = 0;
     
     // monotime timer;
     // elapsedStart(&timer);
@@ -328,6 +325,10 @@ void send_metrics_to_statsd()
     send_metric(prefix, ".TotalProcessedCommands:%U|g", server.stat_numcommands);
     send_metric(prefix, ".InstantOpsPerSecond:%U|g", getInstantaneousMetric(STATS_METRIC_COMMAND));   
     send_metric(prefix, ".LatestForkUsec:%U|g", server.stat_fork_time);
+
+    // rocksdb stats
+    send_metric(prefix, ".EstimateRocksdbDiskSize:%U|g", server.rocksdb_disk_size);
+    send_metric(prefix, ".EstimateRocksdbKeyNumber:%U|g", server.rocksdb_key_num);
 
     // Command stats
     struct redisCommand *c;

@@ -1146,7 +1146,11 @@ static int choose_key_or_field_eviction()
 
 #define EVICTION_MIN_TIMEOUT_US (1<<10)             // about 1 ms
 #define EVICTION_MAX_TIMEOUT_US (1<<12)             // about 4 ms
-void perform_rock_eviction_in_cron()
+/* It is called in main thread cron to evict some memory.
+ * If it evicts something, returns true (1).
+ * else it returns false (0).
+ */
+int perform_rock_eviction_in_cron()
 {
     #ifdef RED_ROCK_EVICT_INFO
     static monotime timer;
@@ -1168,7 +1172,7 @@ void perform_rock_eviction_in_cron()
         timing_in_process = 0;
         #endif        
         
-        return;     // memory usage is under limit, do nothing
+        return 0;     // memory usage is under limit, do nothing
     }
 
     #ifdef RED_ROCK_EVICT_INFO
@@ -1198,7 +1202,7 @@ void perform_rock_eviction_in_cron()
 
     const int choice_for_key = choose_key_or_field_eviction();
     if (choice_for_key == -1)
-        return;     // all db empty for evictions
+        return 0;     // all db empty for evictions
 
     if (choice_for_key)
     {
@@ -1208,6 +1212,7 @@ void perform_rock_eviction_in_cron()
     {
         perform_field_eviction(want_to_free, timeout);
     }
+    return 1;
 }
 
 static size_t get_freed_mem_for_rock_mem(const size_t start_used)

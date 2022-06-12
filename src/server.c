@@ -39,10 +39,12 @@
 #include "rock.h"
 #include "rock_write.h"
 #include "rock_read.h"
+#include "rock_purge.h"
 #include "rock_hash.h"
 #include "rock_evict.h"
 #include "rock_rdb_aof.h"
 #include "rock_statsd.h"
+#include "rock_purge.h"
 
 #include <time.h>
 #include <signal.h>
@@ -1140,6 +1142,10 @@ struct redisCommand redisCommandTable[] = {
 
     {"rockmem", NULL, rock_mem,-2,
      "admin no-script random ok-stale read-only no-monitor no-slowlog",
+     0,NULL,0,0,0,0,0,0},
+
+    {"purgerocksdb", NULL, rock_purge_command,1,
+     "admin no-script random ok-stale read-only fast",
      0,NULL,0,0,0,0,0,0}
 };
 
@@ -2299,8 +2305,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                           &ei);
 
     // We add the following features for RedRock
-    perform_rock_eviction_in_cron();
-    send_metrics_to_statsd();
+    const int evict_something = perform_rock_eviction_in_cron();
+    send_metrics_to_statsd_in_cron();
+    update_rocksdb_stat_in_cron();
+    if (!evict_something)
+        do_purge_in_cron();     // low priority for purge job
 
     server.cronloops++;
     return 1000/server.hz;
@@ -3192,14 +3201,19 @@ static void init_redrock()
     // init_rocksdb("/opt/redrock/rocksdb");
     init_rocksdb();
       
-    init_and_start_rock_write_thread();  // init rock write
-    init_and_start_rock_read_thread();   // init rock read
+    init_and_start_rock_write_thread();     // init rock write
+    init_and_start_rock_read_thread();      // init rock read
+    init_and_start_rock_purge_thread();     // init rock purge
 
     evict_pool_init();      // init evcition pool
 
     init_for_rdb_aof_service();     // init the pipes (set to -1) for rdb/aof service
 
     init_statsd();
+
+    server.rocksdb_disk_size = 0;
+    server.rocksdb_key_num = 0;
+    server.rocksdb_purge_working = 0;       // NOTE: We need init it two times, one using mutex, because right now mutex not init
 }
 
 void initServer(void) {

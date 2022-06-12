@@ -28,13 +28,20 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __ROCK_STATSD_H
-#define __ROCK_STATSD_H
+#ifndef __ROCK_PURGE_H
+#define __ROCK_PURGE_H
 
-extern char *statsd_config;
-int is_valid_statsd_config(char *val, const char **err);
+#include "server.h"
 
-void init_statsd();
-void send_metrics_to_statsd_in_cron();
+#define ROCKSDB_PURGE_MAX_LEN 1024
+
+void init_and_start_rock_purge_thread();
+void join_purge_thread();
+void get_refresh_rocksdb_db_size_and_key_num(size_t *db_sz, size_t *key_num);
+void update_rocksdb_stat_in_cron();
+void do_purge_in_cron();
+
+void set_can_refressh_new_purge_candidates_to_true();
+void rock_purge_command(client *c);
 
 #endif

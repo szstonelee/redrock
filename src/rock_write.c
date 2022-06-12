@@ -34,6 +34,7 @@
 #include "rock_read.h"
 #include "rock_hash.h"
 #include "rock_evict.h"
+#include "rock_purge.h"
 
 /* We use mutex to replace spinlock because spinlock could switch out 
  * by OS scheuler while holding lock and the other threads may be busy spiinlocking.
@@ -69,8 +70,9 @@ void rock_w_signal_cond()
 
 static pthread_t rock_write_thread_id;
 
-/* 
+/* -------------------------------------------
  * Ring Buffer as a write queue to RocksDB
+ * -------------------------------------------
  */
 
 static sds rbuf_keys[RING_BUFFER_LEN];
@@ -79,6 +81,18 @@ static sds rbuf_vals[RING_BUFFER_LEN];
 static int rbuf_s_index;     // start index in queue (include if rbuf_len != 0)
 static int rbuf_e_index;     // end index in queue (exclude if rbuf_len != 0)
 static int rbuf_len;         // used(available) length
+
+/* ------------------------------------------
+ * Purge job waiting for write thread to write del to RocksDB
+ * NOTE: the logic must guarantee the purge job is inserted before ring buffer job
+ *       check rock_purge.c for the guarantee
+ * ------------------------------------------
+ */
+static int del_db_dbids[ROCKSDB_PURGE_MAX_LEN];
+static sds del_db_keys[ROCKSDB_PURGE_MAX_LEN];
+static int del_hash_dbids[ROCKSDB_PURGE_MAX_LEN];
+static sds del_hash_keys[ROCKSDB_PURGE_MAX_LEN];
+static sds del_hash_fields[ROCKSDB_PURGE_MAX_LEN];
 
 /* Called by Main thread to init the ring buffer */
 static void init_write_ring_buffer() 
@@ -92,6 +106,14 @@ static void init_write_ring_buffer()
     }
     rbuf_s_index = rbuf_e_index = 0;
     rbuf_len = 0;
+    rock_w_unlock();
+}
+
+static void init_write_purge_data()
+{
+    rock_w_lock();
+    del_db_keys[0] = NULL;
+    del_hash_keys[0] = NULL;
     rock_w_unlock();
 }
 
@@ -141,6 +163,16 @@ static int space_in_write_ring_buffer()
 
     serverAssert(space >= 0 && space <= RING_BUFFER_LEN);
     return space;
+}
+
+/* Called by main thread to check whether there are no job of eviction
+ * i.e., the ring buffer is empty
+ * which is used for purge check.
+ * Return true(1) if the ring buffer is empty, otherwise return false(0).
+ */
+int is_eviction_ring_buffer_empty()
+{
+    return space_in_write_ring_buffer() == RING_BUFFER_LEN;
 }
 
 /* Called in Main thread in cron (not directly).
@@ -440,13 +472,114 @@ int try_evict_one_field_to_rocksdb(const int dbid, const sds key,
     return TRY_EVICT_ONE_SUCCESS;
 }
 
+/* Called by write thread to deal with purge task
+ * The calller gurarantee:
+ * 1. not in lock mode
+ * 2. before dealing with ring buffer so there are no data race for RocksDB
+ */
+static void write_purge_to_rocksdb_first()
+{
+    // make lock as short as possible in write thread
+    // by using local copy of sds pointers (i.e., the purge tasks)
+    int db_dbids[ROCKSDB_PURGE_MAX_LEN];
+    sds db_keys[ROCKSDB_PURGE_MAX_LEN];
+    int hash_dbids[ROCKSDB_PURGE_MAX_LEN];
+    sds hash_keys[ROCKSDB_PURGE_MAX_LEN];
+    sds hash_fields[ROCKSDB_PURGE_MAX_LEN];
+
+    rock_w_lock();
+
+    for (int i = 0; i < ROCKSDB_PURGE_MAX_LEN; ++i)
+    {
+        db_dbids[i] = del_db_dbids[i];
+        db_keys[i] = del_db_keys[i];
+
+        if (del_db_keys[i] == NULL)
+            break;        
+    }
+
+    for (int i = 0; i < ROCKSDB_PURGE_MAX_LEN; ++i)
+    {
+        hash_dbids[i] = del_hash_dbids[i];
+        hash_keys[i] = del_hash_keys[i];
+        hash_fields[i] = del_hash_fields[i];
+
+        if (del_hash_keys[i] == NULL)
+            break;
+    }
+
+    rock_w_unlock();
+
+    if (db_keys[0] == NULL && hash_keys[0] == NULL)
+        return;         // no purge task, just return
+
+    // real write del to RocksDB (not in lock)
+    rocksdb_writebatch_t *batch = rocksdb_writebatch_create();
+    rocksdb_writeoptions_t *writeoptions = rocksdb_writeoptions_create();
+    rocksdb_writeoptions_disable_WAL(writeoptions, 1);      // disable WAL
+
+    int del_cnt = 0;
+
+    for (int i = 0; i < ROCKSDB_PURGE_MAX_LEN; ++i)
+    {
+        if (db_keys[i] == NULL)
+            break;
+
+        sds rock_key = sdsdup(db_keys[i]);      // must duplicate because db_keys[i] is immutable
+        rock_key = encode_rock_key_for_db(db_dbids[i], rock_key);
+        rocksdb_writebatch_delete(batch, rock_key, sdslen(rock_key));
+        sdsfree(rock_key);
+        ++del_cnt;
+    }
+    
+    for (int i = 0; i < ROCKSDB_PURGE_MAX_LEN; ++i)
+    {
+        if (hash_keys[i] == NULL)
+            break;
+
+        sds rock_key = sdsdup(hash_keys[i]);
+        rock_key = encode_rock_key_for_hash(hash_dbids[i], rock_key, hash_fields[i]);
+        rocksdb_writebatch_delete(batch, rock_key, sdslen(rock_key));
+        sdsfree(rock_key);
+        ++del_cnt;
+    }
+
+    char *err = NULL;
+    rocksdb_write(rockdb, writeoptions, batch, &err);    
+    if (err) 
+        serverPanic("write_purge_to_rocksdb_first() failed reason = %s", err);
+
+    rocksdb_writeoptions_destroy(writeoptions);
+    rocksdb_writebatch_destroy(batch);
+
+    serverLog(LL_NOTICE, "purging partly %d key(or hash field) for RocksDB in background ...", del_cnt);
+
+    // after write (del) to RocksDB, we need indicating the purge job finished
+    rock_w_lock();
+    del_db_keys[0] = NULL;
+    del_hash_keys[0] = NULL;
+    // for new candidates. 
+    // NOTE: must be called in rock_w_lock() 
+    //       otherwise main thread will do the transfer_purge_task_to_write_thread() two times
+    // set_can_refressh_new_purge_candidates_to_true() use rock_p_lock
+    // so hold rock_w_lock call for rock_p_lock
+    // but do not tigger deadlock because only here have two locks holding (and in the same oreder)
+    // We must guarantee has_unfinished_purge_task_for_write() and can_refresh_new_purge_candidates
+    // to set atomic for do_purge_in_cron() in main thread
+    set_can_refressh_new_purge_candidates_to_true();
+    rock_w_unlock();
+}
+
 /* Called by write thread.
  * If nothing written to RocksDB, return 0. Otherwise, the number of key written to db.
  */
 static int write_to_rocksdb()
 {
+    write_purge_to_rocksdb_first();     // must called before deal with ring buffer
+
     // Make lock as short as possible in write thread
     rock_w_lock();
+
     if (rbuf_len == 0)
     {
         rock_w_unlock();
@@ -454,7 +587,21 @@ static int write_to_rocksdb()
     }
     int written = rbuf_len;
     int index = rbuf_s_index;
+
+    // must check purge job again because it is async mode
+    // e.g. main thread cron add some purge job when write thread sleep 
+    //      after the first statement write_purge_to_rocksdb_first() in write_to_rocksdb()
+    //      then main cron add some task to ring buffer and now write thread wake up 
+    int has_purge_job = 0;
+    if (!(del_db_keys[0] == NULL && del_hash_keys[0] == NULL))
+        has_purge_job = 1;
+
     rock_w_unlock();
+
+    if (has_purge_job)
+        // this guaratee no more purge job comming when ring buffer has some jobs
+        // check rock_purge.c do_purge_in_cron() which has is_eviction_ring_buffer_empty() checking
+        write_purge_to_rocksdb_first();
        
     // for manual debug
     // serverLog(LL_WARNING, "write thread write rocksdb start (sleep for 10 seconds) ...");
@@ -562,29 +709,14 @@ static void* rock_write_main(void* arg)
     // unsigned int sleep_us = MIN_SLEEP_MICRO;
     while(loop)
     {
-    /*        
-        if (write_to_rocksdb() != 0)
-        {
-            sleep_us = MIN_SLEEP_MICRO;     // if task is coming, short the sleep time
-            atomicGet(rock_threads_loop_forever, loop);
-            continue;       // no sleep, go on for more task
-        }
-
-        usleep(sleep_us);
-        sleep_us <<= 1;        // double sleep time
-        if (sleep_us > MAX_SLEEP_MICRO) 
-            sleep_us = MAX_SLEEP_MICRO;
-
-        atomicGet(rock_threads_loop_forever, loop);
-    */
-
         rock_w_lock();
-        while(loop && rbuf_len == 0)
+
+        while(loop && rbuf_len == 0 && (del_db_keys[0] == NULL && del_hash_keys[0] == NULL))
         {
             rock_w_wait_cond();
-            atomicGet(rock_threads_loop_forever, loop);
-            // serverLog(LL_WARNING, "return from rock_w_wait_cond()...");
-        }            
+            atomicGet(rock_threads_loop_forever, loop);            
+        } 
+
         rock_w_unlock();
         
         if (loop)
@@ -855,6 +987,7 @@ void init_and_start_rock_write_thread()
     serverAssert(pthread_cond_init(&cv, NULL) == 0);
 
     init_write_ring_buffer();
+    init_write_purge_data();
 
     if (pthread_create(&rock_write_thread_id, NULL, rock_write_main, NULL) != 0) 
         serverPanic("Unable to create a rock write thread.");
@@ -916,5 +1049,65 @@ void create_snapshot_of_ring_buf_for_child_process(sds *keys, sds *vals)
         }
     }
 
+    rock_w_unlock();
+}
+
+/* Called by main thread in cron to check whether the purge task has been finished
+ * return true (1) if un-finished
+ * otherwise return 0.
+ */
+int has_unfinished_purge_task_for_write()
+{
+    int no_job = 0;
+    
+    rock_w_lock();
+    if (del_db_keys[0] == NULL && del_hash_keys[0] == NULL)
+        no_job = 1;
+    rock_w_unlock();
+
+    return !no_job;
+}
+
+/* Called by main thread in cron to add purge task to write thead
+ */
+void transfer_purge_task_to_write_thread(int db_cnt, int *db_dbids, sds *db_keys,
+                                         int hash_cnt, int *hash_dbids, sds *hash_keys, sds *hash_fields)
+{
+    serverAssert(db_cnt > 0 || hash_cnt > 0);
+
+    rock_w_lock();
+
+    serverAssert(del_db_keys[0] == NULL && del_hash_keys[0] == NULL);
+
+    for (int i = 0; i < db_cnt; ++i)
+    {
+        del_db_dbids[i] = db_dbids[i];
+        del_db_keys[i] = db_keys[i];
+    }
+
+    if (db_cnt != ROCKSDB_PURGE_MAX_LEN)
+        del_db_keys[db_cnt] = NULL;
+
+    for (int i = 0; i < hash_cnt; ++i)
+    {
+        del_hash_dbids[i] = hash_dbids[i];
+        del_hash_keys[i] = hash_keys[i];
+        del_hash_fields[i] = hash_fields[i];
+    }
+
+    if (hash_cnt != ROCKSDB_PURGE_MAX_LEN)
+        del_hash_keys[hash_cnt] = NULL;
+
+    rock_w_signal_cond();   // wake up write thread to do purge task
+
+    rock_w_unlock();
+}
+
+/* Called by  main thread cron when do purge check
+ */
+void try_to_wakeup_write_thread()
+{
+    rock_w_lock();
+    rock_w_signal_cond();
     rock_w_unlock();
 }

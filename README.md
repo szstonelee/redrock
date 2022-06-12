@@ -39,7 +39,7 @@ RedRock是在Redis源码上直接修改的(基于6.2.2版本)，用RocksDB库进
 
 #### Linux（CentOS, Ubuntu, Debian）下载压缩包redrock.tar
 
-可以用curl、wget、浏览器点击链接三种方式之一，直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock，在已测试的平台Ubuntu 20，Ubuntu 18，CentOS 8，CentOS 7，Debian 11上像Redis一样直接运行或配置为service。
+可以用curl、wget、浏览器点击链接三种方式之一，直接下载压缩文件redrock.tar(80M)，然后解压为执行文件redrock，在已测试的平台Ubuntu 20，Ubuntu 18，Ubuntu 16, CentOS 8，CentOS 7，Debian 11上像Redis一样直接运行或配置为service。
 
 ##### 用curl下载redrock.tar
 

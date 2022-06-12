@@ -7,8 +7,8 @@ r2: redis.StrictRedis   # real redis 6.2.2
 
 
 def init_redis_clients(dbid):
-    r1_ip = "192.168.56.3"
-    r2_ip = "192.168.56.8"
+    r1_ip = "192.168.64.4"
+    r2_ip = "192.168.64.4"
     r1_port = 6379
     r2_port = 6379
     pool1 = redis.ConnectionPool(host=r1_ip,

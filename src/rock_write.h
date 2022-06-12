@@ -67,7 +67,15 @@ sds get_field_val_str_from_write_ring_buf_first_in_redis_process(const int dbid,
 // for rock_rdb_aof.c
 void create_snapshot_of_ring_buf_for_child_process(sds *keys, sds *vals);
 
-// for rock.c
+// for rock.c and rock_purge.c (no lock)
 void rock_w_signal_cond();
+// for rock_purge.c (with lock)
+void try_to_wakeup_write_thread();
 
+// for main thread purge job
+int is_eviction_ring_buffer_empty();
+int has_unfinished_purge_task_for_write();
+void transfer_purge_task_to_write_thread(int db_cnt, int *db_dbids, sds *db_keys,
+                                         int hash_cnt, int *hash_dbids, sds *hash_keys, sds *hash_fields);
+                                
 #endif

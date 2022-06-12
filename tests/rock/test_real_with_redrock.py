@@ -16,7 +16,7 @@ r2: redis.StrictRedis   # real redis 6.2.2
 r1_thread: redis.StrictRedis
 r2_thread: redis.StrictRedis
 
-server_ip = "192.168.56.11"
+server_ip = "192.168.56.19"
 #server_ip = "127.0.0.1"
 
 def init_redis_clients():
@@ -85,7 +85,7 @@ def init_redrock(r: redis.StrictRedis):
     r.execute_command("config set hash-max-ziplist-entries 2")
     r.execute_command("config set hash-max-rock-entries 4")
     r.execute_command("config set maxrockmem 10000000")  # 10M
-    r.execute_command("config set appendonly yes")
+    #r.execute_command("config set appendonly yes")
     dbsize = r.execute_command("dbsize")
     print(f"dbsize = {dbsize}")
     if dbsize < 5_000:

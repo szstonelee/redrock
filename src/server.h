@@ -1651,6 +1651,11 @@ struct redisServer {
                                 * failover then any replica can be used. */
     int target_replica_port; /* Failover target port */
     int failover_state; /* Failover state */
+    /* rocksdb stat */
+    size_t rocksdb_disk_size;       /* esitimated disk size by all sst files refreshed by every second */
+    size_t rocksdb_key_num;         /* estimated key number refreshed by every second */
+    /* rocksdb purge background job status */
+    int rocksdb_purge_working;
 };
 
 #define MAX_KEYS_BUFFER 256
