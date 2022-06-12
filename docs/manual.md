@@ -62,7 +62,7 @@ ROCKSTAT
 | stat_field_total | 一段时间内，所有涉及大Hash(可部分转储field的hash key)的field的访问总数 |
 | stat_field_rock | 一段时间内，这些访问field中，有多少field对应的value是位于磁盘而且需要读出的 |
 | field_percent | stat_field_rock / stat_field_total * 100%，可以得知field miss in memory的百分率 |
-| estimate rocksdb disk size | 粗略估计RocksDB的磁盘文件SST的大小（并不是很准，只有数量级的意义）|
+| estimate rocksdb disk size | 粗略估计RocksDB的所有磁盘文件SST的总和大小（并不是很准，只有数量级的意义）|
 | estimate rocksdb key num | 粗略估计RocksDB的总key数量（并不是很准，只有数量级的意义）|
 
 注意：CONFIG RESETSTAT将重置stat_key_total、stat_key_rock、stat_field_total、stat_field_roc为0。
@@ -121,7 +121,7 @@ PURGEROCKSDB
 
 所以，建议：在不忙的时候做purge rocksdb，同时，没有必要每天都做，一般是废数据远远大于（我个人建议10倍以上）有效数据时，才值得做。所以，大部分应用场景，可能一年做一次足矣。
 
-4. 如果观测废数据的规模
+4. 如何观测废数据的规模
 
 用上面的ROCKSTAT命令，其中，key_num是总的RedRock有效的key，evict_key_num是value在内存的有效key的数量，key_in_disk_num是value在RocksDB的有效key的数量，然后estimate rocksdb key num就是RocksDB粗略估计的数量（注意：很不准，只看数量级）。
 
@@ -135,8 +135,7 @@ PURGEROCKSDB
 
 启动PURGEROCKSDB任务，并不要认为RocksDB磁盘的使用量就马上降低，很可能是先升高，再降低，因为RedRock是发出RocksDB的删除命令，而RocksDB的删除命令是要占用磁盘空间的，直到RocksDB compcation对于底层处理时，才真正地释放磁盘。所以，不要等到RocksDB磁盘快满时，才做这个处理。
 
-ROCKSTAT里对于RocksDB的磁盘空间和key总量的估计不光不准（只有量级意义），而且是非常动态的（所以，你看到其一下高，一下低，请不要吃惊）。这个是RocksDB自己的算法导致。所以，你要真正了解RocksDB磁盘占用情况，请用du命令作用于/opt/rocksdb目录。至于RocksDB的key，没有办法获得准确的数据。
-
+ROCKSTAT里对于RocksDB的磁盘空间和key总量的估计不光不准（只有量级意义），而且是非常动态的（所以，你看到其一下高，一下低，请不要吃惊）。这个是RocksDB自己的算法导致。所以，你要真正了解RocksDB磁盘占用情况，请用du命令作用于/opt/rocksdb目录。至于RocksDB的key的总数，没有办法获得准确的数据。
 
 ## 一些新增和修改的配置参数
 
