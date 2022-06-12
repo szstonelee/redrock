@@ -11,6 +11,7 @@
 | rockstat | 内存和磁盘的相关统计信息 |
 | rockall | 将所有内存里的数据value存盘 |
 | rockmem | 按某一内存额度进行存盘从而腾出内存空间 |
+| purgerocksdb | 后台清理RocksDB磁盘上废数据 |
 
 原理可参考：[内存磁盘管理](memory.md)
 
@@ -61,6 +62,8 @@ ROCKSTAT
 | stat_field_total | 一段时间内，所有涉及大Hash(可部分转储field的hash key)的field的访问总数 |
 | stat_field_rock | 一段时间内，这些访问field中，有多少field对应的value是位于磁盘而且需要读出的 |
 | field_percent | stat_field_rock / stat_field_total * 100%，可以得知field miss in memory的百分率 |
+| estimate rocksdb disk size | 粗略估计RocksDB的磁盘文件SST的大小（并不是很准，只有数量级的意义）|
+| estimate rocksdb key num | 粗略估计RocksDB的总key数量（并不是很准，只有数量级的意义）|
 
 注意：CONFIG RESETSTAT将重置stat_key_total、stat_key_rock、stat_field_total、stat_field_roc为0。
 
@@ -89,6 +92,51 @@ e.g. ```rockmem 77m``` ```rockmem 77M``` ```rockmem 77g``` ```rockmem 77G```
 如果不带附加参数timeout_seconds，那么RedRock将完成这个操作才能处理其他命令，即服务器会在这段时间block住（类似Redis的SAVE命令）。
 
 如果想在最多一个时间限额完成或者到时即未完成结束（没有完成足够量内存的磁盘转储，但至少发生了一部分转储），那么请带入timeout_seconds这个参数。则这个命令将不会超过这个时间限额，从而让存盘有时间保证，不会耽误整个系统的正常运行（比如：timeout_seconds == 3，这样此次操作，系统不会停止处理Redis命令超过3秒钟）。注意：timeout_seconds是近似秒数，一般大多数情况下，不会有1秒的误差，操作系统如果恶化则不能保证，操作系统恶化一般发生在内存很紧张，从而导致正常的系统调用超时完成。
+
+### purgerocksdb
+
+PURGEROCKSDB
+
+1. 功能
+
+对RocksDB磁盘启动后台的废数据的清理。
+
+2. 为什么会产生废数据？
+
+当你用Redis命令删除一些数据时，比如DEL、HDEL命令，这些数据，其value，可能在磁盘上。RedRock为了保证性能，并不立刻删除RocksDB磁盘上对应的数据。这样，日积月累，RocksDB对应的磁盘文件（缺省是磁盘目录：/opt/redrock/rocksdbXXX，XXX是监听端口）可能包含了大量的废数据。
+
+此时，就需要对RocksDB的磁盘做个GC，将废旧磁盘数据删除，降低磁盘的使用大小，这就是PURGEROCKSDB命令的意义。
+
+注意：如果DEL了某个key，后来又生成了这个key，比如：set key val，那么之前的value在RocksDB里，并不算废数据，它会被RocksDB基于后台compaction合并数据时，自动删除。因此开始可能占用RocksDB两个value的磁盘空间，但一段时间后，最后只会占用一个value的磁盘空间。
+
+3. 后台处理，优先级很低，但trade off是，几乎没有性能影响
+
+当发出PURGEROCKSDB命令时，实际是启动RedRock的一个后台处理（可以想象成类似BGSAVE的效果，但不是进程模式，而是线程模式）。
+
+这个后台处理，优先级很低，如果RedRock此时在处理内存降压工作，即将一些value转储到磁盘腾出内存空间，那么pugre rocksdb这个后台任务将暂缓执行。只有不忙时，才最快每秒删除最多1024个key（或者hash field），实际上，一般远远低于1024这个数量，所以对于RedRock的其他（比如：读磁盘返回value给Redis client），影响很低。CPU上，最忙时，也不到1个百分点。磁盘上压力也不高，每秒1千个key，因为key很小，如果每个key计算100字节，每秒也才100K字节的写入。
+
+所以这是个trade off，purge rocksdb的后台处理对于前台和其他后台任务（将value转储到磁盘以腾出内存空间）影响几乎忽略不计，但purge rocksdb的任务的完成时间会很长。
+
+我们做个估算：假设你内存里有1百万个valid key，但RocksDB磁盘上存有1千1百万个key，也就意味着有1千万个废key，那么这1千万个废key删除最快需要多少时间？因为每秒最多清理1024个key，所以，最快也需要1万秒，也就是3个小时量级。如果这中间，RedRcok有1个小时的腾内存任务，那么这1小时里，purge rocksdb不会做任何事，总时间会超过4小时。
+
+所以，建议：在不忙的时候做purge rocksdb，同时，没有必要每天都做，一般是废数据远远大于（我个人建议10倍以上）有效数据时，才值得做。所以，大部分应用场景，可能一年做一次足矣。
+
+4. 如果观测废数据的规模
+
+用上面的ROCKSTAT命令，其中，key_num是总的RedRock有效的key，evict_key_num是value在内存的有效key的数量，key_in_disk_num是value在RocksDB的有效key的数量，然后estimate rocksdb key num就是RocksDB粗略估计的数量（注意：很不准，只看数量级）。
+
+比如上例中，key_num是5M，evict_key_num是1M，key_in_disk_num是4M。则表示整个dataset有五百万个key，其中一百万是热key，其value在当前内存里，其他四百万是冷key，其value在磁盘上。而此时，estimate rocksdb key num是六百万，那么废的数据并不多，不值得做purge rocksdb。但如果estimate rocksdb key num是四千万，那么RocksDB废数据很可能是有效冷数据的十倍，那么，此时，值得做purge rocksdb后台任务。
+
+注意：如果你启用了Hash Field的内存策略，你还需要观测ROCKSTAT里的evict_hash_num，evict_field_num，field_in_disk_num这三个值。
+
+5. 注意事项
+
+除了上面的purge rocksdb是低优先级后台任务，需要耗费大量时间，同时ROCKSTAT里观测的RocksDB数据是粗略的外，你还需要注意：
+
+启动PURGEROCKSDB任务，并不要认为RocksDB磁盘的使用量就马上降低，很可能是先升高，再降低，因为RedRock是发出RocksDB的删除命令，而RocksDB的删除命令是要占用磁盘空间的，直到RocksDB compcation对于底层处理时，才真正地释放磁盘。所以，不要等到RocksDB磁盘快满时，才做这个处理。
+
+ROCKSTAT里对于RocksDB的磁盘空间和key总量的估计不光不准（只有量级意义），而且是非常动态的（所以，你看到其一下高，一下低，请不要吃惊）。这个是RocksDB自己的算法导致。所以，你要真正了解RocksDB磁盘占用情况，请用du命令作用于/opt/rocksdb目录。至于RocksDB的key，没有办法获得准确的数据。
+
 
 ## 一些新增和修改的配置参数
 
@@ -247,6 +295,8 @@ hash-max-rock-entries设置多少合适，需要根据自己应用的数据情�
 * .LatestForkUsec，请参考Redis的统计说明，Redis INFO命令
 * .cmds.%s.calls，注：%s是每个用到的命令，比如GET，SET，其他参考Redis的统计说明
 * .cmds.%s.usecPerCall，注：%s是每个用到的命令，比如GET，SET，其他参考Redis的统计说明
+* .EstimateRocksdbDiskSize，当前RocksDB的SST文件的总量大小，注意：是粗略估计，并不准
+* .EstimateRocksdbKeyNumber，当前RocksDB的key的总数，注意：是粗略估计，并不准
 
 ### hz
 
