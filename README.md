@@ -27,7 +27,7 @@ RedRock是在Redis源码上直接修改的(基于6.2.2版本)，用RocksDB库进
 * 所有的特性：Pipeline，Transaction，Script(Lua)，Pub/Sub，Module。
 * 所有的管理：Server & Connection & Memory management，ACL，TLS，SlowLog，Config。
 * 所有的存储：包括RDB以及AOF，支持同步和异步两种存盘指令。自动存盘和启动时自动恢复备份文件。
-* 所有的集群：包括Cluster，Master/Slave，Sentinel。对于原有的Redis集群系统不用做任何修改。
+* 所有的集群：包括Cluster，Master/Slave，Sentinel。集群配置可不改，并可混用。
 * 所有的命令：你的客户端程序不做任何更改，只要将服务器执行文件（只有一个）替换掉即可。
 * 增加的特性：直接对接StatsD并转为Grafana监测性能指标，并增加一些命令和配置管理内存和磁盘。
 
