@@ -1,5 +1,7 @@
 #RedRockHome
 
+Chinese Version is here [中文链接在此](README-CH.md)
+
 ## Table of contents
 
 * [What is RedRock] (#redrock is)
@@ -27,7 +29,7 @@ RedRock is directly modified on the Redis source code (based on version 6.2.2), 
 * All features: Pipeline, Transaction, Script(Lua), Pub/Sub, Module.
 * All management: Server & Connection & Memory management, ACL, TLS, SlowLog, Config.
 * All storage: including RDB and AOF, supports both synchronous and asynchronous save commands. Autosave and restore backup files automatically at startup.
-* All clusters: including Cluster, Master/Slave, Sentinel. The cluster configuration can remain unchanged and can be mixed.
+* All clusters: including Cluster, Master/Slave, Sentinel. The cluster configuration can remain unchanged. RedRock nodes can be mixed with Redis nodes in cluster or Master/Slave.
 * All commands: do not make any changes to your client program, just replace the server executable file (only one).
 * Added features: directly connect to StatsD and turn to Grafana to monitor performance indicators, and add some commands and configurations to manage memory and disk.
 
