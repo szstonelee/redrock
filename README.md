@@ -4,7 +4,7 @@ Chinese Version is here [中文链接在此](README-CH.md)
 
 ## Table of contents
 
-* [What is RedRock] (#what-is-redrock)
+* [What is RedRock](#what-is-redrock)
 * [Installation of RedRock](#install-redrock)
 * [RedRock features](docs/features.md)
 * [Memory Disk Management](docs/memory.md)
