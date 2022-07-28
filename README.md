@@ -1,6 +1,6 @@
 #RedRockHome
 
-Chinese Version is here [中文链接在此](README-CH.md)
+Chinese version is here [中文链接在此](README-CH.md)
 
 ## Table of contents
 
@@ -17,7 +17,7 @@ Chinese Version is here [中文链接在此](README-CH.md)
 
 **RedRock is a 100% compatible Redis server program and supports data expansion to disk**
 
-Although Redis has RDB/AOF disk files, for Redis, this is only a data backup, that is, Redis commands cannot read and write data contained in RDB/AOF files in real time, and the entire Redis data size is still limited by the server hardware memory. limit. The memory of the top-level server is only a few TB at most. Generally, the memory of the server is in the order of GB, and the memory is too expensive.
+Although Redis has RDB/AOF disk files, for Redis, this is only a data backup, that is, Redis commands cannot read and write data contained in RDB/AOF files in real time, and the entire Redis data size is still limited by the server hardware memory limit. The memory of the top-level server is only a few TB at most. Generally, the memory of the server is in the order of GB, and the memory is too expensive.
 
 RedRock automatically converts data that exceeds memory to disk storage. In this way, hot data is in memory to ensure access speed, and cold and warm data is in disk and supports real-time reading and writing. RedRock does automatic hot and cold conversion for this purpose, thereby greatly saving hardware costs. . Because the price of disk is almost negligible compared to memory, and the size of disk far exceeds the limit of memory. The memory is generally at the GB level, and the disk can be easily configured to the TB or even PB level. Under the condition of similar cost, the size of the data can be increased by more than a thousand times.
 
@@ -28,20 +28,20 @@ RedRock is directly modified on the Redis source code (based on version 6.2.2), 
 * Full data structure: String, Hash, Set, List, Sorted Set(ZSet), Bitmap, HyperLogLog, Geo, Stream.
 * All features: Pipeline, Transaction, Script(Lua), Pub/Sub, Module.
 * All management: Server & Connection & Memory management, ACL, TLS, SlowLog, Config.
-* All storage: including RDB and AOF, supports both synchronous and asynchronous save commands. Autosave and restore backup files automatically at startup.
-* All clusters: including Cluster, Master/Slave, Sentinel. The cluster configuration can remain unchanged. RedRock nodes can be mixed with Redis nodes in cluster or Master/Slave.
-* All commands: do not make any changes to your client program, just replace the server executable file (only one).
-* Added features: directly connect to StatsD and turn to Grafana to monitor performance indicators, and add some commands and configurations to manage memory and disk.
+* All storage: Including RDB and AOF, supports both synchronous and asynchronous save commands. Autosave and restore backup files automatically at startup.
+* All clusters: Including Cluster, Master/Slave, Sentinel. The cluster configuration can remain unchanged. RedRock nodes can be mixed with Redis nodes in Redis Cluster or Redis Master/Slave.
+* All commands: Do not make any changes to your client program, just replace the server executable file (only one).
+* Added features: Directly connect to StatsD and turn to Grafana to monitor performance indicators, and add some commands and configurations to manage memory and disk.
 
 For details, please refer to: [RedRock features](docs/features.md)
 
 ## Install RedRock
 
-### Installation method 1: directly download the executable file redrock
+### Installation method 1: directly download the executable file of redrock
 
-#### Linux (CentOS, Ubuntu, Debian) download the compressed package redrock.tar
+#### Linux (CentOS, Ubuntu, Debian) download the compressed package of redrock.tar
 
-You can use curl, wget, or browser to click the link in one of the three ways to directly download the compressed file redrock.tar (80M), and then extract it to the executable file redrock, on the tested platforms Ubuntu 20, Ubuntu 18, Ubuntu 16, CentOS 8 , CentOS 7, Debian 11 run directly like Redis or configured as service.
+You can use curl, wget, or browser to click the link in one of the three ways to directly download the compressed file redrock.tar (80M), and then extract it to the executable file of redrock, on the tested platforms of Ubuntu 20, Ubuntu 18, Ubuntu 16, CentOS 8 , CentOS 7, Debian 11 run directly like Redis or configured as service.
 
 ##### Download redrock.tar with curl
 
@@ -70,12 +70,12 @@ wget https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar -O red
 * GitHub: [https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar](https://github.com/szstonelee/redrock/raw/master/dl/redrock.tar)
 * Mirror site: [https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/redrock.tar](https://hub.fastgit.xyz/szstonelee/redrock/raw/master/dl/ redrock.tar)
 
-##### After successfully downloading redrock.tar (about 80M bytes), it needs to be decompressed and executed
+##### After successfully downloading redrock.tar (about 80M bytes), it needs to be decompressed to an executable files
 ````
 tar -xzf redrock.tar
 ````
 
-Then you can see that there is an executable file redrock (more than 200 M, including lz4 and RocksDB static libraries) in this directory. Executing it is the same as executing redis-server, only need
+Then you can see that there is an executable file of redrock (more than 200 M, including lz4 and RocksDB static libraries) in this directory. Executing it is the same as executing redis-server, only need
 ````
 sudo ./redrock
 ````
@@ -120,7 +120,7 @@ Note 1: redrock_mac does not need tar decompression, because the redrock_mac exe
 
 Note 2: Also, chmod is required to make the file executable.
 
-Note 3: It is best to check, the method, first find /usr -name librocksdb.dylib, and then perform ls -all on the found librocksdb.dylib to see if the RocksDB version linked to is above 7.
+Note 3: It is best to check that all are done,. First find /usr -name librocksdb.dylib, and then perform ls -all on the found librocksdb.dylib to see if the RocksDB version linked to is above 7.
 
 ### Installation method 2: source code compilation
 
@@ -138,10 +138,10 @@ These million records have been pre-made into a Redis backup RDB data file for d
 
 Database record description:
 
-* type: string
+* Type: string
 * Quantity: one million
 * Key: k1, k2, ..., k1000000
-* Val: starts with a number from 2 to 2000, followed by that number of characters 'v'. For example: 2vv, 4vvvv ...
+* Value: starts with a number from 2 to 2000, followed by that number of characters 'v'. For example: 2vv, 4vvvv ...
 
 In this way, each record is about 1K bytes on average, and the entire data record is on the order of 1G bytes.
 
